@@ -1,10 +1,11 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
 import { Subscription, forkJoin, of } from 'rxjs';
 import { MenuItem } from 'primeng/api';
 import { AuthService } from 'src/app/services/auth.service';
 import { KnmiReportsService } from 'src/app/services/knmi-reports.service';
 import { LocalStorageService } from 'src/app/services/local-storage.service';
 import { MessageServiceWrapper } from 'src/app/services/message.service';
+import { ServerTasksComponent } from '../server-tasks/server-tasks.component';
 
 const SETTINGS_KEY = 'knmidata-settings';
 
@@ -14,6 +15,8 @@ const SETTINGS_KEY = 'knmidata-settings';
     standalone: false
 })
 export class AppLoginComponent implements OnInit, OnDestroy {
+
+    @ViewChild('serverTasksDialog') serverTasksDialog!: ServerTasksComponent;
 
     menuItems: MenuItem[] = [];
     private authSub!: Subscription;
@@ -58,6 +61,7 @@ export class AppLoginComponent implements OnInit, OnDestroy {
             this.menuItems = [
                 { label: 'Edit Profile', icon: 'pi pi-user-edit', command: () => this.openEditProfileDialog() },
                 { label: 'Standaard instellingen', icon: 'pi pi-cog', command: () => this.openSettingsDialog() },
+                { label: 'Taakstatus', icon: 'pi pi-server', command: () => this.serverTasksDialog.open() },
                 { separator: true },
                 { label: 'Logout', icon: 'pi pi-power-off', command: () => this.logout() }
             ];

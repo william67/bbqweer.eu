@@ -1,0 +1,60 @@
+<p-dialog
+    header="Taakstatus"
+    [(visible)]="visible"
+    [modal]="true"
+    [style]="{'width':'900px'}"
+    [closable]="true"
+    (onHide)="close()">
+
+    <p-table [value]="tasks" styleClass="p-datatable-sm p-datatable-gridlines">
+        <ng-template pTemplate="header">
+            <tr>
+                <th style="width:160px">Taak</th>
+                <th style="width:100px">Status</th>
+                <th style="width:220px">Voortgang</th>
+                <th style="width:60px">Fouten</th>
+                <th style="width:80px">Duur</th>
+                <th style="width:140px">Gestart</th>
+                <th style="width:140px">Klaar</th>
+                <th>Bericht</th>
+            </tr>
+        </ng-template>
+        <ng-template pTemplate="body" let-t>
+            <tr>
+                <td><strong>{{ t.taskCode }}</strong></td>
+                <td>
+                    <p-tag [value]="statusLabel(t)" [severity]="statusSeverity(t)"></p-tag>
+                </td>
+                <td>
+                    @if (t.isRunning && t.progressTotal) {
+                        <div class="flex align-items-center gap-2">
+                            <span class="text-sm text-color-secondary" style="white-space:nowrap">{{ t.currentProgress }} / {{ t.progressTotal }}</span>
+                            <p-progressBar [value]="progressValue(t)" [showValue]="false" style="flex:1;height:8px"></p-progressBar>
+                        </div>
+                    } @else {
+                        <span class="text-color-secondary">{{ t.progressTotal ?? '—' }}</span>
+                    }
+                </td>
+                <td>
+                    @if (t.errorCount > 0) {
+                        <p-tag [value]="t.errorCount.toString()" severity="danger"></p-tag>
+                    } @else {
+                        <span class="text-color-secondary">0</span>
+                    }
+                </td>
+                <td class="text-color-secondary">{{ t.lastDurationSec != null ? t.lastDurationSec + 's' : '—' }}</td>
+                <td class="text-sm">{{ t.startedAt | date:'dd-MM-yy HH:mm:ss' }}</td>
+                <td class="text-sm">{{ t.finishedAt | date:'dd-MM-yy HH:mm:ss' }}</td>
+                <td><small class="text-color-secondary">{{ t.lastMessage }}</small></td>
+            </tr>
+        </ng-template>
+        <ng-template pTemplate="emptymessage">
+            <tr><td colspan="8" class="text-center text-color-secondary p-3">Geen taken gevonden</td></tr>
+        </ng-template>
+    </p-table>
+
+    <ng-template pTemplate="footer">
+        <small class="text-color-secondary">Ververst elke 2 seconden</small>
+        <p-button label="Sluiten" [text]="true" (onClick)="close()"></p-button>
+    </ng-template>
+</p-dialog>

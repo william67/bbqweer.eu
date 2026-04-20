@@ -20,13 +20,18 @@ import { AppLayoutComponent } from './app.layout.component';
 import { AppTopbarComponent } from './app.topbar.component';
 import { AppFooterComponent } from './app.footer.component';
 import { AppLoginComponent } from '../components/login/app.login.component';
+import { ServerTasksComponent } from '../components/server-tasks/server-tasks.component';
+import { TableModule } from 'primeng/table';
+import { TagModule } from 'primeng/tag';
+import { ProgressBarModule } from 'primeng/progressbar';
 
 @NgModule({
     declarations: [
         AppLayoutComponent,
         AppTopbarComponent,
         AppFooterComponent,
-        AppLoginComponent
+        AppLoginComponent,
+        ServerTasksComponent
     ],
     imports: [
         CommonModule,
@@ -44,7 +49,10 @@ import { AppLoginComponent } from '../components/login/app.login.component';
         ToastModule,
         StyleClassModule,
         TooltipModule,
-        MenuModule
+        MenuModule,
+        TableModule,
+        TagModule,
+        ProgressBarModule
     ],
     providers: [
         MessageService

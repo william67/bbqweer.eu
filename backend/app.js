@@ -28,17 +28,19 @@ app.use(express.static(staticPath, {
     }
 }));
 
-const knmiReportsRouter = require('./routes/knmi-reports.route');
-const starsRouter       = require('./routes/stars.route');
-const satellitesRouter  = require('./routes/satellites.route');
-const authRouter        = require('./routes/auth.route');
-const usersRouter       = require('./routes/users.route');
+const knmiReportsRouter  = require('./routes/knmi-reports.route');
+const starsRouter        = require('./routes/stars.route');
+const satellitesRouter   = require('./routes/satellites.route');
+const authRouter         = require('./routes/auth.route');
+const usersRouter        = require('./routes/users.route');
+const serverTasksRouter  = require('./routes/server-tasks.route');
 
-app.use('/api/knmi-reports', knmiReportsRouter);
-app.use('/api/stars',        starsRouter);
-app.use('/api/satellites',   satellitesRouter);
-app.use('/api/auth',         authRouter);
-app.use('/api/users',        usersRouter);
+app.use('/api/knmi-reports',  knmiReportsRouter);
+app.use('/api/stars',         starsRouter);
+app.use('/api/satellites',    satellitesRouter);
+app.use('/api/auth',          authRouter);
+app.use('/api/users',         usersRouter);
+app.use('/api/server-tasks',  serverTasksRouter);
 
 app.listen(port, () => console.log(`bbqweer backend listening on port ${port}`));
 
