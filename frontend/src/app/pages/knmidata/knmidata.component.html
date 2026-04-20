@@ -6,10 +6,9 @@
       <div class="flex align-items-center justify-content-between mb-3">
         <h5 class="m-0">KNMI Weather Data</h5>
         <div class="flex gap-2">
-          <p-button icon="pi pi-table"      size="small" pTooltip="Tabel"    [outlined]="outputMode !== 'table'"    (onClick)="outputMode = 'table'"    severity="secondary" [text]="true" />
-          <p-button icon="pi pi-chart-bar"  size="small" pTooltip="AnyChart" [outlined]="outputMode !== 'anychart'" (onClick)="outputMode = 'anychart'" severity="secondary" [text]="true" />
-          <p-button icon="pi pi-chart-line" size="small" pTooltip="Chart.js" [outlined]="outputMode !== 'chartjs'"  (onClick)="outputMode = 'chartjs'"  severity="secondary" [text]="true" />
-          <p-button icon="pi pi-cog"  size="small" pTooltip="Standaard instellingen" severity="secondary" [text]="true" (onClick)="openSetup()" />
+          <p-button icon="pi pi-table"      label="Tabel"    size="small" [outlined]="outputMode !== 'table'"    (onClick)="outputMode = 'table'"    [severity]="outputMode === 'table'    ? 'primary' : 'secondary'" />
+          <p-button icon="pi pi-chart-bar"  label="AnyChart" size="small" [outlined]="outputMode !== 'anychart'" (onClick)="outputMode = 'anychart'" [severity]="outputMode === 'anychart' ? 'primary' : 'secondary'" />
+          <p-button icon="pi pi-chart-line" label="Chart.js" size="small" [outlined]="outputMode !== 'chartjs'"  (onClick)="outputMode = 'chartjs'"  [severity]="outputMode === 'chartjs'  ? 'primary' : 'secondary'" />
         </div>
       </div>
 

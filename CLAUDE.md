@@ -19,7 +19,7 @@ C:\Apps\bbqweer.eu\
 │   │   ├── services/       — knmi-reports, forecast, anychart, local-storage,
 │   │   │                     stars, planetarium-calc, satellites, satellite-js
 │   │   └── layout/         — topbar, footer, layout (AppLayoutModule)
-│   └── proxy.conf.json     — /api/* → localhost:3000 for ng serve
+│   └── proxy.conf.json     — deleted; not needed (environment.ts uses full localhost:3000 URL directly)
 ├── backend/                — Node.js/Express, CommonJS
 │   ├── app.js              — Express + node-cron wiring
 │   ├── config.ini          — Docker settings (host=mysql, port=3306) — NOT in git
@@ -64,12 +64,13 @@ C:\Apps\bbqweer.eu\
 | bbqweer-nginx | nginx:alpine | 80 |
 
 ### Local dev (Stage 1)
+Leave Docker running (MySQL always available). Cron tasks auto-disabled when `config.local.ini` exists.
 ```powershell
 # Terminal 1
-cd backend && node app.js         # uses config.local.ini automatically
+cd backend && node app.js         # uses config.local.ini, cron tasks disabled
 
 # Terminal 2
-cd frontend && ng serve --open    # proxies /api/* to localhost:3000
+cd frontend && ng serve --open    # proxies /api/* to localhost:3000, live reload via poll
 ```
 
 ### Full Docker (Stage 2 / production)
@@ -81,7 +82,7 @@ node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/
 See `docs/dev-workflow.md` for full three-stage workflow including Hetzner deployment.
 
 ## Build Timestamp
-- Footer shows `bbqweer.eu v1.0001 — YYYY-MM-DD HH:MM:SS`
+- Footer shows `bbqweer.eu v1.0002 — YYYY-MM-DD HH:MM:SS` (version/timestamp in smaller font)
 - `environment.production.ts` contains `buildTime: 'BUILD_TIME_PLACEHOLDER'`
 - The build command above injects the real timestamp before `ng build`, then restores the placeholder
 - **Never commit with a real timestamp** — always restore `BUILD_TIME_PLACEHOLDER` after building
@@ -144,7 +145,7 @@ node callSyncKnmi.js --full    # full re-sync
 ```
 
 ## Angular Setup Notes
-- Angular 19, NgModule-based (NOT standalone for pages)
+- Angular 21.2, NgModule-based (NOT standalone for pages)
 - PrimeNG v21 with Aura/blue preset — configured in `app.module.ts`
 - AnyChart loaded via CDN script tag + `AnyChartService` (loads from `https://cdn.anychart.com`)
 - Font: Nunito (Google Fonts)
@@ -153,7 +154,12 @@ node callSyncKnmi.js --full    # full re-sync
   - `"polyfills": ["zone.js"]` in `angular.json` build options
   - `provideZoneChangeDetection()` in `src/main.ts` bootstrap options
 - Two lazy-loaded modules: `KnmiDataModule`, `PlanetariumModule`
-- Budget limit raised to `1.5MB` warn / `3MB` error in `angular.json`
+- Budget limit raised to `2MB` warn / `3MB` error in `angular.json` (PrimeNG Table/Tag/ProgressBar)
+- `"hmr": false` in `angular.json` serve options — required; HMR is unreliable with NgModule apps
+- `platformBrowserDynamic` (from `@angular/platform-browser-dynamic`) required in `main.ts` — `platformBrowser` breaks live reload
+- No proxy config — `environment.ts` uses `http://localhost:3000/api` directly; backend has `cors()` enabled
+- `allowedCommonJsDependencies: [file-saver, crypto-js]` in `angular.json` — suppresses CommonJS warnings
+- `preloading.css` in `angular.json` styles array (not in `index.html`) — avoids build-time path resolution warning
 
 ## KNMI Page — Key Patterns
 - No-flash chart updates: `[hidden]="loading && !rawRows.length"`, spinner same condition
@@ -171,9 +177,10 @@ node callSyncKnmi.js --full    # full re-sync
 - See `docs/knmi-config-export-import.md`
 
 ## Pages / Nav
-- KNMI Data (`/knmidata`) — weather data charts + admin (Beheer menu)
+- KNMI Data (`/knmidata`) — weather data charts + admin (Beheer menu); chart-type buttons show text labels (Tabel/AnyChart/Chart.js) with active state highlighted
 - Weersverwachting (`/knmidata/forecast`) — 3-day hourly forecast via Open-Meteo
 - Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions
+- Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
 
 ## Environment Files
 - `src/environments/environment.ts` — dev: `apiUrl: 'http://localhost:3000/api'`
@@ -185,7 +192,8 @@ node callSyncKnmi.js --full    # full re-sync
 - **MySQL case sensitivity**: table names in stored procedures and task SQL must be lowercase (Linux Docker default)
 - **MaxListeners warning** in knmidata-v3: mitigated with `httpsAgent: maxSockets: 5` on axios instance
 - **config.local.ini vs config.ini**: pool helper auto-selects — never manually edit config.ini for local dev
-- **Angular budget**: initial bundle is ~1.27MB (PrimeNG + AnyChart) — budget raised in angular.json, this is expected
+- **Angular budget**: initial bundle is ~1.3MB+ (PrimeNG + AnyChart + Table/Tag/ProgressBar) — budget raised to 2MB warn, this is expected
+- **Windows live reload**: `poll: 1000` in angular.json serve options — without it, file changes may not trigger auto-reload
 - **zone.js is mandatory**: without it, async callbacks (HTTP, geolocation, timers) won't trigger change detection — pages will appear blank until a user click forces a CD cycle
 
 ## First Steps for New Chat

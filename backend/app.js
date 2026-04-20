@@ -44,19 +44,22 @@ app.use('/api/server-tasks',  serverTasksRouter);
 
 app.listen(port, () => console.log(`bbqweer backend listening on port ${port}`));
 
-// Cron tasks
-const cron            = require('node-cron');
-const knmiDataSync    = require('./tasks/knmidata-v3');
-const satellitesSync  = require('./tasks/satellites-sync');
+// Cron tasks — skipped in local dev (config.local.ini present)
+const fs = require('fs');
+if (!fs.existsSync('config.local.ini')) {
+    const cron           = require('node-cron');
+    const knmiDataSync   = require('./tasks/knmidata-v3');
+    const satellitesSync = require('./tasks/satellites-sync');
 
-// KNMI data sync — every hour at :00
-cron.schedule('0 * * * *', () => {
-    knmiDataSync().catch(err => console.error('knmidata-v3 cron error:', err));
-});
+    cron.schedule('0 * * * *', () => {
+        knmiDataSync().catch(err => console.error('knmidata-v3 cron error:', err));
+    });
 
-// Satellites TLE sync — every hour at :30
-cron.schedule('30 * * * *', () => {
-    satellitesSync().catch(err => console.error('satellites-sync cron error:', err));
-});
+    cron.schedule('30 * * * *', () => {
+        satellitesSync().catch(err => console.error('satellites-sync cron error:', err));
+    });
 
-console.log('Cron tasks scheduled: knmidata-v3 (0 * * * *), satellites-sync (30 * * * *)');
+    console.log('Cron tasks scheduled: knmidata-v3 (0 * * * *), satellites-sync (30 * * * *)');
+} else {
+    console.log('Cron tasks disabled (local dev)');
+}

@@ -28,6 +28,7 @@
           "builder": "@angular/build:application",
           "options": {
             "browser": "src/main.ts",
+            "index": "src/index.html",
             "tsConfig": "tsconfig.app.json",
             "polyfills": ["zone.js"],
             "inlineStyleLanguage": "scss",
@@ -43,7 +44,12 @@
               }
             ],
             "styles": [
-              "src/styles.scss"
+              "src/styles.scss",
+              "src/assets/layout/scss/preloading.css"
+            ],
+            "allowedCommonJsDependencies": [
+              "file-saver",
+              "crypto-js"
             ]
           },
           "configurations": {
@@ -88,7 +94,7 @@
           },
           "defaultConfiguration": "development",
           "options": {
-            "proxyConfig": "proxy.conf.json"
+            "hmr": false
           }
         },
         "test": {
