@@ -146,10 +146,12 @@ node callSyncKnmi.js --full    # full re-sync
 ## Angular Setup Notes
 - Angular 19, NgModule-based (NOT standalone for pages)
 - PrimeNG v21 with Aura/blue preset — configured in `app.module.ts`
-- AnyChart loaded via CDN script tag in `index.html` + `AnyChartService`
+- AnyChart loaded via CDN script tag + `AnyChartService` (loads from `https://cdn.anychart.com`)
 - Font: Nunito (Google Fonts)
 - Hash routing (`useHash: true`) — `/#/knmidata`, `/#/planetarium`
-- `zone.js` (not zoneless)
+- `zone.js` installed and configured — required for automatic change detection after async ops
+  - `"polyfills": ["zone.js"]` in `angular.json` build options
+  - `provideZoneChangeDetection()` in `src/main.ts` bootstrap options
 - Two lazy-loaded modules: `KnmiDataModule`, `PlanetariumModule`
 - Budget limit raised to `1.5MB` warn / `3MB` error in `angular.json`
 
@@ -184,6 +186,7 @@ node callSyncKnmi.js --full    # full re-sync
 - **MaxListeners warning** in knmidata-v3: mitigated with `httpsAgent: maxSockets: 5` on axios instance
 - **config.local.ini vs config.ini**: pool helper auto-selects — never manually edit config.ini for local dev
 - **Angular budget**: initial bundle is ~1.27MB (PrimeNG + AnyChart) — budget raised in angular.json, this is expected
+- **zone.js is mandatory**: without it, async callbacks (HTTP, geolocation, timers) won't trigger change detection — pages will appear blank until a user click forces a CD cycle
 
 ## First Steps for New Chat
 1. Read `docs/system-architecture.md` for full stack overview

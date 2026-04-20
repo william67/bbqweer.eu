@@ -142,7 +142,8 @@ Progress is tracked in the `server-tasks` table (`knmidata-sync`, `satellites-sy
 - PrimeNG v21 with Aura/blue preset
 - Hash routing (`/#/knmidata`, `/#/planetarium`)
 - Two lazy-loaded modules: `KnmiDataModule`, `PlanetariumModule`
-- AnyChart loaded via CDN script tag in `index.html`
+- AnyChart loaded via CDN (`AnyChartService` — dynamic script inject)
+- `zone.js` polyfill configured in `angular.json` + `provideZoneChangeDetection()` in `main.ts`
 - Production build output: `frontend/dist/frontend/browser/` — served by nginx
 
 ---
@@ -179,5 +180,4 @@ cd frontend
 ng serve --open
 ```
 
-`backend/config.ini` must use `host = 127.0.0.1` and `port = 3307` for local dev.  
-When running inside Docker, use `host = mysql` and `port = 3306`.
+The backend auto-selects config: if `backend/config.local.ini` exists it is used (local dev), otherwise falls back to `config.ini` (Docker). No manual switching needed. See `docs/dev-workflow.md`.
