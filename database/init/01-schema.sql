@@ -1573,7 +1573,7 @@ BEGIN
                        EG.DATUM - INTERVAL 1 DAY AS GISTEREN,
                        EG.TG,
                        EG.TX
-                  FROM ETMGEG EG
+                  FROM etmgeg EG
                  WHERE EG.TX >= 25
               ORDER BY EG.STATION, EG.DATUM;
    
@@ -1681,7 +1681,7 @@ BEGIN
                        EG.DATUM - INTERVAL 1 DAY AS GISTEREN,
                        EG.TG,
                        EG.TN
-                  FROM ETMGEG EG
+                  FROM etmgeg EG
                  WHERE EG.TX < 0
               ORDER BY EG.STATION, EG.DATUM;
 
@@ -2177,7 +2177,7 @@ BEGIN
                        EG.DATUM - INTERVAL 1 DAY AS GISTEREN,
                        EG.TG,
                        EG.TX
-                  FROM ETMGEG EG
+                  FROM etmgeg EG
                  WHERE EG.TX >= 30
               ORDER BY EG.STATION, EG.DATUM;
    
@@ -2281,7 +2281,7 @@ BEGIN
 
    DECLARE C1 CURSOR FOR
                 SELECT EG.STATION, EG.DATUM, EG.DATUM - INTERVAL 1 DAY AS GISTEREN, EG.TG
-                  FROM ETMGEG EG
+                  FROM etmgeg EG
                  WHERE EG.TG < 0
               ORDER BY EG.STATION, EG.DATUM;
    DECLARE CONTINUE HANDLER FOR NOT FOUND
