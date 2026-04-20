@@ -124,7 +124,7 @@ MYSQL_PASSWORD=...
 - Engine: MySQL 8.0, all InnoDB
 - **Case sensitivity**: MySQL runs on Linux inside Docker — table names are case-sensitive. All SQL in tasks and stored procedures must use lowercase table names (`etmgeg`, `datafiles`, `logfile`, etc.)
 - **No FK constraints** on etmgeg/uurgeg/neerslaggeg → stations. Intentional — KNMI data contains historical station codes with no station record.
-- **Stored procedures**: `UpdateHistory()` chains 6 sub-procedures. All were fixed to use lowercase table names (see `fix-procedures.sql`).
+- **Stored procedures**: `UpdateHistory()` chains 6 sub-procedures. All use lowercase table names (fixed directly in `01-schema.sql`).
 - **Views**: 30+ `v_*` views defined in `01-schema.sql`. Sync reads from `v_etmgeg`, `v_uurgeg`, `v_neerslaggeg`.
 
 ## Background Tasks

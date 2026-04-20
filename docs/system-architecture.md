@@ -106,7 +106,7 @@ Engine: MySQL 8.0 InnoDB throughout
 All 30+ `v_*` views are defined in `01-schema.sql`. The KNMI sync reads from `v_etmgeg`, `v_uurgeg`, `v_neerslaggeg` during the two-pointer merge.
 
 ### Stored procedures
-`UpdateHistory()` — called after every sync — chains: `UpdatePeriodeGegevens` → `UpdateNormen` → `UpdateVorstperiodes` → `UpdateKoudegolven` → `UpdateHittegolven` → `UpdateSuperHittegolven`
+`UpdateHistory()` — called after every sync — chains: `UpdatePeriodeGegevens` → `UpdateNormen` → `UpdateVorstperiodes` → `UpdateKoudegolven` → `UpdateHittegolven` → `UpdateSuperHittegolven`. All table references use lowercase (Linux case-sensitive).
 
 ---
 
