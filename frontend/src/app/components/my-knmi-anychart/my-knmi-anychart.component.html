@@ -1,0 +1,6 @@
+@if (noDataMessage) {
+  <div class="text-color-secondary text-sm p-3">{{ noDataMessage }}</div>
+}
+<div class="chart-wrapper" [hidden]="!!noDataMessage">
+    <div #chartContainer class="chart-container"></div>
+</div>

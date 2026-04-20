@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "exportedAt": "2026-04-18T17:30:28.233Z",
+  "dataset": {
+    "id": 9,
+    "code": "koudegolven",
+    "name": "Koudegolven",
+    "category_id": 3,
+    "category_name": "Statistieken",
+    "chartYn": 0,
+    "anychart_config": null,
+    "chartjs_config": null,
+    "sort_order": 2,
+    "category_code": "statistieken"
+  },
+  "reports": [
+    {
+      "name": "Koudegolgen",
+      "timebase": "overzicht",
+      "query": "SELECT * FROM (\n    SELECT\n        kg.STATION              AS stationsCode,\n        st.OMSCHRIJVING         AS station,\n        kg.VOLGNR               AS volgnr,\n        kg.BEGIN                AS begin,\n        kg.EINDE                AS einde,\n        kg.DAGEN                AS dagen,\n        kg.STRENG               AS streng,\n        kg.TMIN                 AS tmin,\n        kg.HELLMANN             AS hellmann\n    FROM koudegolven kg\n    JOIN stations st ON st.CODE = kg.STATION\n) _t\nWHERE 1=1\n<#SELECTIONS>\nORDER BY begin",
+      "input_station": 1,
+      "input_neerslagstation": 0,
+      "input_jaar": 0,
+      "input_maand": 0,
+      "input_week": 0,
+      "input_dag": 0,
+      "input_seizoen": 0,
+      "input_decade": 0,
+      "fieldName_station": "stationsCode",
+      "fieldName_neerslagstation": null,
+      "fieldName_jaar": null,
+      "fieldName_maand": null,
+      "fieldName_week": null,
+      "fieldName_dag": null,
+      "fieldName_seizoen": null,
+      "fieldName_decade": null,
+      "anychart_config": null,
+      "chartjs_config": null,
+      "sort_order": 0
+    }
+  ]
+}

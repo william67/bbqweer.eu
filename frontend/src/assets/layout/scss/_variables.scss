@@ -1,0 +1,19 @@
+// Bridge file: maps PrimeNG v21 preset CSS variables (--p-*) to the
+// legacy variable names used throughout the layout SCSS files.
+
+:root {
+    --font-family:              var(--p-font-family);
+    --text-color:               var(--p-text-color);
+    --text-color-secondary:     var(--p-text-muted-color);
+    --primary-color:            var(--p-primary-color);
+    --primary-color-text:       var(--p-primary-contrast-color);
+    --surface-ground:           var(--p-surface-50);
+    --surface-card:             var(--p-surface-0);
+    --surface-overlay:          var(--p-surface-0);
+    --surface-border:           var(--p-content-border-color);
+    --surface-hover:            var(--p-content-hover-background);
+    --surface-900:              var(--p-surface-900);
+    --border-radius:            var(--p-content-border-radius);
+    --transition-duration:      var(--p-transition-duration);
+    --focus-ring:               var(--p-focus-ring-shadow);
+}

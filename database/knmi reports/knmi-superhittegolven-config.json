@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "exportedAt": "2026-04-18T17:30:48.177Z",
+  "dataset": {
+    "id": 11,
+    "code": "superhittegolven",
+    "name": "Superhittegolven",
+    "category_id": 3,
+    "category_name": "Statistieken",
+    "chartYn": 0,
+    "anychart_config": null,
+    "chartjs_config": null,
+    "sort_order": 4,
+    "category_code": "statistieken"
+  },
+  "reports": [
+    {
+      "name": "Superhittegolven",
+      "timebase": "overzicht",
+      "query": "SELECT * FROM (\n    SELECT\n        shg.STATION             AS stationsCode,\n        st.OMSCHRIJVING         AS station,\n        shg.VOLGNR              AS volgnr,\n        shg.BEGIN               AS begin,\n        shg.EINDE               AS einde,\n        shg.DAGEN               AS dagen,\n        shg.SUPERTROPISCH       AS supertropisch,\n        shg.TMAX                AS tmax\n    FROM superhittegolven shg\n    JOIN stations st ON st.CODE = shg.STATION\n) _t\nWHERE 1=1\n<#SELECTIONS>\nORDER BY begin\n",
+      "input_station": 0,
+      "input_neerslagstation": 0,
+      "input_jaar": 0,
+      "input_maand": 0,
+      "input_week": 0,
+      "input_dag": 0,
+      "input_seizoen": 0,
+      "input_decade": 0,
+      "fieldName_station": "stationsCode",
+      "fieldName_neerslagstation": null,
+      "fieldName_jaar": null,
+      "fieldName_maand": null,
+      "fieldName_week": null,
+      "fieldName_dag": null,
+      "fieldName_seizoen": null,
+      "fieldName_decade": null,
+      "anychart_config": null,
+      "chartjs_config": null,
+      "sort_order": 4
+    }
+  ]
+}

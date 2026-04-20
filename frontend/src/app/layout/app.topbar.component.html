@@ -1,0 +1,17 @@
+<p-toast></p-toast>
+<div class="layout-topbar">
+    <div class="topbar-left">
+        <a class="topbar-logo" [routerLink]="['/']">
+            <span class="topbar-title">bbqweer.eu</span>
+        </a>
+    </div>
+    <div class="topbar-nav">
+        <a class="topbar-nav-link" [routerLink]="['/knmidata']" routerLinkActive="active">
+            <i class="pi pi-chart-bar mr-2"></i>KNMI Data
+        </a>
+        <a class="topbar-nav-link" [routerLink]="['/planetarium']" routerLinkActive="active">
+            <i class="pi pi-star mr-2"></i>Planetarium
+        </a>
+    </div>
+    <app-login></app-login>
+</div>

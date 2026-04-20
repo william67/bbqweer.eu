@@ -1,0 +1,126 @@
+@use '../_sass_variables' as *;
+
+@media screen and (min-width: $breakpoint) {
+    .layout-slim {
+        .layout-topbar {
+            .topbar-left {
+                .horizontal-logo {
+                    display: none;
+                }
+
+                .menu-button {
+                    display: none;
+                }
+
+                .topbar-separator {
+                    display: none;
+                }
+            }
+        }
+
+        .layout-sidebar {
+            width: 7rem;
+            overflow: visible;
+            z-index: 999;
+            .logo {
+                justify-content: center;
+            }
+            .logo-image {
+                margin-right: 0;
+            }
+
+            .app-name {
+                display: none;
+            }
+            .layout-menu-container {
+                overflow: auto;
+                padding: 0.75rem;
+                &::-webkit-scrollbar {
+                    display: none;
+                }
+            }
+        }
+
+        .layout-menu {
+            ul {
+                display: none;
+            }
+
+            li.active-menuitem {
+                > ul {
+                    display: block;
+                }
+            }
+
+            .layout-root-menuitem {
+                border-radius: var(--border-radius);
+
+                > .layout-menuitem-root-text {
+                    display: none;
+                }
+
+                > a {
+                    display: block;
+                    text-align: center;
+                    border-radius: var(--border-radius);
+                    padding: 0.5rem 0;
+                    cursor: pointer;
+                    outline: none;
+                    min-height: 4rem;
+
+                    .layout-submenu-toggler {
+                        display: none;
+                    }
+
+                    .layout-menuitem-icon {
+                        font-size: 1.25rem;
+                    }
+
+                    .layout-menuitem-text {
+                        font-size: 0.875rem;
+                        display: block;
+                        margin-top: 0.25rem;
+                    }
+                }
+
+                > ul {
+                    position: fixed;
+                    left: 7.5rem;
+                    top: auto;
+                    transform: translateY(calc(-4rem + var(--menu-scroll-y, 0px)));
+                    min-width: 15rem;
+                    background: var(--popover-background);
+                    border: 1px solid var(--popover-border-color);
+                    box-shadow:
+                        0px 56px 16px 0px rgba(0, 0, 0, 0),
+                        0px 36px 14px 0px rgba(0, 0, 0, 0.01),
+                        0px 20px 12px 0px rgba(0, 0, 0, 0.02),
+                        0px 9px 9px 0px rgba(0, 0, 0, 0.03),
+                        0px 2px 5px 0px rgba(0, 0, 0, 0.04);
+                    border-radius: 1rem;
+                    padding: 0.5rem;
+                    max-height: 20rem;
+                    overflow: auto;
+                    .active-menuitem {
+                        background-color: transparent !important;
+                        > a {
+                            color: var(--popover-item-active-text-color);
+                        }
+                    }
+                    a {
+                        color: var(--popover-item-text-color);
+                        border-radius: 0.5rem;
+                        margin: 0.25rem 0;
+
+                        &.active-route {
+                            color: var(--popover-item-active-route-text-color);
+                        }
+                        &:hover {
+                            background-color: var(--popover-item-hover-background-color);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,187 @@
+<div style="display:flex; flex-direction:column; width:100%; height:100%;">
+
+  <div class="canvas-wrapper" style="position:relative; flex:1; overflow:auto;">
+    <canvas #canvas
+      [style.cursor]="isDragging ? 'grabbing' : 'grab'"
+      (mousemove)="onMouseMove($event)"
+      (mousedown)="onMouseDown($event)"
+      (mouseup)="onMouseUp()"
+      (mouseleave)="onMouseLeave()"
+      (wheel)="onWheel($event)" style="touch-action:none; display:block; width:100%; height:100%;">
+    </canvas>
+
+  <!-- Passes panel -->
+  @if (showPasses) {
+    <div style="position:absolute; inset:0; background:#0a0c1a; z-index:25; display:flex; flex-direction:column; font-family:monospace; font-size:12px;">
+      <div style="padding:8px 12px; border-bottom:1px solid #2a3050; color:#8a9bcc; display:flex; align-items:center; gap:10px; flex-shrink:0;">
+        <p-button icon="pi pi-arrow-left" label="Planetarium" size="small" [text]="true" severity="secondary" (click)="showPasses = false"></p-button>
+        <p-select [options]="passSatOptions" [(ngModel)]="passFilterSatnum" optionLabel="label" optionValue="value"
+          appendTo="body" [filter]="true" filterBy="label" placeholder="All satellites"
+          [style]="{ fontSize: '11px', background: '#0d1128', border: '1px solid #2a3050', color: '#8a9bcc', minWidth: '200px' }">
+        </p-select>
+        <p-select [options]="passHoursOptions" [(ngModel)]="passHours" optionLabel="label" optionValue="value"
+          appendTo="body" (onChange)="recomputePasses()"
+          [style]="{ fontSize: '11px', background: '#0d1128', border: '1px solid #2a3050', color: '#8a9bcc' }">
+        </p-select>
+        <p-select [options]="passMinElevOptions" [(ngModel)]="passMinElev" optionLabel="label" optionValue="value"
+          appendTo="body" (onChange)="recomputePasses()"
+          [style]="{ fontSize: '11px', background: '#0d1128', border: '1px solid #2a3050', color: '#8a9bcc' }">
+        </p-select>
+        <span style="color:#556; margin-left:auto;">{{ filteredPasses.length }} passes</span>
+      </div>
+      @if (computingPasses) {
+        <div style="padding:24px; color:#556;">Computing...</div>
+      } @else {
+        <div style="overflow-y:auto; flex:1;">
+          <table style="width:100%; border-collapse:collapse;">
+            <thead style="position:sticky; top:0; background:#0a0c1a;">
+              <tr style="color:#556; text-align:left; border-bottom:1px solid #1a1e30;">
+                <th style="padding:5px 10px;">Rise (local)</th>
+                <th style="padding:5px 8px;">Name</th>
+                <th style="padding:5px 6px;">NORAD</th>
+                <th style="padding:5px 6px; text-align:right;">Max Alt°</th>
+                <th style="padding:5px 6px; text-align:right;">Dur (min)</th>
+                <th style="padding:5px 6px; text-align:right;">Rise Az°</th>
+                <th style="padding:5px 6px; text-align:right;">Set Az°</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (p of filteredPasses; track p.satnum + p.riseTime.getTime(); let odd = $odd) {
+                <tr [style.background]="odd ? '#0d0f1e' : 'transparent'">
+                  <td style="padding:3px 10px; color:#8a9bcc; white-space:nowrap;">{{ p.riseTime | date:'dd-MM HH:mm' }}</td>
+                  <td style="padding:3px 8px; color:#ccd; white-space:nowrap;">{{ p.name }}</td>
+                  <td style="padding:3px 6px; color:#667;">{{ p.satnum }}</td>
+                  <td style="padding:3px 6px; text-align:right;"
+                      [style.color]="p.maxAlt > 45 ? '#8fb' : p.maxAlt > 20 ? '#fb8' : '#ccd'">{{ p.maxAlt | number:'1.0-0' }}</td>
+                  <td style="padding:3px 6px; color:#8ab; text-align:right;">{{ p.durationMin }}</td>
+                  <td style="padding:3px 6px; color:#667; text-align:right;">{{ p.riseAz | number:'1.0-0' }}</td>
+                  <td style="padding:3px 6px; color:#667; text-align:right;">{{ p.setAz | number:'1.0-0' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Satellite list panel -->
+  @if (showSatList) {
+    <div style="position:absolute; top:0; right:0; width:480px; height:100%; background:#0a0c1a;
+                border-left:1px solid #2a3050; overflow-y:auto; z-index:20; font-family:monospace; font-size:12px;">
+      <div style="padding:8px 12px; border-bottom:1px solid #2a3050; color:#8a9bcc; display:flex; justify-content:space-between; align-items:center;">
+        <span>Satellites visible: {{ satPositions.length }}</span>
+        <span style="cursor:pointer; color:#556;" (click)="showSatList = false">✕</span>
+      </div>
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr style="color:#556; text-align:left; border-bottom:1px solid #1a1e30;">
+            <th style="padding:4px 8px;">Name</th>
+            <th style="padding:4px 6px;">NORAD</th>
+            <th style="padding:4px 6px; text-align:right;">Elev°</th>
+            <th style="padding:4px 6px; text-align:right;">Az°</th>
+            <th style="padding:4px 6px; text-align:right;">Height km</th>
+            <th style="padding:4px 6px; text-align:right;">Speed km/s</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (sat of satPositions | slice:0:200; track sat.satnum; let odd = $odd) {
+            <tr [style.background]="odd ? '#0d0f1e' : 'transparent'"
+                style="cursor:default;"
+                (mouseenter)="hoveredSat = sat; tooltipX = -9999; tooltipY = -9999"
+                (mouseleave)="hoveredSat = null">
+              <td style="padding:3px 8px; color:#ccd; white-space:nowrap; overflow:hidden; max-width:140px; text-overflow:ellipsis;">{{ sat.name }}</td>
+              <td style="padding:3px 6px; color:#667;">{{ sat.satnum }}</td>
+              <td style="padding:3px 6px; color:#8fb; text-align:right;">{{ sat.alt | number:'1.1-1' }}</td>
+              <td style="padding:3px 6px; color:#8ab; text-align:right;">{{ sat.az | number:'1.1-1' }}</td>
+              <td style="padding:3px 6px; color:#fa8; text-align:right;">{{ sat.heightKm | number:'1.0-0' }}</td>
+              <td style="padding:3px 6px; color:#adf; text-align:right;">{{ sat.speedKms | number:'1.2-2' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <!-- Loading overlay -->
+  @if (loading) {
+    <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+                background:#08081a;">
+      <i class="pi pi-spin pi-spinner text-4xl" style="color:#4a5580"></i>
+    </div>
+  }
+
+  <!-- Controls (top-left, no sidebar offset) -->
+  <div style="position:fixed; top:calc(4rem + 10px); left:16px; display:flex; gap:8px; align-items:center; z-index:10;">
+    <p-button label="Dome"    icon="pi pi-circle" size="small"
+      [outlined]="viewMode !== 'dome'"    (click)="setViewMode('dome')"></p-button>
+    <p-button label="Horizon" icon="pi pi-map"    size="small"
+      [outlined]="viewMode !== 'horizon'" (click)="setViewMode('horizon')"></p-button>
+    <p-button label="Actual" icon="pi pi-clock" size="small"
+      [outlined]="!isActualTime" (click)="setActualTime()"></p-button>
+    <p-button label="Satellites" icon="pi pi-table" size="small"
+      [outlined]="!showSatList" (click)="showSatList = !showSatList"></p-button>
+    <p-button label="Passes" icon="pi pi-calendar" size="small"
+      [outlined]="!showPasses" (click)="openPasses()"></p-button>
+    <span style="color:#556; font-size:11px; font-family:monospace; margin-left:4px;">Lat</span>
+    <input type="number" step="0.0001"
+      [value]="lat | number:'1.4-4'"
+      (change)="lat = +$any($event.target).value"
+      style="width:80px; background:#0d1128; color:#8a9bcc; border:1px solid #2a3050;
+             border-radius:4px; padding:3px 6px; font-size:11px; font-family:monospace; outline:none;">
+    <span style="color:#556; font-size:11px; font-family:monospace;">Lng</span>
+    <input type="number" step="0.0001"
+      [value]="lng | number:'1.4-4'"
+      (change)="lng = +$any($event.target).value"
+      style="width:80px; background:#0d1128; color:#8a9bcc; border:1px solid #2a3050;
+             border-radius:4px; padding:3px 6px; font-size:11px; font-family:monospace; outline:none;">
+    <input type="datetime-local" step="1"
+      [value]="editTimeValue" (change)="onTimeEdit($event)"
+      style="background:#0d1128; color:#8a9bcc; border:1px solid #2a3050;
+             border-radius:4px; padding:3px 8px; font-size:11px; font-family:monospace;
+             cursor:pointer; outline:none;">
+  </div>
+
+  </div><!-- end canvas wrapper -->
+
+  @if (!loading) {
+    <div style="background:#08081a; border-top:1px solid #1a2040;
+                color:#8a9bbb; font-size:11px; font-family:monospace;
+                padding:5px 12px; white-space:nowrap; flex-shrink:0; text-align:center;">
+      {{ currentTime | date:'dd-MM-yyyy HH:mm:ss' }} &nbsp;|&nbsp;
+      {{ lstFormatted }} &nbsp;|&nbsp;
+      {{ lat | number:'1.2-2' }}° {{ lat >= 0 ? 'N' : 'S' }},
+      {{ lng | number:'1.2-2' }}° {{ lng >= 0 ? 'E' : 'W' }} &nbsp;|&nbsp;
+      {{ renderMs }}ms &nbsp;|&nbsp;
+      sats: {{ satellitesSvc.recordCount }} TLEs / {{ satPositions.length }} visible
+    </div>
+  }
+</div>
+
+@if (hoveredSat) {
+  <div style="position:fixed; pointer-events:none; z-index:9999;
+              background:#0d1128; border:1px solid #445; border-radius:6px;
+              padding:6px 10px; font-size:12px; color:#ccd;"
+       [style.left.px]="tooltipX"
+       [style.top.px]="tooltipY">
+    <div class="font-semibold" style="color:#ffdd44">{{ hoveredSat.name }}</div>
+    <div style="color:#888; font-size:11px;">NORAD {{ hoveredSat.satnum }}</div>
+    <div>Alt: {{ hoveredSat.alt | number:'1.1-1' }}°</div>
+    <div>Az: {{ hoveredSat.az | number:'1.1-1' }}°</div>
+  </div>
+}
+
+@if (hoveredStar) {
+  <div style="position:fixed; pointer-events:none; z-index:9999;
+              background:#0d1128; border:1px solid #334; border-radius:6px;
+              padding:6px 10px; font-size:12px; color:#ccd;"
+       [style.left.px]="tooltipX"
+       [style.top.px]="tooltipY">
+    <div class="font-semibold">{{ hoveredStar.ProperName || hoveredStar.BayerFlamsteed || ('Star #' + hoveredStar.StarID) }}</div>
+    <div>Mag: {{ hoveredStar.Mag }}</div>
+    <div>RA: {{ hoveredStar.RA | number:'1.4-4' }}h &nbsp; Dec: {{ hoveredStar.Decl | number:'1.2-2' }}°</div>
+    @if (hoveredStar.Spectrum) {
+      <div>Spectrum: {{ hoveredStar.Spectrum }}</div>
+    }
+  </div>
+}

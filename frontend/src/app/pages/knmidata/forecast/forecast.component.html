@@ -1,0 +1,88 @@
+<div class="grid">
+  <div class="col-12">
+    <div class="card">
+
+      <!-- Header -->
+      <div class="flex align-items-center justify-content-between mb-3">
+        <h5 class="m-0">Weersverwachting (3 dagen)</h5>
+        <p-select [options]="locations" optionLabel="label"
+          [(ngModel)]="selectedLocation" (onChange)="onLocationChange()"
+          [style]="{'width':'180px'}">
+        </p-select>
+      </div>
+
+      @if (errorMessage) {
+        <p-message severity="error" styleClass="mb-3">{{ errorMessage }}</p-message>
+      }
+
+      @if (loading) {
+        <div class="flex justify-content-center p-4">
+          <i class="pi pi-spin pi-spinner text-3xl text-color-secondary"></i>
+        </div>
+      }
+
+      @if (!loading && days.length) {
+
+        <!-- Day selector cards -->
+        <div class="flex gap-3 mb-4 flex-wrap">
+          @for (day of days; track day.date) {
+            <div class="day-card" [class.selected]="selectedDay === day.date" (click)="selectedDay = day.date">
+              <div class="day-label">{{ day.dateLabel }}</div>
+              <div class="day-icon">{{ day.wmoIcon }}</div>
+              <div class="day-temps">
+                <span class="temp-max">{{ day.tempMax | number:'1.0-0' }}°</span>
+                <span class="temp-min">{{ day.tempMin | number:'1.0-0' }}°</span>
+              </div>
+              <div class="day-precip">{{ day.precipSum | number:'1.1-1' }} mm</div>
+            </div>
+          }
+        </div>
+
+        <!-- Hourly table -->
+        <p-table [value]="filteredHours" [scrollable]="true" scrollHeight="calc(100vh - 380px)"
+          styleClass="p-datatable-sm p-datatable-striped">
+          <ng-template pTemplate="header">
+            <tr>
+              <th style="width:70px">Tijd</th>
+              <th style="width:60px">Weer</th>
+              <th style="width:90px">Temp (°C)</th>
+              <th style="width:80px">Neerslag (mm)</th>
+              <th style="width:100px">Wind (km/h)</th>
+              <th style="width:80px">Bewolking (%)</th>
+              <th style="width:80px">Vochtigheid (%)</th>
+              <th style="width:90px">Druk (hPa)</th>
+            </tr>
+          </ng-template>
+          <ng-template pTemplate="body" let-row>
+            <tr>
+              <td>{{ row.timeLabel }}</td>
+              <td>
+                <span pTooltip="{{ row.wmoLabel }}" tooltipPosition="right">{{ row.wmoIcon }}</span>
+              </td>
+              <td>
+                <span class="temp-badge" [style.background]="tempColor(row.temp)">
+                  {{ row.temp | number:'1.1-1' }}°
+                </span>
+              </td>
+              <td [style.color]="row.precip > 0 ? '#3b82f6' : ''">
+                {{ row.precip > 0 ? (row.precip | number:'1.1-1') : '—' }}
+              </td>
+              <td>{{ row.wind | number:'1.0-0' }} {{ windDirLabel(row.windDir) }}</td>
+              <td>{{ row.clouds }}</td>
+              <td>{{ row.humidity }}</td>
+              <td>{{ row.pressure | number:'1.0-0' }}</td>
+            </tr>
+          </ng-template>
+        </p-table>
+
+        <!-- Source -->
+        <div style="border-top:1px solid var(--surface-border);margin-top:1rem;padding-top:0.5rem;font-size:0.72rem;color:var(--text-color-secondary)">
+          Powered by <a href="https://open-meteo.com" target="_blank" rel="noopener" style="color:inherit">Open-Meteo</a>
+          — model: KNMI Seamless — data: <a href="https://www.knmi.nl" target="_blank" rel="noopener" style="color:inherit">KNMI</a>
+        </div>
+
+      }
+
+    </div>
+  </div>
+</div>

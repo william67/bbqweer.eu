@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "exportedAt": "2026-04-18T17:30:40.491Z",
+  "dataset": {
+    "id": 10,
+    "code": "hittegolven",
+    "name": "Hittegolven",
+    "category_id": 3,
+    "category_name": "Statistieken",
+    "chartYn": 0,
+    "anychart_config": null,
+    "chartjs_config": null,
+    "sort_order": 3,
+    "category_code": "statistieken"
+  },
+  "reports": [
+    {
+      "name": "Hittegolven",
+      "timebase": "overzicht",
+      "query": "SELECT * FROM (\n    SELECT\n        hg.STATION              AS stationsCode,\n        st.OMSCHRIJVING         AS station,\n        hg.VOLGNR               AS volgnr,\n        hg.BEGIN                AS begin,\n        hg.EINDE                AS einde,\n        hg.DAGEN                AS dagen,\n        hg.TROPISCH             AS tropisch,\n        hg.TMAX                 AS tmax\n    FROM hittegolven hg\n    JOIN stations st ON st.CODE = hg.STATION\n) _t\nWHERE 1=1\n<#SELECTIONS>\nORDER BY begin",
+      "input_station": 1,
+      "input_neerslagstation": 0,
+      "input_jaar": 0,
+      "input_maand": 0,
+      "input_week": 0,
+      "input_dag": 0,
+      "input_seizoen": 0,
+      "input_decade": 0,
+      "fieldName_station": "stationsCode",
+      "fieldName_neerslagstation": null,
+      "fieldName_jaar": null,
+      "fieldName_maand": null,
+      "fieldName_week": null,
+      "fieldName_dag": null,
+      "fieldName_seizoen": null,
+      "fieldName_decade": null,
+      "anychart_config": null,
+      "chartjs_config": null,
+      "sort_order": 4
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+// src/assets/styles/global-custom-styles.scss
+
+// Leaflet map cursor overrides (rendered outside Angular component tree)
+.draw-cursor,
+.draw-cursor .leaflet-interactive {
+    cursor: crosshair !important;
+}
+
+// Leaflet midpoint ghost handle — shown between vertices, drag to insert new point
+.midpoint-handle {
+    width: 8px !important;
+    height: 8px !important;
+    background: rgba(255, 255, 255, 0.7) !important;
+    border: 2px solid #ff4444 !important;
+    border-radius: 50% !important;
+    cursor: crosshair !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3) !important;
+}
+
+// Leaflet reshape vertex handle (rendered outside Angular component tree)
+.reshape-handle {
+    width: 12px !important;
+    height: 12px !important;
+    background: #ff4444 !important;
+    border: 2px solid white !important;
+    border-radius: 50% !important;
+    cursor: move !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4) !important;
+}
+
+// Tabs — slightly larger bold labels
+.p-tab {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+// Sidebar separator between sections
+.sidebar-separator {
+    height: 1px;
+    width: 100%;
+    border-top: var(--d-menu-separator-border);
+    margin: 0.5rem 0 0;
+}
+
+// Sidebar section label (Dashboards, Admin, …)
+.sidebar-section-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.05rem;
+    padding: 1rem 0.5rem 0.3rem;
+    color: var(--d-menuitem-root-text-color);
+}
+
+// Sidebar nav item (leaf or submenu trigger)
+.sidebar-nav-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    border-radius: var(--border-radius);
+    font-weight: 500;
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    color: var(--d-menuitem-text-color);
+    gap: 0.5rem;
+    margin-bottom: 0.15rem;
+    transition: background var(--transition-duration);
+
+    &:hover {
+        background: var(--d-menuitem-hover-bg);
+    }
+
+    &.active-route {
+        color: var(--d-menuitem-active-route-text-color);
+        font-weight: 600;
+    }
+
+    .sidebar-nav-arrow {
+        margin-left: auto;
+        font-size: 0.75rem;
+        opacity: 0.5;
+    }
+}
+
+// Form field layout: label above input, full-width inputs
+.p-fluid .field {
+    margin-bottom: 1rem;
+}
+
+.field label {
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    display: block;
+}
+
+.p-fluid .field .p-inputtext,
+.p-fluid .field .p-select,
+.p-fluid .field p-inputnumber,
+.p-fluid .field p-inputnumber .p-inputnumber,
+.p-fluid .field p-inputnumber input {
+    width: 100%;
+}
+.p-select-panel .p-select-filter-container {
+    margin-top: 10px; // Adjust the margin value as needed
+}
+
+// Table header: light grey background.
+// Override background directly (general th rule wins here).
+// For height: the sm-specific token wins over the general padding rule,
+// so override the CSS variable that the sm padding resolves to (~36px target).
+.p-datatable .p-datatable-thead > tr > th {
+    background: #f8f9fa;
+}
+
+.p-datatable.p-datatable-sm {
+    --p-datatable-header-cell-sm-padding: 0.6rem 0.5rem;
+}
+
+// Table rows: taller (36px)
+.p-datatable .p-datatable-tbody > tr > td {
+    padding: 1rem 1rem;
+}
+
+// Stripe even rows instead of odd.
+// PrimeNG v21 uses CSS variable --p-datatable-row-striped-background for odd rows.
+// Overriding it on the element (more specific than :root) makes odd rows transparent.
+// Even rows are never touched by PrimeNG so our rule wins without !important.
+.p-datatable.p-datatable-striped {
+    --p-datatable-row-striped-background: transparent;
+}
+
+.p-datatable.p-datatable-striped .p-datatable-tbody > tr:nth-child(even) {
+    background: #f8f9fa;
+}

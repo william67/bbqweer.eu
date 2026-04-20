@@ -1,0 +1,91 @@
+<div class="mt-3">
+  <p-table
+    #dt
+    [columns]="cols"
+    [value]="tableData!"
+    styleClass="p-datatable-sm p-datatable-gridlines p-datatable-striped"
+    [rowTrackBy]="trackById"
+    [paginator]="true"
+    [rows]="12"
+    [showCurrentPageReport]="true"
+    [tableStyle]="{ 'width': '100%' }"
+    currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+    [rowsPerPageOptions]="[12, 31, 366]"
+    >
+    <ng-template pTemplate="header" let-columns>
+      <tr>
+        @for (col of columns; track col.field) {
+          <th [pSortableColumn]="col.sort" [style.flex]="col.flexWidth" style="position:relative">
+            {{ col.header }}
+            <p-sortIcon [field]="col.sort"></p-sortIcon>
+            @if (auth.isLoggedIn) {
+              <i class="pi pi-pencil" style="position:absolute;top:4px;right:4px;font-size:0.6rem;opacity:0.4;cursor:pointer"
+                (click)="$event.stopPropagation(); openEditMapping(col)" title="Edit column mapping"></i>
+            }
+          </th>
+        }
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="body" let-rowData let-columns="columns">
+      <tr>
+        @for (col of columns; track col.field) {
+          <td [style.flex]="col.flexWidth">
+            @switch (getColType(col.field, col.format)) {
+              @case ('datum') {
+                {{ rowData[col.field] | date: 'dd-MM-yyyy' }}
+              }
+              @case ('timestamp') {
+                {{ rowData[col.field] | date: 'dd-MM-yyyy' }}&nbsp;&nbsp;&nbsp;{{ rowData[col.field] | date: 'HH:mm:ss' }}
+              }
+              @case ('number') {
+                {{ rowData[col.field] | number : '1.' + (col.decimals !== undefined ? col.decimals : '2') + '-' + (col.decimals !== undefined ? col.decimals : '2') }}
+              }
+              @default {
+                {{ rowData[col.field] }}
+              }
+            }
+          </td>
+        }
+      </tr>
+    </ng-template>
+  </p-table>
+</div>
+
+<p-dialog [(visible)]="editDialogVisible" [header]="editIsNew ? 'Add Column Mapping' : 'Edit Column Mapping'"
+    [modal]="true" [style]="{'width':'380px'}">
+    <div style="display:flex;flex-direction:column;gap:1rem;padding-top:0.5rem">
+        <div class="flex flex-column gap-1">
+            <label class="text-xs text-color-secondary">Field</label>
+            <input pInputText [value]="editField" [disabled]="true" />
+        </div>
+        <div class="flex flex-column gap-1">
+            <label class="text-xs text-color-secondary">Header label</label>
+            <input pInputText [(ngModel)]="editHeader" />
+        </div>
+        <div class="flex flex-column gap-1">
+            <label class="text-xs text-color-secondary">Sort field</label>
+            <input pInputText [(ngModel)]="editSortField" placeholder="Leave blank to use field name" />
+        </div>
+        <div class="flex flex-column gap-1">
+            <label class="text-xs text-color-secondary">Format</label>
+            <p-select [options]="formatOptions" optionLabel="label" optionValue="value"
+                [(ngModel)]="editFormat" [style]="{'width':'100%'}">
+            </p-select>
+        </div>
+        <div class="flex flex-column gap-1">
+            <label class="text-xs text-color-secondary">Decimals</label>
+            <input pInputText [(ngModel)]="editDecimals" type="number" placeholder="Leave blank for default" />
+        </div>
+        <div class="flex flex-column gap-1">
+            <label class="text-xs text-color-secondary">Flex width</label>
+            <input pInputText [(ngModel)]="editFlexWidth" placeholder="Leave blank for auto" />
+        </div>
+        @if (editError) {
+            <span class="text-sm text-red-500">{{ editError }}</span>
+        }
+    </div>
+    <ng-template pTemplate="footer">
+        <p-button label="Annuleren" icon="pi pi-times" severity="secondary" (onClick)="editDialogVisible=false"></p-button>
+        <p-button label="Opslaan" icon="pi pi-save" [loading]="editSaving" (onClick)="saveEditMapping()"></p-button>
+    </ng-template>
+</p-dialog>

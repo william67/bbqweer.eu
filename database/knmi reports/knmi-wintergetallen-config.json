@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "exportedAt": "2026-04-18T17:29:44.690Z",
+  "dataset": {
+    "id": 6,
+    "code": "wintergetallen",
+    "name": "Wintergetallen",
+    "category_id": 3,
+    "category_name": "Statistieken",
+    "chartYn": 1,
+    "anychart_config": null,
+    "chartjs_config": null,
+    "sort_order": 2,
+    "category_code": "statistieken"
+  },
+  "reports": [
+    {
+      "name": "Wintergetal per jaar",
+      "timebase": "jaar",
+      "query": "SELECT\n    L1.station,\n    L1.winter,\n    SUM(L1.wintergetal) AS wintergetal\nFROM (\n    SELECT\n        eg.STATION          AS station,\n        CASE\n            WHEN eg.MAAND >= 11 THEN eg.JAAR + 1\n            WHEN eg.MAAND <= 3  THEN eg.JAAR\n            ELSE 0\n        END                 AS winter,\n        -eg.TG              AS wintergetal\n    FROM etmgeg eg\n    WHERE eg.TG < 0\n    <#SELECTIONS>\n) L1\nWHERE L1.winter <> 0\nGROUP BY L1.station, L1.winter\nORDER BY L1.winter\n",
+      "input_station": 0,
+      "input_neerslagstation": 0,
+      "input_jaar": 0,
+      "input_maand": 0,
+      "input_week": 0,
+      "input_dag": 0,
+      "input_seizoen": 0,
+      "input_decade": 0,
+      "fieldName_station": "station",
+      "fieldName_neerslagstation": null,
+      "fieldName_jaar": null,
+      "fieldName_maand": null,
+      "fieldName_week": null,
+      "fieldName_dag": null,
+      "fieldName_seizoen": null,
+      "fieldName_decade": null,
+      "anychart_config": null,
+      "chartjs_config": null,
+      "sort_order": 0
+    }
+  ]
+}

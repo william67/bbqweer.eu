@@ -1,0 +1,7 @@
+.layout-mask {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background-color: var(--p-mask-background);
+    z-index: 998;
+}

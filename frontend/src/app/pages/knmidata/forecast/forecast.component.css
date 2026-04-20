@@ -1,0 +1,27 @@
+.day-card {
+    border: 1px solid var(--surface-border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    cursor: pointer;
+    min-width: 120px;
+    text-align: center;
+    transition: background 0.15s;
+}
+.day-card:hover    { background: var(--surface-hover); }
+.day-card.selected { background: var(--primary-50); border-color: var(--primary-color); }
+
+.day-label  { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; }
+.day-icon   { font-size: 2rem; margin-bottom: 0.4rem; }
+.day-temps  { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 0.25rem; }
+.temp-max   { font-weight: 700; }
+.temp-min   { color: var(--text-color-secondary); }
+.day-precip { font-size: 0.78rem; color: #3b82f6; }
+
+.temp-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #1e1e2e;
+}

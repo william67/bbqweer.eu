@@ -1,0 +1,13 @@
+/* PrimeFlex SCSS */
+@use "primeflex/primeflex.scss" as pf;
+
+$gutter: 1rem;
+
+/* Layout */
+@use "assets/layout/scss/layout.scss";
+
+/* Custom global styles */
+@use "assets/styles/global-custom-styles.scss" as *;
+
+/* PrimeNG icons */
+@import "../node_modules/primeicons/primeicons.css";

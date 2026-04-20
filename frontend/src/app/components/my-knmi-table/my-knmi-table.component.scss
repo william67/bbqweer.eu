@@ -1,0 +1,23 @@
+:host ::ng-deep .p-datatable {
+  width: 100% !important;
+}
+
+:host ::ng-deep .p-datatable-thead > tr,
+:host ::ng-deep .p-datatable-tbody > tr {
+  display: flex !important;
+}
+
+:host ::ng-deep .p-datatable-thead > tr > th,
+:host ::ng-deep .p-datatable-tbody > tr > td {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:host ::ng-deep .p-datatable-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}

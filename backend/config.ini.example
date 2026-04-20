@@ -1,0 +1,8 @@
+[mysql_knmi]
+host     = mysql
+user     = knmi_user
+password = secret
+database = knmi
+
+[jwt]
+secret_key = change_this_to_a_long_random_string

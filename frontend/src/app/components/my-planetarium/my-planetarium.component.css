@@ -1,0 +1,11 @@
+:host {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #080818;
+}
+
+.canvas-wrapper::-webkit-scrollbar        { width: 12px; height: 12px; }
+.canvas-wrapper::-webkit-scrollbar-track  { background: #080818; }
+.canvas-wrapper::-webkit-scrollbar-thumb  { background: #1a1a2e; border-radius: 4px; }
+.canvas-wrapper::-webkit-scrollbar-thumb:hover { background: #2a2a40; }

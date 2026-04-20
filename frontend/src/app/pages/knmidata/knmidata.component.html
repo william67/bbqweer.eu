@@ -1,0 +1,440 @@
+<div class="grid">
+  <div class="col-12">
+    <div class="card">
+
+      <!-- Header row -->
+      <div class="flex align-items-center justify-content-between mb-3">
+        <h5 class="m-0">KNMI Weather Data</h5>
+        <div class="flex gap-2">
+          <p-button icon="pi pi-table"      size="small" pTooltip="Tabel"    [outlined]="outputMode !== 'table'"    (onClick)="outputMode = 'table'"    severity="secondary" [text]="true" />
+          <p-button icon="pi pi-chart-bar"  size="small" pTooltip="AnyChart" [outlined]="outputMode !== 'anychart'" (onClick)="outputMode = 'anychart'" severity="secondary" [text]="true" />
+          <p-button icon="pi pi-chart-line" size="small" pTooltip="Chart.js" [outlined]="outputMode !== 'chartjs'"  (onClick)="outputMode = 'chartjs'"  severity="secondary" [text]="true" />
+          <p-button icon="pi pi-cog"  size="small" pTooltip="Standaard instellingen" severity="secondary" [text]="true" (onClick)="openSetup()" />
+        </div>
+      </div>
+
+      <!-- Dataset + timebase selector -->
+      <div class="flex align-items-end gap-3 flex-wrap mb-3">
+
+        <div style="display:flex;flex-direction:column">
+          <label class="text-xs text-color-secondary mb-1">Categorie</label>
+          <p-select [options]="categories" optionLabel="name" optionValue="id"
+            [(ngModel)]="selectedCategoryId" (onChange)="onCategoryChange()"
+            [showClear]="true" placeholder="Alle categorieën"
+            [style]="{'width':'160px'}">
+          </p-select>
+        </div>
+
+        <div style="display:flex;flex-direction:column">
+          <label class="text-xs text-color-secondary mb-1">Dataset</label>
+          <p-select [options]="filteredDatasets" optionLabel="name" optionValue="id"
+            [(ngModel)]="selectedDatasetId" (onChange)="onDatasetChange()"
+            placeholder="Kies dataset..." [style]="{'width':'180px'}">
+          </p-select>
+        </div>
+
+        <!-- Timebase dropdown — only show when timebases are available for selected dataset -->
+        @if (availableTimebases.length) {
+          <div style="display:flex;flex-direction:column">
+            <label class="text-xs text-color-secondary mb-1">Tijdsbasis</label>
+            <p-select [options]="availableTimebases"
+              [optionLabel]="'timebase'"
+              optionValue="timebase"
+              [(ngModel)]="selectedTimebase"
+              (onChange)="onTimebaseChange($event.value)"
+              [style]="{'width':'140px'}">
+              <ng-template pTemplate="selectedItem" let-tb>
+                {{ timebaseLabels[tb.timebase] || tb.timebase }}
+              </ng-template>
+              <ng-template pTemplate="item" let-tb>
+                {{ timebaseLabels[tb.timebase] || tb.timebase }}
+              </ng-template>
+            </p-select>
+          </div>
+        }
+
+        <!-- Dynamic filters — driven by fieldName_* config on the selected report -->
+        @for (f of activeFilters; track f.type) {
+          <div style="display:flex;flex-direction:column">
+            <label class="text-xs text-color-secondary mb-1">
+              {{ f.label }}
+              @if (f.isMandatory) { <span style="color:var(--red-500)">*</span> }
+              @else { <span style="font-size:0.7rem">(optioneel)</span> }
+            </label>
+            <p-select
+              [options]="filterOptions[f.type] || []"
+              optionLabel="label" optionValue="value"
+              [(ngModel)]="filterValues[f.type]"
+              [showClear]="true"
+              [placeholder]="'Alle ' + f.plural"
+              [filter]="f.hasSearch"
+              [resetFilterOnHide]="true"
+              (onChange)="onFilterChange(f.type)"
+              [style]="{'width': f.width}">
+            </p-select>
+          </div>
+        }
+
+        <!-- Action buttons — always right-aligned -->
+        <div style="display:flex;flex-direction:column;margin-left:auto">
+          <label class="text-xs text-color-secondary mb-1">&nbsp;</label>
+          <div style="display:flex;gap:0.5rem">
+            <p-button label="Export" icon="pi pi-upload" severity="help" size="small"
+              (onClick)="exportExcel()" [disabled]="!rawRows.length" />
+            <p-button label="Beheer" icon="pi pi-cog" severity="secondary" size="small"
+              (onClick)="adminMenu.toggle($event)" />
+            <p-menu #adminMenu [model]="adminMenuItems" [popup]="true" appendTo="body" />
+            <input #configFileInput type="file" accept=".json" style="display:none" (change)="onConfigFileSelected($event)" />
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Error -->
+      @if (errorMessage) {
+        <p-message severity="error" styleClass="mb-3">{{ errorMessage }}</p-message>
+      }
+      @if (importStatus) {
+        <p-message severity="success" styleClass="mb-3">{{ importStatus }}</p-message>
+      }
+
+      <!-- Loading -->
+      @if (loading && !rawRows.length) {
+        <div class="flex justify-content-center p-4">
+          <i class="pi pi-spin pi-spinner text-3xl text-color-secondary"></i>
+        </div>
+      }
+
+      <!-- Table output -->
+      @if (!loading && outputMode === 'table' && filteredRows.length) {
+        <app-my-knmi-table [tableData]="filteredRows"></app-my-knmi-table>
+      }
+
+      <!-- AnyChart output -->
+      @if (selectedReport && outputMode === 'anychart') {
+        <app-my-knmi-anychart
+          [hidden]="loading && !rawRows.length"
+          [rows]="filteredRows"
+          [configJson]="anychartConfig"
+          [title]="selectedDataset?.name"
+          [timebase]="timebase"
+          [selectedYear]="filterValues['jaar']?.toString() ?? ''"
+          [selectedMonth]="filterValues['maand']?.toString()">
+        </app-my-knmi-anychart>
+      }
+
+      <!-- Chart.js output -->
+      @if (selectedReport && outputMode === 'chartjs') {
+        <app-my-knmi-chartjs
+          [hidden]="loading && !rawRows.length"
+          [rows]="filteredRows"
+          [configJson]="chartjsConfig"
+          [title]="selectedDataset?.name"
+          [timebase]="timebase"
+          [selectedYear]="filterValues['jaar']?.toString() ?? ''"
+          [selectedMonth]="filterValues['maand']?.toString()">
+        </app-my-knmi-chartjs>
+      }
+
+      <!-- No results -->
+      @if (!loading && !rawRows.length && selectedReport) {
+        <div class="text-color-secondary text-sm mt-2">Geen resultaten gevonden.</div>
+      }
+
+      @if (!selectedDatasetId) {
+        <div class="text-color-secondary text-sm">Kies een dataset om te beginnen.</div>
+      }
+
+      <!-- ── New Category dialog ───────────────────────────────────────────────── -->
+      <p-dialog [(visible)]="newCategoryVisible" header="Nieuwe categorie" [modal]="true"
+        appendTo="body" [style]="{'width':'360px'}">
+        <div class="flex flex-column gap-3 pt-2">
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Code</label>
+            <input pInputText [(ngModel)]="newCategory.code" />
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Naam</label>
+            <input pInputText [(ngModel)]="newCategory.name" />
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Volgorde</label>
+            <input pInputText type="number" [(ngModel)]="newCategory.sort_order" style="width:100px" />
+          </div>
+        </div>
+        <ng-template pTemplate="footer">
+          <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="newCategoryVisible=false" />
+          <p-button label="Aanmaken" [loading]="newCategorySaving" [disabled]="!newCategory.name" (onClick)="saveNewCategory()" />
+        </ng-template>
+      </p-dialog>
+
+      <!-- ── Edit Category dialog ───────────────────────────────────────────────── -->
+      <p-dialog [(visible)]="editCategoryVisible" header="Bewerk categorie" [modal]="true"
+        appendTo="body" [style]="{'width':'360px'}">
+        <div class="flex flex-column gap-3 pt-2">
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Code</label>
+            <input pInputText [(ngModel)]="editCategory.code" />
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Naam</label>
+            <input pInputText [(ngModel)]="editCategory.name" />
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Volgorde</label>
+            <input pInputText type="number" [(ngModel)]="editCategory.sort_order" style="width:100px" />
+          </div>
+        </div>
+        <ng-template pTemplate="footer">
+          <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="editCategoryVisible=false" />
+          <p-button label="Opslaan" [loading]="editSaving" [disabled]="!editCategory.name" (onClick)="saveEditCategory()" />
+        </ng-template>
+      </p-dialog>
+
+      <!-- ── Edit Dataset dialog ───────────────────────────────────────────────── -->
+      <p-dialog [(visible)]="editDatasetVisible" header="Bewerk dataset" [modal]="true"
+        appendTo="body" [style]="{'width':'420px'}">
+        <div class="flex flex-column gap-3 pt-2">
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Naam</label>
+            <input pInputText [(ngModel)]="editDataset.name" />
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Code <span class="text-color-secondary" style="font-size:0.75rem">(unieke sleutel)</span></label>
+            <input pInputText [(ngModel)]="editDataset.code" />
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Categorie</label>
+            <p-select [options]="categories" optionLabel="name" optionValue="id"
+              [(ngModel)]="editDataset.category_id" appendTo="body" [style]="{'width':'100%'}"
+              [showClear]="true" placeholder="Kies categorie...">
+            </p-select>
+          </div>
+          <div class="flex align-items-center gap-2">
+            <p-checkbox [(ngModel)]="editDataset.chartYn" [binary]="true" inputId="ed_chartyn" />
+            <label for="ed_chartyn">Chart output (AnyChart / Chart.js)</label>
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Volgorde</label>
+            <input pInputText type="number" [(ngModel)]="editDataset.sort_order" style="width:100px" />
+          </div>
+        </div>
+        <ng-template pTemplate="footer">
+          <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="editDatasetVisible=false" />
+          <p-button label="Opslaan" [loading]="editSaving" [disabled]="!editDataset.name" (onClick)="saveEditDataset()" />
+        </ng-template>
+      </p-dialog>
+
+      <!-- ── New Dataset dialog ────────────────────────────────────────────────── -->
+      <p-dialog [(visible)]="newDatasetVisible" header="Nieuw dataset" [modal]="true"
+        appendTo="body" [style]="{'width':'420px'}">
+        <div class="flex flex-column gap-3 pt-2">
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Code <span class="text-color-secondary" style="font-size:0.75rem">(unieke sleutel, bijv. temperatuur)</span></label>
+            <input pInputText [(ngModel)]="newDataset.code" placeholder="bijv. temperatuur" />
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Naam</label>
+            <input pInputText [(ngModel)]="newDataset.name" />
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Categorie</label>
+            <p-select [options]="categories" optionLabel="name" optionValue="id"
+              [(ngModel)]="newDataset.category_id" appendTo="body" [style]="{'width':'100%'}"
+              [showClear]="true" placeholder="Kies categorie...">
+            </p-select>
+          </div>
+          <div class="flex align-items-center gap-2">
+            <p-checkbox [(ngModel)]="newDataset.chartYn" [binary]="true" inputId="nd_chartyn" />
+            <label for="nd_chartyn">Chart output (AnyChart / Chart.js)</label>
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Volgorde</label>
+            <input pInputText type="number" [(ngModel)]="newDataset.sort_order" style="width:100px" />
+          </div>
+        </div>
+        <ng-template pTemplate="footer">
+          <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="newDatasetVisible=false" />
+          <p-button label="Aanmaken" [loading]="newDatasetSaving" [disabled]="!newDataset.name" (onClick)="saveNewDataset()" />
+        </ng-template>
+      </p-dialog>
+
+      <!-- ── Edit Report dialog ─────────────────────────────────────────────── -->
+      <p-dialog [(visible)]="editReportVisible" [header]="editReportIsNew ? 'Nieuw rapport' : 'Bewerk rapport'" [modal]="true"
+        appendTo="body" [style]="{'width':'620px'}">
+        <div class="flex flex-column gap-3 pt-2">
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Naam</label>
+            <input pInputText [(ngModel)]="editReport.name" />
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Tijdsbasis</label>
+            <p-select [options]="timebaseOptions" optionLabel="label" optionValue="value"
+              [(ngModel)]="editReport.timebase" appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Volgorde</label>
+            <input pInputText type="number" [(ngModel)]="editReport.sort_order" style="width:100px" />
+          </div>
+
+          <!-- Filter config: each filter type gets a column selector + mandatory checkbox -->
+          <div class="flex flex-column gap-2">
+            <div class="flex align-items-center justify-content-between">
+              <label class="text-sm font-medium">Filters</label>
+              @if (!editReportIsNew) {
+                <p-button label="Kolommen laden" icon="pi pi-refresh" severity="secondary" [text]="true" size="small"
+                  (onClick)="loadReportColumns()" pTooltip="Laad kolomnamen uit de query" />
+              }
+            </div>
+            <div style="display:grid;grid-template-columns:130px 1fr 90px;gap:0.4rem 0.75rem;align-items:center">
+              <span class="text-xs text-color-secondary font-medium">Filter</span>
+              <span class="text-xs text-color-secondary font-medium">Kolom in query</span>
+              <span class="text-xs text-color-secondary font-medium">Verplicht</span>
+              @for (ft of filterTypes; track ft.type) {
+                <span class="text-sm">{{ ft.label }}</span>
+                <p-select [options]="reportColumnOptions" optionLabel="label" optionValue="value"
+                  [(ngModel)]="editReport['fieldName_' + ft.type]"
+                  [showClear]="true" placeholder="— niet actief —"
+                  appendTo="body" [style]="{'width':'100%'}"
+                  (onChange)="onEditReportFieldNameChange(ft.type)">
+                </p-select>
+                <p-checkbox [(ngModel)]="editReport['input_' + ft.type]" [binary]="true"
+                  [inputId]="'fi_' + ft.type"
+                  [disabled]="!editReport['fieldName_' + ft.type]" />
+              }
+            </div>
+          </div>
+        </div>
+        <ng-template pTemplate="footer">
+          <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="editReportVisible=false" />
+          <p-button label="Opslaan" [loading]="editSaving" (onClick)="saveEditReport()" />
+        </ng-template>
+      </p-dialog>
+
+      <!-- ── Edit Query dialog ───────────────────────────────────────────────── -->
+      <p-dialog [(visible)]="editQueryVisible" header="Bewerk query" [modal]="true"
+        appendTo="body" [style]="{'width':'900px'}">
+        <textarea pTextarea [(ngModel)]="editQueryText" rows="24"
+          style="width:100%;font-family:monospace;font-size:0.82rem;resize:vertical;white-space:pre">
+        </textarea>
+        <ng-template pTemplate="footer">
+          <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="editQueryVisible=false" />
+          <p-button label="Opslaan" [loading]="editSaving" (onClick)="saveEditQuery()" />
+        </ng-template>
+      </p-dialog>
+
+      <!-- ── Edit Dataset AnyChart config dialog ──────────────────────────────── -->
+      <p-dialog [(visible)]="editDatasetAnychartVisible" header="Bewerk Dataset AnyChart config" [modal]="true"
+        appendTo="body" [style]="{'width':'900px'}">
+        <textarea pTextarea [(ngModel)]="editDatasetAnychartText" rows="24"
+          style="width:100%;font-family:monospace;font-size:0.82rem;resize:vertical">
+        </textarea>
+        <ng-template pTemplate="footer">
+          <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="editDatasetAnychartVisible=false" />
+          <p-button label="Opslaan" [loading]="editSaving" (onClick)="saveEditDatasetAnychart()" />
+        </ng-template>
+      </p-dialog>
+
+      <!-- ── Edit Dataset Chart.js config dialog ───────────────────────────────── -->
+      <p-dialog [(visible)]="editDatasetChartjsVisible" header="Bewerk Dataset Chart.js config" [modal]="true"
+        appendTo="body" [style]="{'width':'900px'}">
+        <textarea pTextarea [(ngModel)]="editDatasetChartjsText" rows="24"
+          style="width:100%;font-family:monospace;font-size:0.82rem;resize:vertical">
+        </textarea>
+        <ng-template pTemplate="footer">
+          <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="editDatasetChartjsVisible=false" />
+          <p-button label="Opslaan" [loading]="editSaving" (onClick)="saveEditDatasetChartjs()" />
+        </ng-template>
+      </p-dialog>
+
+      <!-- ── Edit AnyChart config dialog (report level) ────────────────────────── -->
+      <p-dialog [(visible)]="editAnychartVisible" header="Bewerk AnyChart config (rapport)" [modal]="true"
+        appendTo="body" [style]="{'width':'900px'}">
+        <textarea pTextarea [(ngModel)]="editAnychartText" rows="24"
+          style="width:100%;font-family:monospace;font-size:0.82rem;resize:vertical">
+        </textarea>
+        <ng-template pTemplate="footer">
+          <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="editAnychartVisible=false" />
+          <p-button label="Opslaan" [loading]="editSaving" (onClick)="saveEditAnychart()" />
+        </ng-template>
+      </p-dialog>
+
+      <!-- ── Edit Chart.js config dialog (report level) ───────────────────────── -->
+      <p-dialog [(visible)]="editChartjsVisible" header="Bewerk Chart.js config (rapport)" [modal]="true"
+        appendTo="body" [style]="{'width':'900px'}">
+        <textarea pTextarea [(ngModel)]="editChartjsText" rows="24"
+          style="width:100%;font-family:monospace;font-size:0.82rem;resize:vertical">
+        </textarea>
+        <ng-template pTemplate="footer">
+          <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="editChartjsVisible=false" />
+          <p-button label="Opslaan" [loading]="editSaving" (onClick)="saveEditChartjs()" />
+        </ng-template>
+      </p-dialog>
+
+      <!-- ── Setup dialog ──────────────────────────────────────────────────────── -->
+      <p-dialog [(visible)]="setupVisible" header="Standaard instellingen" [modal]="true"
+        appendTo="body" [style]="{'width':'400px'}">
+        <div class="flex flex-column gap-3 pt-2">
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Standaard dataset</label>
+            <p-select [options]="datasets" optionLabel="name" optionValue="id"
+              [(ngModel)]="setupModel.datasetId"
+              [showClear]="true" placeholder="Kies dataset..."
+              appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Standaard tijdsbasis</label>
+            <p-select [options]="setupDatasetTimebases" optionLabel="label" optionValue="value"
+              [(ngModel)]="setupModel.timebase"
+              [showClear]="true" placeholder="Kies tijdsbasis..."
+              appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Standaard station</label>
+            <p-select [options]="stations" optionLabel="omschrijving" optionValue="code"
+              [(ngModel)]="setupModel.station"
+              [showClear]="true" [filter]="true" placeholder="Kies station..."
+              appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Standaard neerslagstation</label>
+            <p-select [options]="neerslagstations" optionLabel="omschrijving" optionValue="code"
+              [(ngModel)]="setupModel.neerslagstation"
+              [showClear]="true" [filter]="true" placeholder="Kies neerslagstation..."
+              appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+          </div>
+          <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Standaard weergave</label>
+            <p-select [options]="[{label:'Tabel', value:'table'},{label:'AnyChart', value:'anychart'},{label:'Chart.js', value:'chartjs'}]"
+              optionLabel="label" optionValue="value"
+              [(ngModel)]="setupModel.outputMode"
+              [showClear]="true" placeholder="Kies weergave..."
+              appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+          </div>
+          <p class="text-xs text-color-secondary m-0">Jaar, maand, dag, week en decade worden automatisch ingesteld op vandaag.</p>
+        </div>
+        <ng-template pTemplate="footer">
+          <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="setupVisible=false" />
+          <p-button label="Opslaan" (onClick)="saveSetup()" />
+        </ng-template>
+      </p-dialog>
+
+      <!-- Powered by -->
+      <div style="border-top:1px solid var(--surface-border);margin-top:1.5rem;padding-top:0.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;font-size:0.72rem;color:var(--text-color-secondary)">
+        <span>Powered by</span>
+        <a href="https://www.anychart.com" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;opacity:0.7" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">AnyChart</a>
+        <a href="https://primeng.org" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;opacity:0.7" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">PrimeNG</a>
+        <a href="https://angular.dev" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;opacity:0.7" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">Angular</a>
+        <a href="https://www.anthropic.com" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;opacity:0.7" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">Claude (Anthropic)</a>
+        <a href="https://www.knmi.nl" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;opacity:0.7" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">KNMI open data</a>
+      </div>
+
+    </div>
+  </div>
+</div>

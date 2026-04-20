@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+backend/config.ini
+backend/config.local.ini
+
+# Dependencies
+backend/node_modules/
+frontend/node_modules/
+
+# Angular build output
+frontend/dist/
+
+# Logs
+*.log

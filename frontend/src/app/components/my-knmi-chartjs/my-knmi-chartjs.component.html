@@ -1,0 +1,8 @@
+@if (noDataMessage) {
+  <div class="text-color-secondary text-sm p-3">{{ noDataMessage }}</div>
+}
+@if (chartData) {
+  <div class="chart-wrapper">
+    <p-chart [type]="chartType" [data]="chartData" [options]="chartOptions" width="100%" height="100%"></p-chart>
+  </div>
+}

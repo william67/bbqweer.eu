@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "exportedAt": "2026-04-18T17:30:14.378Z",
+  "dataset": {
+    "id": 8,
+    "code": "vorstperiodes",
+    "name": "Vorstperiodes",
+    "category_id": 3,
+    "category_name": "Statistieken",
+    "chartYn": 0,
+    "anychart_config": null,
+    "chartjs_config": null,
+    "sort_order": 1,
+    "category_code": "statistieken"
+  },
+  "reports": [
+    {
+      "name": "Vorstperiodes",
+      "timebase": "overzicht",
+      "query": "SELECT *\nFROM (\n    SELECT\n        vp.STATION              AS stationsCode,\n        st.OMSCHRIJVING         AS station,\n        vp.VOLGNR               AS volgnr,\n        vp.BEGIN                AS begin,\n        vp.EINDE                AS einde,\n        vp.DAGEN                AS dagen,\n        vp.HELLMANN             AS hellmann\n    FROM vorstperiodes vp\n    JOIN stations st ON st.CODE = vp.STATION\n) _t\nWHERE 1=1\n<#SELECTIONS>\nORDER BY begin",
+      "input_station": 1,
+      "input_neerslagstation": 0,
+      "input_jaar": 0,
+      "input_maand": 0,
+      "input_week": 0,
+      "input_dag": 0,
+      "input_seizoen": 0,
+      "input_decade": 0,
+      "fieldName_station": "stationsCode",
+      "fieldName_neerslagstation": null,
+      "fieldName_jaar": null,
+      "fieldName_maand": null,
+      "fieldName_week": null,
+      "fieldName_dag": null,
+      "fieldName_seizoen": null,
+      "fieldName_decade": null,
+      "anychart_config": null,
+      "chartjs_config": null,
+      "sort_order": 1
+    }
+  ]
+}

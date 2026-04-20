@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "exportedAt": "2026-04-18T12:00:00.000Z",
+  "dataset": {
+    "code": "wind",
+    "name": "Wind",
+    "category_id": 1,
+    "chartYn": 1,
+    "anychart_config": "{\n  \"chartType\": \"line\",\n  \"chartTitle\": null,\n  \"xAxis\": { \"title\": null },\n  \"yAxis\": {\n    \"title\": null,\n    \"labelsFormat\": \"{%Value} m/s\",\n    \"scale\": {\n      \"chartMin\": 0,\n      \"chartMax\": 40,\n      \"majorTick\": 5,\n      \"minorTick\": 1\n    }\n  },\n  \"series\": [\n    { \"type\": \"line\", \"dataField\": \"fh\", \"label\": \"FH Uurgemiddeld\", \"color\": \"rgb(75, 192, 192)\",  \"thickness\": 2, \"tooltip\": \"{%value} m/s\" },\n    { \"type\": \"line\", \"dataField\": \"ff\", \"label\": \"FF 10min gem\",    \"color\": \"rgb(54, 162, 235)\",  \"thickness\": 2, \"tooltip\": \"{%value} m/s\" },\n    { \"type\": \"line\", \"dataField\": \"fx\", \"label\": \"FX Windstoot\",    \"color\": \"rgb(255, 99, 132)\",   \"thickness\": 2, \"tooltip\": \"{%value} m/s\" }\n  ]\n}\n",
+    "chartjs_config": "{\n  \"type\": \"line\",\n  \"yAxis\": {\n    \"scale\": {\n      \"chartMin\": 0,\n      \"chartMax\": 40\n    }\n  },\n  \"data\": {\n    \"datasets\": [\n      { \"dataField\": \"fh\", \"label\": \"FH Uurgemiddeld (m/s)\", \"borderColor\": \"rgb(75, 192, 192)\" },\n      { \"dataField\": \"ff\", \"label\": \"FF 10min gem (m/s)\",   \"borderColor\": \"rgb(54, 162, 235)\" },\n      { \"dataField\": \"fx\", \"label\": \"FX Windstoot (m/s)\",   \"borderColor\": \"rgb(255, 99, 132)\" }\n    ]\n  }\n}\n",
+    "sort_order": 6,
+    "category_code": "meetgegevens",
+    "category_name": "Meetgegevens"
+  },
+  "reports": [
+    {
+      "name": "Wind uurwaarden",
+      "timebase": "uur",
+      "query": "SELECT\n    stationsCode,\n    station,\n    jaar,\n    maand,\n    decade,\n    dag,\n    uur,\n    datum_tijd,\n    fh,\n    ff,\n    fx\nFROM v_knmidata_wind_hourly\nWHERE 1=1<#SELECTIONS>\nORDER BY datum_tijd\n",
+      "input_station": 1,
+      "input_neerslagstation": 0,
+      "input_jaar": 1,
+      "input_maand": 1,
+      "input_week": 0,
+      "input_dag": 0,
+      "input_seizoen": 0,
+      "input_decade": 0,
+      "fieldName_station": "stationsCode",
+      "fieldName_neerslagstation": null,
+      "fieldName_jaar": "jaar",
+      "fieldName_maand": "maand",
+      "fieldName_week": null,
+      "fieldName_dag": "dag",
+      "fieldName_seizoen": null,
+      "fieldName_decade": "decade",
+      "sort_order": 0
+    }
+  ]
+}
