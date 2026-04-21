@@ -68,6 +68,14 @@
             </p-select>
         </div>
         <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Standaard tijdsbasis</label>
+            <p-select [options]="timebaseOptions" optionLabel="label" optionValue="value"
+                [(ngModel)]="settingsModel.timebase"
+                [showClear]="true" placeholder="Kies tijdsbasis..."
+                appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+        </div>
+        <div class="flex flex-column gap-1">
             <label class="text-sm font-medium">Standaard station</label>
             <p-select [options]="settingsStations" optionLabel="omschrijving" optionValue="code"
                 [(ngModel)]="settingsModel.station"

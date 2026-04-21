@@ -38,6 +38,15 @@ export class AppLoginComponent implements OnInit, OnDestroy {
     settingsDatasets: any[] = [];
     settingsStations: any[] = [];
     settingsNeerslagstations: any[] = [];
+    readonly timebaseOptions = [
+        { value: 'uur',         label: 'Uur' },
+        { value: 'dag',         label: 'Dag' },
+        { value: 'maand',       label: 'Maand' },
+        { value: 'seizoen',     label: 'Seizoen' },
+        { value: 'decade',      label: 'Decade' },
+        { value: 'jaar',        label: 'Jaar' },
+        { value: 'overzicht',   label: 'Overzicht' },
+    ];
     settingsModel: any = {};
 
     constructor(
