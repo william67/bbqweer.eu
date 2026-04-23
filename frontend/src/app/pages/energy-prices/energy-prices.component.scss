@@ -1,0 +1,94 @@
+.energie-page {
+    padding: 1.5rem;
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+.page-header {
+    margin-bottom: 1.5rem;
+
+    h2 {
+        margin: 0 0 0.25rem;
+        font-size: 1.5rem;
+    }
+
+    .source-info {
+        margin: 0;
+        color: var(--text-color-secondary);
+        font-size: 0.875rem;
+    }
+}
+
+.loading-state {
+    display: flex;
+    justify-content: center;
+    padding: 3rem 0;
+}
+
+.summary-cards {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+}
+
+.summary-card {
+    flex: 1;
+    min-width: 120px;
+    background: var(--surface-card);
+    border: 1px solid var(--surface-border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+
+    .card-label {
+        font-size: 0.75rem;
+        color: var(--text-color-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .card-value {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--text-color);
+
+        &.card-low  { color: #22c55e; }
+        &.card-high { color: #ef4444; }
+    }
+}
+
+.chart-section {
+    margin-bottom: 2rem;
+
+    h3 {
+        margin: 0 0 1rem;
+        font-size: 1.1rem;
+        font-weight: 600;
+        text-transform: capitalize;
+    }
+}
+
+.chart-wrap {
+    height: 280px;
+
+    ::ng-deep canvas {
+        max-height: 280px;
+    }
+}
+
+.no-data,
+.no-tomorrow p {
+    color: var(--text-color-secondary);
+    font-size: 0.9rem;
+    margin: 0 0 0.75rem;
+}
+
+.updated-info {
+    font-size: 0.8rem;
+    color: var(--text-color-secondary);
+    text-align: right;
+    margin-top: 0.5rem;
+}

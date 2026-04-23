@@ -34,6 +34,7 @@ const satellitesRouter   = require('./routes/satellites.route');
 const authRouter         = require('./routes/auth.route');
 const usersRouter        = require('./routes/users.route');
 const serverTasksRouter  = require('./routes/server-tasks.route');
+const energieRouter      = require('./routes/energy-prices.route');
 
 app.use('/api/knmi-reports',  knmiReportsRouter);
 app.use('/api/stars',         starsRouter);
@@ -41,6 +42,7 @@ app.use('/api/satellites',    satellitesRouter);
 app.use('/api/auth',          authRouter);
 app.use('/api/users',         usersRouter);
 app.use('/api/server-tasks',  serverTasksRouter);
+app.use('/api/energie',       energieRouter);
 
 app.listen(port, () => console.log(`bbqweer backend listening on port ${port}`));
 
@@ -50,6 +52,7 @@ if (!fs.existsSync('config.local.ini')) {
     const cron           = require('node-cron');
     const knmiDataSync   = require('./tasks/knmidata-v3');
     const satellitesSync = require('./tasks/satellites-sync');
+    const energieSync    = require('./tasks/energy-prices-sync');
 
     cron.schedule('0 * * * *', () => {
         knmiDataSync().catch(err => console.error('knmidata-v3 cron error:', err));
@@ -59,7 +62,11 @@ if (!fs.existsSync('config.local.ini')) {
         satellitesSync().catch(err => console.error('satellites-sync cron error:', err));
     });
 
-    console.log('Cron tasks scheduled: knmidata-v3 (0 * * * *), satellites-sync (30 * * * *)');
+    cron.schedule('0 14 * * *', () => {
+        energieSync().catch(err => console.error('energy-prices-sync cron error:', err));
+    });
+
+    console.log('Cron tasks scheduled: knmidata-v3 (0 * * * *), satellites-sync (30 * * * *), energie-sync (0 14 * * *)');
 } else {
     console.log('Cron tasks disabled (local dev)');
 }

@@ -15,6 +15,10 @@ const routes: Routes = [
             {
                 path: 'planetarium',
                 loadChildren: () => import('./pages/planetarium/planetarium.module').then(m => m.PlanetariumModule)
+            },
+            {
+                path: 'energy-prices',
+                loadChildren: () => import('./pages/energy-prices/energy-prices.module').then(m => m.EnergyPricesModule)
             }
         ]
     },

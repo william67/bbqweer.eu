@@ -1,0 +1,66 @@
+<div class="energie-page">
+
+    <div class="page-header">
+        <h2>Energieprijzen</h2>
+        <p class="source-info">Bron: energyzero.nl &mdash; stroomprijs incl. btw (€/kWh)</p>
+    </div>
+
+    <div class="loading-state" *ngIf="loading">
+        <p-progressSpinner></p-progressSpinner>
+    </div>
+
+    <p-message *ngIf="errorMessage" severity="error" [text]="errorMessage" styleClass="mb-4"></p-message>
+
+    <ng-container *ngIf="!loading && !errorMessage">
+
+        <!-- Summary cards -->
+        <div class="summary-cards" *ngIf="currentPrice !== null || avgToday !== null">
+            <div class="summary-card">
+                <span class="card-label">Nu</span>
+                <span class="card-value">{{ formatEur(currentPrice) }}</span>
+            </div>
+            <div class="summary-card">
+                <span class="card-label">Gemiddeld vandaag</span>
+                <span class="card-value">{{ formatEur(avgToday) }}</span>
+            </div>
+            <div class="summary-card">
+                <span class="card-label">Laagste</span>
+                <span class="card-value card-low">{{ formatEur(minToday) }}</span>
+            </div>
+            <div class="summary-card">
+                <span class="card-label">Hoogste</span>
+                <span class="card-value card-high">{{ formatEur(maxToday) }}</span>
+            </div>
+        </div>
+
+        <!-- Today -->
+        <div class="chart-section">
+            <h3>Vandaag &mdash; {{ todayLabel }}</h3>
+            <div class="chart-wrap" *ngIf="todayData; else noToday">
+                <p-chart type="bar" [data]="todayData" [options]="chartOptions"></p-chart>
+            </div>
+            <ng-template #noToday>
+                <p class="no-data">Geen prijzen beschikbaar voor vandaag. Start de sync via Taakstatus.</p>
+            </ng-template>
+        </div>
+
+        <!-- Tomorrow -->
+        <div class="chart-section" *ngIf="tomorrowAvailable; else noTomorrow">
+            <h3>Morgen &mdash; {{ tomorrowLabel }}</h3>
+            <div class="chart-wrap">
+                <p-chart type="bar" [data]="tomorrowData" [options]="chartOptions"></p-chart>
+            </div>
+        </div>
+        <ng-template #noTomorrow>
+            <div class="chart-section no-tomorrow">
+                <h3>Morgen &mdash; {{ tomorrowLabel }}</h3>
+                <p>Prijzen voor morgen worden gepubliceerd rond 14:00.</p>
+                <button pButton label="Vernieuwen" icon="pi pi-refresh" class="p-button-sm p-button-outlined" (click)="load()"></button>
+            </div>
+        </ng-template>
+
+        <p class="updated-info">Bijgewerkt om {{ updatedAt }}</p>
+
+    </ng-container>
+
+</div>

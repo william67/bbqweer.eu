@@ -6,11 +6,17 @@
         </a>
     </div>
     <div class="topbar-nav">
-        <a class="topbar-nav-link" [routerLink]="['/knmidata']" routerLinkActive="active">
+        <a class="topbar-nav-link" [routerLink]="['/knmidata']" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
             <i class="pi pi-chart-bar mr-2"></i>KNMI Data
+        </a>
+        <a class="topbar-nav-link" [routerLink]="['/knmidata/forecast']" routerLinkActive="active">
+            <i class="pi pi-sun mr-2"></i>Verwachting
         </a>
         <a class="topbar-nav-link" [routerLink]="['/planetarium']" routerLinkActive="active">
             <i class="pi pi-star mr-2"></i>Planetarium
+        </a>
+        <a class="topbar-nav-link" [routerLink]="['/energy-prices']" routerLinkActive="active">
+            <i class="pi pi-bolt mr-2"></i>Energie
         </a>
     </div>
     <app-login></app-login>
