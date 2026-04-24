@@ -1,6 +1,6 @@
 'use strict';
 
-// knmidata-v3.js — two-pointer merge sync (O(n+m))
+// knmidata-v4.js — two-pointer merge sync (O(n+m)) + If-Modified-Since skip
 // Exact insert/update/unchanged counts. No ON DUPLICATE KEY UPDATE.
 // Requires views V_ETMGEG, V_UURGEG, V_NEERSLAGGEG in the bbqweer database.
 
@@ -66,9 +66,9 @@ function rowsEqual(dataVals, dataNames, dbRow) {
 
 async function logMsg(msg) {
     const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    console.log(`[knmidata-v3] ${ts} - ${msg}`);
+    console.log(`[knmidata-v4] ${ts} - ${msg}`);
     try { await db.execute('INSERT INTO logfile (datum, logtext) VALUES (NOW(), ?)', [msg.slice(0, 255)]); }
-    catch (e) { console.error('[knmidata-v3] logfile insert error:', e.message); }
+    catch (e) { console.error('[knmidata-v4] logfile insert error:', e.message); }
 }
 
 // ─── Station extraction ───────────────────────────────────────────────────────
@@ -337,9 +337,27 @@ async function processFile(fileRow, fullSync = false) {
     let zipBuffer;
     let downloadedBytes = 0;
     try {
-        const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 120000 });
+        const headers = {};
+        if (!fullSync && fileRow.HTTP_LAST_MODIFIED) {
+            headers['If-Modified-Since'] = fileRow.HTTP_LAST_MODIFIED;
+        }
+        const response = await axios.get(url, {
+            responseType: 'arraybuffer',
+            timeout: 120000,
+            headers,
+            validateStatus: s => s === 200 || s === 304
+        });
+        if (response.status === 304) {
+            await db.execute('UPDATE datafiles SET DATE_LAST_CHECK=NOW() WHERE FILENAME=?', [filename]);
+            console.log(`[knmidata-v4] SKIP ${filename} (304 Not Modified)`);
+            return { error: false, bytes: 0 };
+        }
         zipBuffer = Buffer.from(response.data);
         downloadedBytes = zipBuffer.length;
+        const httpLastMod = response.headers['last-modified'];
+        if (httpLastMod) {
+            await db.execute('UPDATE datafiles SET HTTP_LAST_MODIFIED=? WHERE FILENAME=?', [httpLastMod, filename]);
+        }
     } catch (e) {
         await logMsg(`ERROR downloading ${filename}: ${e.message}`);
         await taskError('knmidata-sync');
@@ -369,7 +387,7 @@ async function processFile(fileRow, fullSync = false) {
         : null;
 
     if (!fullSync && storedDateStr !== null && entryDateStr !== null && storedDateStr === entryDateStr) {
-        console.log(`[knmidata-v3] SKIP ${filename} (date unchanged: ${entryDateStr})`);
+        console.log(`[knmidata-v4] SKIP ${filename} (date unchanged: ${entryDateStr})`);
         return { error: false, bytes: downloadedBytes };
     }
 
@@ -402,11 +420,11 @@ async function processFile(fileRow, fullSync = false) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-async function syncKnmiDataV3(fullSync = false) {
-    if (running) { console.log('[knmidata-v3] Already running, skipping.'); return; }
+async function syncKnmiDataV4(fullSync = false) {
+    if (running) { console.log('[knmidata-v4] Already running, skipping.'); return; }
     running = true;
     try {
-        await logMsg(`Starting KNMI data sync (v3${fullSync ? ', FULL SYNC' : ''})...`);
+        await logMsg(`Starting KNMI data sync (v4${fullSync ? ', FULL SYNC' : ''})...`);
 
         const [files] = await db.query('SELECT * FROM datafiles ORDER BY FILENAME');
         await taskStart('knmidata-sync', files.length);
@@ -425,11 +443,11 @@ async function syncKnmiDataV3(fullSync = false) {
         } catch (e) { await logMsg(`UpdateHistory error: ${e.message}`); }
 
         const mb = (totalBytes / 1024 / 1024).toFixed(1);
-        await logMsg(`KNMI data sync v3 finished. Downloaded: ${mb} MB`);
+        await logMsg(`KNMI data sync v4 finished. Downloaded: ${mb} MB`);
         const status = errors > 0 ? 'partial' : 'success';
         await taskFinish('knmidata-sync', status, `Files: ${files.length}, Errors: ${errors}, Downloaded: ${mb} MB${fullSync ? ' (full sync)' : ''}`);
     } catch (e) {
-        console.error('[knmidata-v3] Fatal error:', e);
+        console.error('[knmidata-v4] Fatal error:', e);
         try { await logMsg(`Fatal error: ${e.message}`); } catch (_) {}
         await taskFinish('knmidata-sync', 'error', e.message);
     } finally {
@@ -437,4 +455,4 @@ async function syncKnmiDataV3(fullSync = false) {
     }
 }
 
-module.exports = syncKnmiDataV3;
+module.exports = syncKnmiDataV4;

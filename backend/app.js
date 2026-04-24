@@ -50,7 +50,7 @@ app.listen(port, () => console.log(`bbqweer backend listening on port ${port}`))
 const fs = require('fs');
 if (!fs.existsSync('config.local.ini')) {
     const cron           = require('node-cron');
-    const knmiDataSync   = require('./tasks/knmidata-v3');
+    const knmiDataSync   = require('./tasks/knmidata-v4');
     const satellitesSync = require('./tasks/satellites-sync');
     const energieSync    = require('./tasks/energy-prices-sync');
 
