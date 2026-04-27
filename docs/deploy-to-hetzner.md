@@ -1,6 +1,7 @@
 # Deploy to Hetzner VPS
 
 End-to-end guide: from a fresh Hetzner VPS to bbqweer.eu running in production with HTTPS.
+Last completed: 2026-04-27. All steps reflect what was actually done.
 
 ---
 
@@ -11,43 +12,45 @@ End-to-end guide: from a fresh Hetzner VPS to bbqweer.eu running in production w
 3. Add server:
    - **Location**: Nuremberg or Helsinki (EU)
    - **Image**: Ubuntu 24.04
-   - **Type**: CX22 (2 vCPU, 4 GB RAM) — sufficient for this stack
-   - **SSH key**: add your public key (`~/.ssh/id_rsa.pub` or generate one)
+   - **Type**: CX23 (2 vCPU, 4 GB RAM, 40 GB disk)
+   - **SSH key**: add your public key (`~/.ssh/id_ed25519.pub`)
    - **Hostname**: `bbqweer`
+   - **Volume / Backups / Firewall**: skip
 4. Note the public IPv4 address (referred to as `<VPS_IP>` below)
+
+> SSH from Windows PowerShell uses `~/.ssh/id_ed25519` automatically — no PuTTY needed.
 
 ---
 
 ## 2. Point the domain to the VPS
 
-In your DNS provider (Hetzner DNS, Cloudflare, etc.):
+In your DNS provider:
 
 | Type | Name | Value |
 |------|------|-------|
 | A | `bbqweer.eu` | `<VPS_IP>` |
 | A | `www.bbqweer.eu` | `<VPS_IP>` |
 
-DNS propagation takes a few minutes to a few hours. You can continue with the rest of the setup while it propagates.
+DNS propagation takes a few minutes to a few hours. Continue with the rest while it propagates.
+
+Verify from VPS:
+```bash
+nslookup bbqweer.eu
+nslookup www.bbqweer.eu
+```
 
 ---
 
 ## 3. Initial server setup
 
-```bash
-# Connect
+```powershell
+# Connect from Windows PowerShell
 ssh root@<VPS_IP>
+```
 
-# Update packages
+```bash
+# On VPS
 apt update && apt upgrade -y
-
-# Create a non-root user (optional but recommended)
-adduser william
-usermod -aG sudo william
-# Copy your SSH key to the new user
-rsync --archive --chown=william:william ~/.ssh /home/william
-
-# Switch to your user for the rest (or stay as root for simplicity)
-su - william
 ```
 
 ---
@@ -56,86 +59,93 @@ su - william
 
 ```bash
 curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-newgrp docker          # apply group without re-login
-docker --version       # verify
+usermod -aG docker root
+docker --version
 ```
 
 ---
 
 ## 5. Copy the project to the VPS
 
-### Option A — git clone (recommended)
-
-If your repo is on GitHub:
-
-```bash
-# On VPS
-git clone https://github.com/youruser/bbqweer.eu.git /opt/bbqweer
-```
-
-### Option B — rsync from Windows
+From Windows PowerShell (excludes secrets, build artifacts, local dev files):
 
 ```powershell
-# On Windows — exclude build artifacts and secrets
-rsync -av `
-  --exclude=node_modules `
-  --exclude=dist `
-  --exclude=.env `
-  --exclude=backend/config.ini `
-  --exclude=backend/config.local.ini `
-  C:/Apps/bbqweer.eu/ william@<VPS_IP>:/opt/bbqweer/
+scp -r C:/Apps/bbqweer.eu/database root@<VPS_IP>:/opt/bbqweer/
+scp -r C:/Apps/bbqweer.eu/backend root@<VPS_IP>:/opt/bbqweer/
+scp -r C:/Apps/bbqweer.eu/nginx root@<VPS_IP>:/opt/bbqweer/
+scp C:/Apps/bbqweer.eu/docker-compose.yml root@<VPS_IP>:/opt/bbqweer/
 ```
+
+> Do NOT copy `node_modules`, `dist`, `.env`, `config.ini`, or `config.local.ini`.
 
 ---
 
 ## 6. Create secrets on the VPS
 
-These files are never in git — create them manually on the VPS.
+### Generate passwords (run in Windows PowerShell — alphanumeric only, no special chars)
 
-```bash
-cd /opt/bbqweer
+**IMPORTANT: passwords must be alphanumeric only.** Special characters (`'`, `"`, `!`, `$`, etc.) break MySQL shell quoting and make it impossible to run admin commands.
 
-# MySQL passwords
-nano .env
+```powershell
+$pass1 = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object {[char]$_})
+$pass2 = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object {[char]$_})
+Write-Host "MYSQL_ROOT_PASSWORD: $pass1"
+Write-Host "MYSQL_PASSWORD:      $pass2"
 ```
 
-`.env` contents:
+```powershell
+# Generate JWT secret
+[Convert]::ToBase64String((1..48 | ForEach-Object { [byte](Get-Random -Maximum 256) }))
+```
+
+### Create `.env` on the VPS
+
+```bash
+nano /opt/bbqweer/.env
+```
+
 ```ini
-MYSQL_ROOT_PASSWORD=<strong-root-password>
+MYSQL_ROOT_PASSWORD=<generated-root-password>
 MYSQL_USER=bbqweer_user
-MYSQL_PASSWORD=<strong-app-password>
+MYSQL_PASSWORD=<generated-app-password>
 ```
+
+### Create `backend/config.ini` on the VPS
 
 ```bash
-nano backend/config.ini
+nano /opt/bbqweer/backend/config.ini
 ```
 
-`backend/config.ini` contents:
 ```ini
 [mysql_knmi]
 host     = mysql
 port     = 3306
 user     = bbqweer_user
-password = <strong-app-password>
+password = <generated-app-password>
 database = bbqweer
 
 [jwt]
-secret_key = <long-random-string>
+secret_key = <generated-jwt-secret>
 ```
 
 ---
 
 ## 7. Build Angular locally and upload the dist
 
-The VPS doesn't need Node.js installed — build on Windows, upload the dist.
+Build on Windows (VPS does not need Node.js):
 
 ```powershell
-# On Windows — build with build timestamp
-node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts',ts=new Date().toISOString().replace('T',' ').substring(0,19);fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('BUILD_TIME_PLACEHOLDER',ts));console.log('Stamped:',ts);" && cd c:/Apps/bbqweer.eu/frontend && ng build --configuration=production && node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
+node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts',ts=new Date().toISOString().replace('T',' ').substring(0,19);fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('BUILD_TIME_PLACEHOLDER',ts));console.log('Stamped:',ts);"
+cd c:/Apps/bbqweer.eu/frontend
+ng build --configuration=production
+node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
+```
 
-# Upload dist to VPS
-rsync -av C:/Apps/bbqweer.eu/frontend/dist/ william@<VPS_IP>:/opt/bbqweer/frontend/dist/
+Create the dist folder on VPS first, then upload:
+
+```powershell
+ssh root@<VPS_IP> "mkdir -p /opt/bbqweer/frontend/dist"
+scp -r C:/Apps/bbqweer.eu/frontend/dist/* root@<VPS_IP>:/opt/bbqweer/frontend/dist/
 ```
 
 ---
@@ -143,50 +153,94 @@ rsync -av C:/Apps/bbqweer.eu/frontend/dist/ william@<VPS_IP>:/opt/bbqweer/fronte
 ## 8. Start the Docker stack
 
 ```bash
-# On VPS
 cd /opt/bbqweer
 docker compose up -d --build
 
-# Watch logs during first start (MySQL init takes ~15 seconds)
+# Watch MySQL init (takes ~15 seconds)
 docker compose logs -f mysql
 ```
 
-Wait until you see `ready for connections` in the MySQL logs, then verify all containers are up:
+Wait for `ready for connections`, then verify:
 
 ```bash
 docker compose ps
 ```
 
+All three containers (`bbqweer-mysql`, `bbqweer-nodejs`, `bbqweer-nginx`) should be `Up`.
+
 ---
 
-## 9. Seed initial data
+## 9. Grant MySQL access to the app user
+
+On first start, MySQL may refuse connections from the nodejs container. Fix by granting access:
 
 ```bash
-cd /opt/bbqweer
-
-# Create the first admin user
-node backend/createUser.js
-
-# Run full KNMI data sync (takes 30–60 minutes)
-node backend/callSyncKnmi.js --full
+# SSH into VPS, then:
+docker exec bbqweer-mysql mysql -u root -p<MYSQL_ROOT_PASSWORD> -e "GRANT ALL PRIVILEGES ON bbqweer.* TO 'bbqweer_user'@'%'; FLUSH PRIVILEGES;"
 ```
 
-The full sync can run in the background — the app is already accessible on port 80 while it runs.
+If the command doesn't return cleanly due to quoting, write the SQL to a file first:
+
+```bash
+echo "GRANT ALL PRIVILEGES ON bbqweer.* TO 'bbqweer_user'@'%'; FLUSH PRIVILEGES;" > /tmp/grant.sql
+docker exec -i bbqweer-mysql mysql -u root -p<MYSQL_ROOT_PASSWORD> < /tmp/grant.sql
+```
+
+Then restart nodejs:
+
+```bash
+docker compose restart nodejs
+```
 
 ---
 
-## 10. Verify HTTP works
+## 10. Seed initial data
 
-Open `http://bbqweer.eu` in a browser (or `http://<VPS_IP>` if DNS hasn't propagated yet).  
-The app should load and show KNMI data.
+**IMPORTANT: run node commands inside the container, not on the host — Node.js is not installed on the VPS.**
+
+```bash
+# Create the first admin user
+docker compose exec nodejs node createUser.js
+
+# Run full KNMI data sync (takes 30–60 minutes, runs in background)
+docker compose exec nodejs node callSyncKnmi.js --full
+```
+
+After creating the admin user: log in via the UI → Beheer → Load Config → import JSON files from `database/knmi reports/`.
 
 ---
 
-## 11. Enable HTTPS with Let's Encrypt (Certbot)
+## 11. Verify HTTP works
 
-### Update nginx.conf for HTTPS
+Open `http://bbqweer.eu` (or `http://<VPS_IP>` if DNS hasn't propagated).
 
-Replace `nginx/nginx.conf` with a version that handles both HTTP→HTTPS redirect and SSL termination. Example:
+---
+
+## 12. Enable HTTPS with Let's Encrypt
+
+### Step 1 — Stop nginx to free port 80
+
+```bash
+cd /opt/bbqweer && docker compose stop nginx
+```
+
+### Step 2 — Obtain the certificate
+
+Both `bbqweer.eu` and `www.bbqweer.eu` DNS must point to the VPS before running this.
+
+```bash
+docker run --rm -p 80:80 \
+  -v /opt/bbqweer/certbot_certs:/etc/letsencrypt \
+  certbot/certbot certonly --standalone \
+  -d bbqweer.eu -d www.bbqweer.eu \
+  --email woorschot67@gmail.com --agree-tos --no-eff-email
+```
+
+Certs are saved to `/opt/bbqweer/certbot_certs/` on the host.
+
+### Step 3 — Update nginx.conf and docker-compose.yml locally
+
+`nginx/nginx.conf` — already updated in the repo:
 
 ```nginx
 server {
@@ -205,22 +259,27 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
-    location /api/ {
-        proxy_pass http://nodejs:3000/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
     location / {
         try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    location ~* \.(js|css|woff2?|ttf|eot|svg|png|ico)$ {
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location /api/ {
+        proxy_pass         http://nodejs:3000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
 ```
 
-### Add certbot to docker-compose.yml
-
-Add a certbot service and expose port 443 on nginx:
+`docker-compose.yml` nginx section — already updated in the repo (uses bind mount, not named volume):
 
 ```yaml
   nginx:
@@ -228,76 +287,98 @@ Add a certbot service and expose port 443 on nginx:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./frontend/dist/frontend/browser:/usr/share/nginx/html:ro
-      - certbot_certs:/etc/letsencrypt:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/bbqweer/certbot_certs:/etc/letsencrypt:ro   # bind mount — certs are on host
 
   certbot:
     image: certbot/certbot
     volumes:
-      - certbot_certs:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
+      - /opt/bbqweer/certbot_certs:/etc/letsencrypt
     entrypoint: >
       sh -c "trap exit TERM;
              while :; do certbot renew --quiet; sleep 12h & wait $${!}; done"
-
-volumes:
-  mysql_data:
-  certbot_certs:
-  certbot_www:
 ```
 
-### Obtain the certificate
+> **Important**: use a bind mount (`/opt/bbqweer/certbot_certs:/etc/letsencrypt`) not a named volume. The cert was obtained outside Docker into the host path — a named volume would be empty and nginx would crash.
 
-```bash
-# On VPS — obtain cert (HTTP must be reachable first)
-docker run --rm -p 80:80 \
-  -v /opt/bbqweer/certbot_certs:/etc/letsencrypt \
-  certbot/certbot certonly --standalone \
-  -d bbqweer.eu -d www.bbqweer.eu \
-  --email woorschot67@gmail.com --agree-tos --no-eff-email
+### Step 4 — Upload updated configs and restart
 
-# Restart stack with HTTPS nginx config
-cd /opt/bbqweer
-docker compose up -d --build
+```powershell
+scp C:/Apps/bbqweer.eu/nginx/nginx.conf root@<VPS_IP>:/opt/bbqweer/nginx/nginx.conf
+scp C:/Apps/bbqweer.eu/docker-compose.yml root@<VPS_IP>:/opt/bbqweer/docker-compose.yml
 ```
+
+```powershell
+ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose up -d --build"
+```
+
+Open `https://bbqweer.eu` — should load with valid certificate.
 
 ---
 
-## 12. Deploying updates
+## 13. Deploying updates
 
 ### Backend change
 
 ```powershell
-# Sync backend to VPS
-rsync -av --exclude=node_modules --exclude=config.ini --exclude=config.local.ini `
-  C:/Apps/bbqweer.eu/backend/ william@<VPS_IP>:/opt/bbqweer/backend/
-
-# On VPS — rebuild nodejs image
-ssh william@<VPS_IP> "cd /opt/bbqweer && docker compose up -d --build nodejs"
+scp -r C:/Apps/bbqweer.eu/backend root@<VPS_IP>:/opt/bbqweer/
+ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose up -d --build nodejs"
 ```
 
 ### Frontend change
 
 ```powershell
-# Build with timestamp and upload dist
-node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts',ts=new Date().toISOString().replace('T',' ').substring(0,19);fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('BUILD_TIME_PLACEHOLDER',ts));console.log('Stamped:',ts);" && cd c:/Apps/bbqweer.eu/frontend && ng build --configuration=production && node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
+# Build with timestamp
+node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts',ts=new Date().toISOString().replace('T',' ').substring(0,19);fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('BUILD_TIME_PLACEHOLDER',ts));console.log('Stamped:',ts);"
+cd c:/Apps/bbqweer.eu/frontend
+ng build --configuration=production
+node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
 
-rsync -av C:/Apps/bbqweer.eu/frontend/dist/ william@<VPS_IP>:/opt/bbqweer/frontend/dist/
-
-ssh william@<VPS_IP> "cd /opt/bbqweer && docker compose restart nginx"
+# Upload and restart nginx
+scp -r C:/Apps/bbqweer.eu/frontend/dist/* root@<VPS_IP>:/opt/bbqweer/frontend/dist/
+ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose restart nginx"
 ```
 
 ### Both changed
 
 ```powershell
-# Sync backend + dist, rebuild everything
-rsync -av --exclude=node_modules --exclude=config.ini --exclude=config.local.ini `
-  C:/Apps/bbqweer.eu/backend/ william@<VPS_IP>:/opt/bbqweer/backend/
-rsync -av C:/Apps/bbqweer.eu/frontend/dist/ william@<VPS_IP>:/opt/bbqweer/frontend/dist/
-
-ssh william@<VPS_IP> "cd /opt/bbqweer && docker compose up -d --build"
+scp -r C:/Apps/bbqweer.eu/backend root@<VPS_IP>:/opt/bbqweer/
+scp -r C:/Apps/bbqweer.eu/frontend/dist/* root@<VPS_IP>:/opt/bbqweer/frontend/dist/
+ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose up -d --build"
 ```
+
+---
+
+## Firewall (ufw)
+
+```bash
+ufw allow 22
+ufw allow 80
+ufw allow 443
+ufw enable
+ufw status
+```
+
+Port 3307 (MySQL) is intentionally blocked — access via SSH tunnel instead (see below).
+
+---
+
+## MySQL access from Windows (SSH tunnel)
+
+MySQL is not exposed to the internet. Use an SSH tunnel:
+
+```powershell
+# In a PowerShell window — keep it open while you work
+ssh -L 3307:127.0.0.1:3307 root@<VPS_IP>
+```
+
+Then connect your MySQL client (Workbench, DBeaver, etc.) to:
+- **Host**: `127.0.0.1`
+- **Port**: `3307`
+- **User**: `bbqweer_user`
+- **Password**: app password from `.env`
+- **Database**: `bbqweer`
 
 ---
 
@@ -315,8 +396,12 @@ docker compose logs -f mysql
 # Restart a single service
 docker compose restart nginx
 
-# Connect to MySQL
+# Connect to MySQL (password prompt)
 docker exec -it bbqweer-mysql mysql -u bbqweer_user -p bbqweer
+
+# Run a node script inside the container
+docker compose exec nodejs node callSyncKnmi.js --full
+docker compose exec nodejs node createUser.js
 
 # Check disk usage
 df -h
@@ -331,13 +416,15 @@ free -h
 
 | Step | Done |
 |------|------|
-| Create Hetzner VPS (Ubuntu 24.04, CX22) | [ ] |
-| Point DNS A record to VPS IP | [ ] |
-| Install Docker | [ ] |
-| Clone/rsync project files | [ ] |
-| Create `.env` and `backend/config.ini` | [ ] |
-| Build Angular locally, rsync dist | [ ] |
-| `docker compose up -d --build` | [ ] |
-| Seed admin user + run full KNMI sync | [ ] |
-| Verify `http://bbqweer.eu` works | [ ] |
-| Configure HTTPS with Let's Encrypt | [ ] |
+| Create Hetzner VPS (Ubuntu 24.04, CX23) | [x] |
+| Point DNS A records to VPS IP | [x] |
+| Install Docker | [x] |
+| Copy project files via scp | [x] |
+| Create `.env` and `backend/config.ini` | [x] |
+| Build Angular locally, scp dist | [x] |
+| `docker compose up -d --build` | [x] |
+| Grant MySQL privileges to app user | [x] |
+| Seed admin user + run full KNMI sync | [x] |
+| Verify `http://bbqweer.eu` works | [x] |
+| Configure HTTPS with Let's Encrypt | [x] |
+| Load report configs via Beheer UI | [ ] |
