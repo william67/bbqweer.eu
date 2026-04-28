@@ -35,6 +35,7 @@ const authRouter         = require('./routes/auth.route');
 const usersRouter        = require('./routes/users.route');
 const serverTasksRouter  = require('./routes/server-tasks.route');
 const energieRouter      = require('./routes/energy-prices.route');
+const solarRouter        = require('./routes/solar.route');
 
 app.use('/api/knmi-reports',  knmiReportsRouter);
 app.use('/api/stars',         starsRouter);
@@ -43,6 +44,7 @@ app.use('/api/auth',          authRouter);
 app.use('/api/users',         usersRouter);
 app.use('/api/server-tasks',  serverTasksRouter);
 app.use('/api/energie',       energieRouter);
+app.use('/api/solar',         solarRouter);
 
 app.listen(port, () => console.log(`bbqweer backend listening on port ${port}`));
 

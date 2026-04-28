@@ -4,29 +4,32 @@
 Public KNMI weather data platform — a standalone website spun out of wo-ict.nl.
 Goal: expose KNMI weather data, forecasts, and charts publicly at bbqweer.eu.
 
-## Status: scaffolded and running
-The project is fully scaffolded. Docker stack is running locally. KNMI data sync has completed a full run. Frontend is live at `http://localhost` via nginx.
+## Status: live in production
+Running locally and deployed to Hetzner VPS at https://bbqweer.eu (HTTPS, Let's Encrypt). KNMI data sync completed. Frontend live via nginx.
 
 ## Project Structure
 ```
 C:\Apps\bbqweer.eu\
 ├── frontend/               — Angular 19, NgModule-based, PrimeNG v21, AnyChart
 │   ├── src/app/
-│   │   ├── pages/knmidata/ — KnmiDataComponent + ForecastComponent (lazy module)
+│   │   │   ├── pages/knmidata/ — KnmiDataComponent + ForecastComponent (lazy module)
 │   │   ├── pages/planetarium/ — PlanetariumComponent (lazy module)
+│   │   ├── pages/energy-prices/ — EnergyPricesComponent (lazy module)
+│   │   ├── pages/solar/    — SolarComponent (lazy module)
 │   │   ├── components/     — my-knmi-anychart, my-knmi-chartjs, my-knmi-table,
 │   │   │                     my-planetarium, login
 │   │   ├── services/       — knmi-reports, forecast, anychart, local-storage,
-│   │   │                     stars, planetarium-calc, satellites, satellite-js
+│   │   │                     stars, planetarium-calc, satellites, satellite-js,
+│   │   │                     energy-prices, solar
 │   │   └── layout/         — topbar, footer, layout (AppLayoutModule)
 │   └── proxy.conf.json     — deleted; not needed (environment.ts uses full localhost:3000 URL directly)
 ├── backend/                — Node.js/Express, CommonJS
 │   ├── app.js              — Express + node-cron wiring
 │   ├── config.ini          — Docker settings (host=mysql, port=3306) — NOT in git
 │   ├── config.local.ini    — Local dev settings (host=127.0.0.1, port=3307) — NOT in git
-│   ├── routes/             — knmi-reports, stars, satellites, auth, users
+│   ├── routes/             — knmi-reports, stars, satellites, auth, users, energy-prices, solar
 │   ├── helpers/            — mysqlpool-knmi.helper.js, server-tasks.js
-│   ├── tasks/              — knmidata-v3.js, satellites-sync.js
+│   ├── tasks/              — knmidata-v4.js, satellites-sync.js, energy-prices-sync.js
 │   ├── callSyncKnmi.js     — manual sync trigger
 │   ├── createUser.js       — one-off admin user creation script
 │   └── importReports.js    — import JSON configs into categories/datasets/reports_new
@@ -38,7 +41,9 @@ C:\Apps\bbqweer.eu\
 │   │   ├── 04-datafiles.sql — 1000 KNMI datafile rows
 │   │   ├── 05-server-tasks.sql — seed rows for knmidata-sync, satellites-sync
 │   │   ├── 06-stations.sql — 51 KNMI weather stations
-│   │   └── 07-neerslagstations.sql — 343 precipitation stations
+│   │   ├── 07-neerslagstations.sql — 343 precipitation stations
+│   │   ├── 08-energy-prices.sql — energie_prices table
+│   │   └── 09-datafiles-http-lastmod.sql — http_lastmod column for datafiles
 │   ├── knmi reports/       — JSON export files per dataset (versioned, import via UI)
 │   ├── fix-procedures.sql  — one-time fix: lowercase table names in stored procedures
 │   └── knmi_stars.sql      — HYG star catalogue (87,475 rows)
@@ -61,7 +66,8 @@ C:\Apps\bbqweer.eu\
 |-----------|-------|------|
 | bbqweer-mysql | mysql:8.0 | 3307 (host) / 3306 (internal) |
 | bbqweer-nodejs | node:20-alpine (built from backend/) | 3000 (internal only) |
-| bbqweer-nginx | nginx:alpine | 80 |
+| bbqweer-nginx | nginx:alpine | 80, 443 |
+| bbqweer-certbot | certbot/certbot | — (auto-renew) |
 
 ### Local dev (Stage 1)
 Leave Docker running (MySQL always available). Cron tasks auto-disabled when `config.local.ini` exists.
@@ -82,7 +88,7 @@ node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/
 See `docs/dev-workflow.md` for full three-stage workflow including Hetzner deployment.
 
 ## Build Timestamp
-- Footer shows `bbqweer.eu v1.0002 — YYYY-MM-DD HH:MM:SS` (version/timestamp in smaller font)
+- Footer shows `bbqweer.eu v1.0004 — YYYY-MM-DD HH:MM:SS` (version/timestamp in smaller font)
 - `environment.production.ts` contains `buildTime: 'BUILD_TIME_PLACEHOLDER'`
 - The build command above injects the real timestamp before `ng build`, then restores the placeholder
 - **Never commit with a real timestamp** — always restore `BUILD_TIME_PLACEHOLDER` after building
@@ -130,18 +136,24 @@ MYSQL_PASSWORD=...
 
 ## Background Tasks
 
-Both scheduled in `backend/app.js` via `node-cron`:
+Scheduled in `backend/app.js` via `node-cron`:
 
 | Task | Schedule | Description |
 |------|----------|-------------|
-| `knmidata-v3` | `0 * * * *` | KNMI weather data sync (two-pointer merge) |
+| `knmidata-v4` | `0 * * * *` | KNMI weather data sync (two-pointer merge) |
 | `satellites-sync` | `30 * * * *` | TLE sync from Celestrak |
+| `energy-prices-sync` | `0 13-17 * * *` | Hourly electricity prices from energyzero.nl |
 
 Manual trigger:
 ```powershell
+# Local
 cd backend
 node callSyncKnmi.js           # incremental
 node callSyncKnmi.js --full    # full re-sync
+
+# On VPS (run inside container)
+docker compose exec nodejs node callSyncKnmi.js --full
+docker compose exec nodejs node createUser.js
 ```
 
 ## Angular Setup Notes
@@ -153,7 +165,7 @@ node callSyncKnmi.js --full    # full re-sync
 - `zone.js` installed and configured — required for automatic change detection after async ops
   - `"polyfills": ["zone.js"]` in `angular.json` build options
   - `provideZoneChangeDetection()` in `src/main.ts` bootstrap options
-- Two lazy-loaded modules: `KnmiDataModule`, `PlanetariumModule`
+- Four lazy-loaded modules: `KnmiDataModule`, `PlanetariumModule`, `EnergyPricesModule`, `SolarModule`
 - Budget limit raised to `2MB` warn / `3MB` error in `angular.json` (PrimeNG Table/Tag/ProgressBar)
 - `"hmr": false` in `angular.json` serve options — required; HMR is unreliable with NgModule apps
 - `platformBrowserDynamic` (from `@angular/platform-browser-dynamic`) required in `main.ts` — `platformBrowser` breaks live reload
@@ -180,7 +192,17 @@ node callSyncKnmi.js --full    # full re-sync
 - KNMI Data (`/knmidata`) — weather data charts + admin (Beheer menu); chart-type buttons show text labels (Tabel/AnyChart/Chart.js) with active state highlighted
 - Weersverwachting (`/knmidata/forecast`) — 3-day hourly forecast via Open-Meteo
 - Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions
+- Energie (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart
+- Zonne-energie (`/solar`) — solar panel output forecast for tomorrow via Open-Meteo GTI
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
+
+## Solar Page — Key Details
+- Uses Open-Meteo `global_tilted_irradiance` (GTI) — already corrected for tilt + azimuth
+- Formula: `powerW = (GTI / 1000) × totalWp × efficiency`, capped at `maxAcW` (inverter limit)
+- Losses stored as percentages: inverter, wiring, soiling, temperature — combined into efficiency factor
+- Config persisted in `localStorage` under key `solar_config`
+- Inverter clipping: SE5000H = 5000W limit — hours where panels exceed this are capped
+- Calibrated against SolarEdge history: real April max ~38 kWh with 16 × 370Wp, SE5000H
 
 ## Environment Files
 - `src/environments/environment.ts` — dev: `apiUrl: 'http://localhost:3000/api'`
