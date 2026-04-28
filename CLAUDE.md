@@ -79,13 +79,21 @@ cd backend && node app.js         # uses config.local.ini, cron tasks disabled
 cd frontend && ng serve --open    # proxies /api/* to localhost:3000, live reload via poll
 ```
 
-### Full Docker (Stage 2 / production)
+### Full Docker local (Stage 2 — no HTTPS)
+Uses `docker-compose.local.yml` override — HTTP only, no SSL certs needed.
+
 ```powershell
 # Build with timestamp, deploy, restore placeholder (run from project root)
-node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts',ts=new Date().toISOString().replace('T',' ').substring(0,19);fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('BUILD_TIME_PLACEHOLDER',ts));console.log('Stamped:',ts);" && cd frontend && ng build --configuration=production && node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');" && cd .. && docker compose restart nginx
+node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts',ts=new Date().toISOString().replace('T',' ').substring(0,19);fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('BUILD_TIME_PLACEHOLDER',ts));console.log('Stamped:',ts);" && cd frontend && ng build --configuration=production && node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
+
+# Restart nginx with local override (HTTP only, no certs)
+cd c:/Apps/bbqweer.eu
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --no-build nginx
 ```
 
-See `docs/dev-workflow.md` for full three-stage workflow including Hetzner deployment.
+### Hetzner VPS (Stage 3 — HTTPS)
+Uses `docker-compose.yml` only — nginx.conf has SSL, certs at `/opt/bbqweer/certbot_certs`.
+See `docs/deploy-to-hetzner.md` for full deployment guide.
 
 ## Build Timestamp
 - Footer shows `bbqweer.eu v1.0004 — YYYY-MM-DD HH:MM:SS` (version/timestamp in smaller font)
