@@ -1,27 +1,23 @@
 import { Component, OnInit } from '@angular/core';
-import { SolarService, SolarConfig, SolarTomorrow } from 'src/app/services/solar.service';
+import { SolarService, SolarConfig, SolarTomorrow, PanelArray } from 'src/app/services/solar.service';
 
-const STORAGE_KEY = 'solar_config';
+const STORAGE_KEY = 'solar_config_v2';
 
 interface FullConfig {
-    panels:       number;
-    wp:           number;
-    tilt:         number;
-    azimuth:      number;
+    arrays:       PanelArray[];
     lat:          number;
     lon:          number;
-    lossInverter: number;  // % e.g. 3
+    lossInverter: number;
     lossWiring:   number;
     lossSoiling:  number;
     lossTemp:     number;
-    maxAcW:       number;  // inverter AC limit in W, 0 = no clipping
+    maxAcW:       number;
 }
 
 const DEFAULT: FullConfig = {
-    panels:       10,
-    wp:           400,
-    tilt:         35,
-    azimuth:      0,
+    arrays: [
+        { panels: 10, wp: 400, tilt: 35, azimuth: 0 }
+    ],
     lat:          52.09,
     lon:          5.18,
     lossInverter: 3,
@@ -31,6 +27,8 @@ const DEFAULT: FullConfig = {
     maxAcW:       5000,
 };
 
+const DEFAULT_ARRAY: PanelArray = { panels: 6, wp: 400, tilt: 35, azimuth: 0 };
+
 @Component({
     selector: 'app-solar',
     templateUrl: './solar.component.html',
@@ -39,7 +37,7 @@ const DEFAULT: FullConfig = {
 })
 export class SolarComponent implements OnInit {
 
-    cfg: FullConfig = { ...DEFAULT };
+    cfg: FullConfig = { ...DEFAULT, arrays: DEFAULT.arrays.map(a => ({ ...a })) };
 
     loading      = false;
     errorMessage: string | null = null;
@@ -67,10 +65,38 @@ export class SolarComponent implements OnInit {
         return (this.efficiency * 100).toFixed(1) + '%';
     }
 
+    get totalWp(): number {
+        return this.cfg.arrays.reduce((s, a) => s + a.panels * a.wp, 0);
+    }
+
     loadConfig() {
         try {
             const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) this.cfg = { ...DEFAULT, ...JSON.parse(stored) };
+            if (stored) {
+                this.cfg = { ...DEFAULT, ...JSON.parse(stored) };
+                return;
+            }
+            // Migrate from old single-array format (solar_config key)
+            const old = localStorage.getItem('solar_config');
+            if (old) {
+                const o = JSON.parse(old);
+                this.cfg = {
+                    ...DEFAULT,
+                    lat:          o.lat          ?? DEFAULT.lat,
+                    lon:          o.lon          ?? DEFAULT.lon,
+                    lossInverter: o.lossInverter ?? DEFAULT.lossInverter,
+                    lossWiring:   o.lossWiring   ?? DEFAULT.lossWiring,
+                    lossSoiling:  o.lossSoiling  ?? DEFAULT.lossSoiling,
+                    lossTemp:     o.lossTemp     ?? DEFAULT.lossTemp,
+                    maxAcW:       o.maxAcW       ?? DEFAULT.maxAcW,
+                    arrays: [{
+                        panels:  o.panels  ?? DEFAULT.arrays[0].panels,
+                        wp:      o.wp      ?? DEFAULT.arrays[0].wp,
+                        tilt:    o.tilt    ?? DEFAULT.arrays[0].tilt,
+                        azimuth: o.azimuth ?? DEFAULT.arrays[0].azimuth,
+                    }],
+                };
+            }
         } catch { /* use defaults */ }
     }
 
@@ -79,8 +105,18 @@ export class SolarComponent implements OnInit {
     }
 
     resetDefaults() {
-        this.cfg = { ...DEFAULT };
+        this.cfg = { ...DEFAULT, arrays: DEFAULT.arrays.map(a => ({ ...a })) };
         this.calculate();
+    }
+
+    addArray() {
+        this.cfg.arrays = [...this.cfg.arrays, { ...DEFAULT_ARRAY }];
+    }
+
+    removeArray(i: number) {
+        if (this.cfg.arrays.length > 1) {
+            this.cfg.arrays = this.cfg.arrays.filter((_, idx) => idx !== i);
+        }
     }
 
     calculate() {
@@ -88,7 +124,13 @@ export class SolarComponent implements OnInit {
         this.loading      = true;
         this.errorMessage = null;
 
-        const apiCfg: SolarConfig = { ...this.cfg, efficiency: this.efficiency, maxAcW: this.cfg.maxAcW };
+        const apiCfg: SolarConfig = {
+            arrays:     this.cfg.arrays,
+            lat:        this.cfg.lat,
+            lon:        this.cfg.lon,
+            efficiency: this.efficiency,
+            maxAcW:     this.cfg.maxAcW,
+        };
 
         this.svc.getTomorrow(apiCfg).subscribe({
             next:  (data) => { this.loading = false; this.build(data); },

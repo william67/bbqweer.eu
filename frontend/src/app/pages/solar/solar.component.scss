@@ -27,6 +27,78 @@
     margin-bottom: 1.5rem;
 }
 
+.arrays-section {
+    margin-bottom: 1.25rem;
+}
+
+.arrays-label {
+    font-size: 0.8rem;
+    color: var(--text-color-secondary);
+    font-weight: 500;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.arrays-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 0.5rem;
+}
+
+.arrays-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+
+    th {
+        text-align: left;
+        padding: 0.4rem 0.5rem;
+        border-bottom: 2px solid var(--surface-border);
+        color: var(--text-color-secondary);
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        white-space: nowrap;
+
+        .th-hint {
+            font-size: 0.65rem;
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+            opacity: 0.75;
+        }
+    }
+
+    td {
+        padding: 0.3rem 0.5rem;
+        border-bottom: 1px solid var(--surface-border);
+        vertical-align: middle;
+    }
+
+    .td-idx {
+        color: var(--text-color-secondary);
+        font-size: 0.8rem;
+        width: 1.5rem;
+        text-align: center;
+    }
+
+    .td-total {
+        font-weight: 600;
+        color: var(--text-color);
+        white-space: nowrap;
+    }
+
+    .td-remove {
+        width: 2rem;
+        text-align: center;
+    }
+
+    ::ng-deep .p-inputnumber {
+        width: 100%;
+        .p-inputtext { width: 100%; min-width: 80px; }
+    }
+}
+
 .config-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

@@ -96,7 +96,7 @@ Uses `docker-compose.yml` only — nginx.conf has SSL, certs at `/opt/bbqweer/ce
 See `docs/deploy-to-hetzner.md` for full deployment guide.
 
 ## Build Timestamp
-- Footer shows `bbqweer.eu v1.0004 — YYYY-MM-DD HH:MM:SS` (version/timestamp in smaller font)
+- Footer shows `bbqweer.eu v1.0005 — YYYY-MM-DD HH:MM:SS` (version/timestamp in smaller font)
 - `environment.production.ts` contains `buildTime: 'BUILD_TIME_PLACEHOLDER'`
 - The build command above injects the real timestamp before `ng build`, then restores the placeholder
 - **Never commit with a real timestamp** — always restore `BUILD_TIME_PLACEHOLDER` after building
@@ -206,11 +206,14 @@ docker compose exec nodejs node createUser.js
 
 ## Solar Page — Key Details
 - Uses Open-Meteo `global_tilted_irradiance` (GTI) — already corrected for tilt + azimuth
-- Formula: `powerW = (GTI / 1000) × totalWp × efficiency`, capped at `maxAcW` (inverter limit)
-- Losses stored as percentages: inverter, wiring, soiling, temperature — combined into efficiency factor
-- Config persisted in `localStorage` under key `solar_config`
-- Inverter clipping: SE5000H = 5000W limit — hours where panels exceed this are capped
+- Supports **multiple panel arrays** — each with its own panels, Wp, tilt, azimuth
+- One Open-Meteo call per array (parallel) — different tilt/azimuth = different GTI profile
+- Formula per array: `powerW = (GTI / 1000) × panels × wp × efficiency`, summed across arrays, capped at `maxAcW`
+- Losses stored as percentages: inverter, wiring, soiling, temperature — combined into single efficiency factor (global, applies to all arrays)
+- Config persisted in `localStorage` under key `solar_config_v2`; migrates automatically from old `solar_config` single-array format
+- Inverter clipping: SE5000H = 5000W limit — applied on combined DC output of all arrays
 - Calibrated against SolarEdge history: real April max ~38 kWh with 16 × 370Wp, SE5000H
+- Azimuth convention: 0=South, -90=East, +90=West (Open-Meteo convention)
 
 ## Environment Files
 - `src/environments/environment.ts` — dev: `apiUrl: 'http://localhost:3000/api'`
@@ -225,6 +228,7 @@ docker compose exec nodejs node createUser.js
 - **Angular budget**: initial bundle is ~1.3MB+ (PrimeNG + AnyChart + Table/Tag/ProgressBar) — budget raised to 2MB warn, this is expected
 - **Windows live reload**: `poll: 1000` in angular.json serve options — without it, file changes may not trigger auto-reload
 - **zone.js is mandatory**: without it, async callbacks (HTTP, geolocation, timers) won't trigger change detection — pages will appear blank until a user click forces a CD cycle
+- **Hetzner deploy order**: always wait for `scp backend` to complete before running `docker compose up -d --build nodejs` — if SCP runs in background and build starts first, the container gets the old files
 
 ## First Steps for New Chat
 1. Read `docs/system-architecture.md` for full stack overview

@@ -275,51 +275,52 @@ router.get('/forecast', async (req, res) => {
 });
 
 // ─── GET /api/solar/tomorrow ─────────────────────────────────────────────────
-// Expected solar panel output for tomorrow using Open-Meteo forecast
-// Open-Meteo handles tilt+azimuth geometry via global_tilted_irradiance
+// Expected solar panel output for tomorrow using Open-Meteo forecast.
+// Supports multiple panel arrays (different tilt/azimuth) via the arrays param.
 //
 // Query params:
-//   lat       - latitude  (default: 52.09 De Bilt)
-//   lon       - longitude (default: 5.18)
-//   tilt      - panel tilt in degrees from horizontal (default: 35)
-//   azimuth   - panel azimuth: 0=south, -90=east, 90=west (default: 0)
-//   panels    - number of panels (default: 1)
-//   wp        - Wp per panel (default: 400)
-//   efficiency - performance ratio incl. inverter + degradation (default: 0.85)
-//   maxAcW    - inverter AC output limit in W (default: 0 = no clipping)
+//   lat        - latitude  (default: 52.09 De Bilt)
+//   lon        - longitude (default: 5.18)
+//   efficiency - combined loss factor (default: 0.85)
+//   maxAcW     - total inverter AC limit in W (default: 0 = no clipping)
+//   arrays     - JSON array of {panels, wp, tilt, azimuth}
 router.get('/tomorrow', async (req, res) => {
     const lat        = parseFloat(req.query.lat)        || 52.09;
     const lon        = parseFloat(req.query.lon)        || 5.18;
-    const tilt       = parseFloat(req.query.tilt)       || 35;
-    const azimuth    = parseFloat(req.query.azimuth)    || 0;
-    const panels     = parseInt(req.query.panels)       || 1;
-    const wp         = parseFloat(req.query.wp)         || 400;
     const efficiency = parseFloat(req.query.efficiency) || 0.85;
     const maxAcW     = parseFloat(req.query.maxAcW)     || 0;
 
-    const totalWp = panels * wp;
+    let arrays;
+    try {
+        arrays = JSON.parse(req.query.arrays || '[]');
+        if (!Array.isArray(arrays) || !arrays.length) throw new Error('empty');
+    } catch {
+        return res.status(400).json({ error: 'arrays param must be a non-empty JSON array' });
+    }
 
     try {
         const url = 'https://api.open-meteo.com/v1/forecast';
-        const { data } = await axios.get(url, {
-            params: {
-                latitude:   lat,
-                longitude:  lon,
-                hourly:     'global_tilted_irradiance,temperature_2m,cloud_cover',
-                tilt,
-                azimuth,
-                forecast_days: 2,
-                timezone:   'Europe/Amsterdam',
-            },
-            timeout: 10000,
-        });
 
-        const times = data.hourly.time;
-        const gti   = data.hourly.global_tilted_irradiance;
-        const temp  = data.hourly.temperature_2m;
-        const cloud = data.hourly.cloud_cover;
+        // One Open-Meteo call per array (different tilt/azimuth) — run in parallel
+        const fetches = await Promise.all(arrays.map(arr =>
+            axios.get(url, {
+                params: {
+                    latitude:      lat,
+                    longitude:     lon,
+                    hourly:        'global_tilted_irradiance,temperature_2m,cloud_cover',
+                    tilt:          arr.tilt,
+                    azimuth:       arr.azimuth,
+                    forecast_days: 2,
+                    timezone:      'Europe/Amsterdam',
+                },
+                timeout: 10000,
+            })
+        ));
 
-        // Filter to tomorrow only
+        const times = fetches[0].data.hourly.time;
+        const temp  = fetches[0].data.hourly.temperature_2m;
+        const cloud = fetches[0].data.hourly.cloud_cover;
+
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         const tomorrowStr = tomorrow.toISOString().slice(0, 10);
@@ -330,28 +331,44 @@ router.get('/tomorrow', async (req, res) => {
         times.forEach((t, i) => {
             if (!t.startsWith(tomorrowStr)) return;
             const hour = parseInt(t.slice(11, 13));
-            // Power (W) = (GTI W/m² / 1000) × totalWp × efficiency, capped at inverter limit
-            let powerW = gti[i] != null ? Math.round((gti[i] / 1000) * totalWp * efficiency) : 0;
-            if (maxAcW > 0 && powerW > maxAcW) powerW = maxAcW;
-            const energyWh = powerW; // 1 hour period → W = Wh
+
+            // Sum DC power across all arrays, then apply single inverter AC cap
+            let combinedW = 0;
+            let gtiSum    = 0;
+            let gtiCount  = 0;
+            fetches.forEach((f, ai) => {
+                const arr    = arrays[ai];
+                const gtiVal = f.data.hourly.global_tilted_irradiance[i];
+                if (gtiVal != null) {
+                    combinedW += Math.round((gtiVal / 1000) * arr.panels * arr.wp * efficiency);
+                    gtiSum    += gtiVal;
+                    gtiCount  += 1;
+                }
+            });
+            if (maxAcW > 0 && combinedW > maxAcW) combinedW = maxAcW;
+
+            const energyWh = combinedW;
             totalWh += energyWh;
             hours.push({
                 hour,
-                gti_wm2:   gti[i] != null   ? Math.round(gti[i])   : null,
-                power_w:   powerW,
+                gti_wm2:   gtiCount > 0 ? Math.round(gtiSum / gtiCount) : null,
+                power_w:   combinedW,
                 energy_wh: energyWh,
-                temp_c:    temp[i]  != null  ? Math.round(temp[i] * 10) / 10  : null,
-                cloud_pct: cloud[i] != null  ? cloud[i] : null,
+                temp_c:    temp[i]  != null ? Math.round(temp[i] * 10) / 10 : null,
+                cloud_pct: cloud[i] != null ? cloud[i] : null,
             });
         });
 
+        const totalWp = arrays.reduce((s, a) => s + a.panels * a.wp, 0);
+
         res.json({
-            date:       tomorrowStr,
-            location:   { lat, lon },
-            panels:     { count: panels, wp_each: wp, total_wp: totalWp, tilt, azimuth, efficiency },
-            total_kwh:  Math.round(totalWh / 100) / 10,
-            total_wh:   totalWh,
-            hourly:     hours,
+            date:      tomorrowStr,
+            location:  { lat, lon },
+            arrays:    arrays.map(a => ({ ...a, total_wp: a.panels * a.wp })),
+            total_wp:  totalWp,
+            total_kwh: Math.round(totalWh / 100) / 10,
+            total_wh:  totalWh,
+            hourly:    hours,
         });
     } catch (err) {
         console.error('[solar/tomorrow]', err);

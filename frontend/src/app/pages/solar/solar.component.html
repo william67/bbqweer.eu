@@ -7,24 +7,62 @@
 
     <!-- Config form -->
     <div class="config-card">
+
+        <!-- Panel arrays table -->
+        <div class="arrays-section">
+            <label class="arrays-label">Paneelarrangementen</label>
+            <div class="arrays-table-wrap">
+                <table class="arrays-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Panelen</th>
+                            <th>Wp/paneel</th>
+                            <th>Helling (°)</th>
+                            <th>Azimut (°)<br><span class="th-hint">0=Zuid, -90=Oost, 90=West</span></th>
+                            <th>Totaal</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr *ngFor="let arr of cfg.arrays; let i = index">
+                            <td class="td-idx">{{ i + 1 }}</td>
+                            <td>
+                                <p-inputNumber [(ngModel)]="arr.panels" [min]="1" [max]="200"
+                                    [showButtons]="true" buttonLayout="horizontal"
+                                    decrementButtonClass="p-button-secondary"
+                                    incrementButtonClass="p-button-secondary"></p-inputNumber>
+                            </td>
+                            <td>
+                                <p-inputNumber [(ngModel)]="arr.wp" [min]="100" [max]="1000"
+                                    suffix=" Wp" [step]="10"></p-inputNumber>
+                            </td>
+                            <td>
+                                <p-inputNumber [(ngModel)]="arr.tilt" [min]="0" [max]="90"
+                                    suffix="°"></p-inputNumber>
+                            </td>
+                            <td>
+                                <p-inputNumber [(ngModel)]="arr.azimuth" [min]="-180" [max]="180"
+                                    suffix="°"></p-inputNumber>
+                            </td>
+                            <td class="td-total">{{ arr.panels * arr.wp | number }} Wp</td>
+                            <td class="td-remove">
+                                <button pButton icon="pi pi-trash"
+                                    class="p-button-rounded p-button-text p-button-danger p-button-sm"
+                                    (click)="removeArray(i)"
+                                    [disabled]="cfg.arrays.length === 1"
+                                    pTooltip="Verwijder array"></button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <button pButton icon="pi pi-plus" label="Array toevoegen"
+                class="p-button-outlined p-button-secondary p-button-sm"
+                (click)="addArray()"></button>
+        </div>
+
         <div class="config-grid">
-            <div class="config-field">
-                <label>Aantal panelen</label>
-                <p-inputNumber [(ngModel)]="cfg.panels" [min]="1" [max]="200" [showButtons]="true" buttonLayout="horizontal"
-                    decrementButtonClass="p-button-secondary" incrementButtonClass="p-button-secondary"></p-inputNumber>
-            </div>
-            <div class="config-field">
-                <label>Wp per paneel</label>
-                <p-inputNumber [(ngModel)]="cfg.wp" [min]="100" [max]="1000" suffix=" Wp" [step]="10"></p-inputNumber>
-            </div>
-            <div class="config-field">
-                <label>Hellingshoek (°)</label>
-                <p-inputNumber [(ngModel)]="cfg.tilt" [min]="0" [max]="90" suffix="°"></p-inputNumber>
-            </div>
-            <div class="config-field">
-                <label>Azimut (0=Zuid, -90=Oost, 90=West)</label>
-                <p-inputNumber [(ngModel)]="cfg.azimuth" [min]="-180" [max]="180" suffix="°"></p-inputNumber>
-            </div>
             <div class="config-field">
                 <label>Verlies omvormer (%)</label>
                 <p-inputNumber [(ngModel)]="cfg.lossInverter" [min]="0" [max]="20" [step]="0.5"
@@ -60,7 +98,7 @@
         <div class="config-actions">
             <button pButton label="Berekenen" icon="pi pi-sun" (click)="calculate()" [loading]="loading"></button>
             <button pButton label="Standaard" icon="pi pi-refresh" class="p-button-outlined p-button-secondary" (click)="resetDefaults()"></button>
-            <span class="config-hint">Totaal: {{ cfg.panels * cfg.wp | number }} Wp &mdash; rendement: {{ efficiencyPct }}</span>
+            <span class="config-hint">Totaal: {{ totalWp | number }} Wp &mdash; rendement: {{ efficiencyPct }}</span>
         </div>
     </div>
 

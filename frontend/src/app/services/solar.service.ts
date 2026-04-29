@@ -3,6 +3,13 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from 'src/environments/environment';
 
+export interface PanelArray {
+    panels:  number;
+    wp:      number;
+    tilt:    number;
+    azimuth: number;
+}
+
 export interface SolarHour {
     hour:      number;
     gti_wm2:   number | null;
@@ -15,17 +22,15 @@ export interface SolarHour {
 export interface SolarTomorrow {
     date:      string;
     location:  { lat: number; lon: number };
-    panels:    { count: number; wp_each: number; total_wp: number; tilt: number; azimuth: number; efficiency: number };
+    arrays:    Array<PanelArray & { total_wp: number }>;
+    total_wp:  number;
     total_kwh: number;
     total_wh:  number;
     hourly:    SolarHour[];
 }
 
 export interface SolarConfig {
-    panels:     number;
-    wp:         number;
-    tilt:       number;
-    azimuth:    number;
+    arrays:     PanelArray[];
     efficiency: number;
     lat:        number;
     lon:        number;
@@ -37,6 +42,13 @@ export class SolarService {
     constructor(private http: HttpClient) {}
 
     getTomorrow(cfg: SolarConfig): Observable<SolarTomorrow> {
-        return this.http.get<SolarTomorrow>(`${environment.apiUrl}/solar/tomorrow`, { params: cfg as any });
+        const params: any = {
+            lat:        cfg.lat,
+            lon:        cfg.lon,
+            efficiency: cfg.efficiency,
+            maxAcW:     cfg.maxAcW,
+            arrays:     JSON.stringify(cfg.arrays),
+        };
+        return this.http.get<SolarTomorrow>(`${environment.apiUrl}/solar/tomorrow`, { params });
     }
 }
