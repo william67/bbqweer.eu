@@ -321,8 +321,14 @@ Open `https://bbqweer.eu` — should load with valid certificate.
 
 ### Backend change
 
+> **IMPORTANT — two rules for backend deploys:**
+> 1. Wait for SCP to complete before running `docker compose up --build` (race condition if SCP runs in background)
+> 2. Never copy `config.local.ini` to the VPS — it overrides `config.ini` and breaks the DB connection
+
 ```powershell
+# Exclude config.local.ini when uploading backend
 scp -r C:/Apps/bbqweer.eu/backend root@<VPS_IP>:/opt/bbqweer/
+ssh root@<VPS_IP> "rm -f /opt/bbqweer/backend/config.local.ini"
 ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose up -d --build nodejs"
 ```
 
@@ -344,6 +350,7 @@ ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose restart nginx"
 
 ```powershell
 scp -r C:/Apps/bbqweer.eu/backend root@<VPS_IP>:/opt/bbqweer/
+ssh root@<VPS_IP> "rm -f /opt/bbqweer/backend/config.local.ini"
 scp -r C:/Apps/bbqweer.eu/frontend/dist/* root@<VPS_IP>:/opt/bbqweer/frontend/dist/
 ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose up -d --build"
 ```
