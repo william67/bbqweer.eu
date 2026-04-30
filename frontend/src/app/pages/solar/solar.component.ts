@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { SolarService, SolarConfig, SolarTomorrow, PanelArray } from 'src/app/services/solar.service';
+import { SolarService, SolarConfig, SolarForecast, SolarDay, PanelArray } from 'src/app/services/solar.service';
 
 const STORAGE_KEY = 'solar_config_v2';
 
@@ -39,13 +39,13 @@ export class SolarComponent implements OnInit {
 
     cfg: FullConfig = { ...DEFAULT, arrays: DEFAULT.arrays.map(a => ({ ...a })) };
 
-    loading      = false;
+    loading           = false;
     errorMessage: string | null = null;
-    result:       SolarTomorrow | null = null;
+    result:       SolarForecast | null = null;
+    selectedDayIndex  = 0;
 
     chartData:    any = null;
     chartOptions: any = null;
-    dateLabel     = '';
 
     constructor(private svc: SolarService) {}
 
@@ -67,6 +67,42 @@ export class SolarComponent implements OnInit {
 
     get totalWp(): number {
         return this.cfg.arrays.reduce((s, a) => s + a.panels * a.wp, 0);
+    }
+
+    get selectedDay(): SolarDay | null {
+        return this.result?.days[this.selectedDayIndex] ?? null;
+    }
+
+    get dateLabel(): string {
+        if (!this.selectedDay) return '';
+        const d = new Date(this.selectedDay.date + 'T12:00:00');
+        return d.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+
+    get peakW(): number {
+        if (!this.selectedDay) return 0;
+        return Math.max(...this.selectedDay.hourly.map(h => h.power_w));
+    }
+
+    get sunHours(): number {
+        if (!this.selectedDay) return 0;
+        return this.selectedDay.hourly.filter(h => h.energy_wh > 0).length;
+    }
+
+    dayTabLabel(i: number): string {
+        if (i === 0) return 'Vandaag';
+        if (i === 1) return 'Morgen';
+        return 'Overmorgen';
+    }
+
+    dayTabDate(dateStr: string): string {
+        const d = new Date(dateStr + 'T12:00:00');
+        return d.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+    }
+
+    selectDay(i: number) {
+        this.selectedDayIndex = i;
+        if (this.result) this.buildChart(this.result.days[i]);
     }
 
     loadConfig() {
@@ -138,20 +174,20 @@ export class SolarComponent implements OnInit {
         });
     }
 
-    private build(data: SolarTomorrow) {
+    private build(data: SolarForecast) {
         this.result = data;
+        this.buildChart(data.days[this.selectedDayIndex]);
+    }
 
-        const d = new Date(data.date + 'T12:00:00');
-        this.dateLabel = d.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
-
-        const activeHours = data.hourly.filter(h => h.energy_wh > 0);
+    private buildChart(day: SolarDay) {
+        const activeHours = day.hourly.filter(h => h.energy_wh > 0);
         const maxWh = activeHours.length ? Math.max(...activeHours.map(h => h.energy_wh)) : 1;
 
         this.chartData = {
-            labels: data.hourly.map(h => `${String(h.hour).padStart(2, '0')}:00`),
+            labels: day.hourly.map(h => `${String(h.hour).padStart(2, '0')}:00`),
             datasets: [{
-                data:            data.hourly.map(h => h.energy_wh),
-                backgroundColor: data.hourly.map(h => this.barColor(h.energy_wh, maxWh)),
+                data:            day.hourly.map(h => h.energy_wh),
+                backgroundColor: day.hourly.map(h => this.barColor(h.energy_wh, maxWh)),
                 borderWidth:     1,
             }]
         };
@@ -164,7 +200,7 @@ export class SolarComponent implements OnInit {
                 tooltip: {
                     callbacks: {
                         label: (ctx: any) => {
-                            const h = data.hourly[ctx.dataIndex];
+                            const h = day.hourly[ctx.dataIndex];
                             const lines = [`${ctx.raw} Wh`];
                             if (h.gti_wm2 != null)   lines.push(`Straling: ${h.gti_wm2} W/m²`);
                             if (h.cloud_pct != null)  lines.push(`Bewolking: ${h.cloud_pct}%`);
@@ -191,16 +227,6 @@ export class SolarComponent implements OnInit {
         if (ratio < 0.6)  return 'rgba(234, 179, 8, 0.75)';
         if (ratio < 0.85) return 'rgba(249, 115, 22, 0.85)';
         return 'rgba(234, 88, 12, 0.95)';
-    }
-
-    get peakW(): number {
-        if (!this.result) return 0;
-        return Math.max(...this.result.hourly.map(h => h.power_w));
-    }
-
-    get sunHours(): number {
-        if (!this.result) return 0;
-        return this.result.hourly.filter(h => h.energy_wh > 0).length;
     }
 
     formatWh(wh: number): string {

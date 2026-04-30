@@ -319,17 +319,21 @@ Open `https://bbqweer.eu` — should load with valid certificate.
 
 ## 13. Deploying updates
 
+> **Backend deploys via git pull — never scp the backend.**
+> The VPS has a git repo at `/opt/bbqweer`. Pushing to GitHub and pulling on the VPS is the correct workflow:
+> secrets (`config.ini`, `.env`) are never in git and stay untouched on the VPS.
+> Frontend `dist/` is not in git — it is still built locally and uploaded via scp.
+
 ### Backend change
 
-> **IMPORTANT — two rules for backend deploys:**
-> 1. Wait for SCP to complete before running `docker compose up --build` (race condition if SCP runs in background)
-> 2. Never copy `config.local.ini` to the VPS — it overrides `config.ini` and breaks the DB connection
-
 ```powershell
-# Exclude config.local.ini when uploading backend
-scp -r C:/Apps/bbqweer.eu/backend root@<VPS_IP>:/opt/bbqweer/
-ssh root@<VPS_IP> "rm -f /opt/bbqweer/backend/config.local.ini"
-ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose up -d --build nodejs"
+# 1. Commit and push locally
+git add backend/
+git commit -m "your message"
+git push
+
+# 2. Pull on VPS and rebuild
+ssh root@<VPS_IP> "cd /opt/bbqweer && git pull && docker compose up -d --build nodejs"
 ```
 
 ### Frontend change
@@ -341,7 +345,7 @@ cd c:/Apps/bbqweer.eu/frontend
 ng build --configuration=production
 node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
 
-# Upload and restart nginx
+# Upload dist and restart nginx
 scp -r C:/Apps/bbqweer.eu/frontend/dist/* root@<VPS_IP>:/opt/bbqweer/frontend/dist/
 ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose restart nginx"
 ```
@@ -349,10 +353,20 @@ ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose restart nginx"
 ### Both changed
 
 ```powershell
-scp -r C:/Apps/bbqweer.eu/backend root@<VPS_IP>:/opt/bbqweer/
-ssh root@<VPS_IP> "rm -f /opt/bbqweer/backend/config.local.ini"
+# 1. Commit and push
+git add backend/ docs/ (other non-frontend files)
+git commit -m "your message"
+git push
+
+# 2. Build frontend
+node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts',ts=new Date().toISOString().replace('T',' ').substring(0,19);fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('BUILD_TIME_PLACEHOLDER',ts));console.log('Stamped:',ts);"
+cd c:/Apps/bbqweer.eu/frontend
+ng build --configuration=production
+node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
+
+# 3. Upload dist and deploy on VPS
 scp -r C:/Apps/bbqweer.eu/frontend/dist/* root@<VPS_IP>:/opt/bbqweer/frontend/dist/
-ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose up -d --build"
+ssh root@<VPS_IP> "cd /opt/bbqweer && git pull && docker compose up -d --build"
 ```
 
 ---

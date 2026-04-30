@@ -141,6 +141,59 @@
     color: var(--text-color-secondary);
 }
 
+.day-tabs {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.day-tab {
+    flex: 1;
+    min-width: 130px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.65rem 1rem;
+    border: 1px solid var(--surface-border);
+    border-radius: 8px;
+    background: var(--surface-card);
+    cursor: pointer;
+    font-family: inherit;
+    transition: border-color 0.15s, background 0.15s;
+
+    &.active {
+        border-color: rgba(249, 115, 22, 0.6);
+        background: rgba(249, 115, 22, 0.08);
+    }
+
+    &:hover:not(.active) {
+        border-color: var(--primary-color);
+        background: var(--surface-hover);
+    }
+
+    .day-tab-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-color-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .day-tab-kwh {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--text-color);
+    }
+
+    .day-tab-date {
+        font-size: 0.75rem;
+        color: var(--text-color-secondary);
+        text-transform: capitalize;
+    }
+}
+
 .loading-state {
     display: flex;
     justify-content: center;

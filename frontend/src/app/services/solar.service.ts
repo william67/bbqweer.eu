@@ -19,14 +19,18 @@ export interface SolarHour {
     cloud_pct: number | null;
 }
 
-export interface SolarTomorrow {
+export interface SolarDay {
     date:      string;
-    location:  { lat: number; lon: number };
-    arrays:    Array<PanelArray & { total_wp: number }>;
-    total_wp:  number;
     total_kwh: number;
     total_wh:  number;
     hourly:    SolarHour[];
+}
+
+export interface SolarForecast {
+    location:  { lat: number; lon: number };
+    arrays:    Array<PanelArray & { total_wp: number }>;
+    total_wp:  number;
+    days:      SolarDay[];
 }
 
 export interface SolarConfig {
@@ -41,7 +45,7 @@ export interface SolarConfig {
 export class SolarService {
     constructor(private http: HttpClient) {}
 
-    getTomorrow(cfg: SolarConfig): Observable<SolarTomorrow> {
+    getTomorrow(cfg: SolarConfig): Observable<SolarForecast> {
         const params: any = {
             lat:        cfg.lat,
             lon:        cfg.lon,
@@ -49,6 +53,6 @@ export class SolarService {
             maxAcW:     cfg.maxAcW,
             arrays:     JSON.stringify(cfg.arrays),
         };
-        return this.http.get<SolarTomorrow>(`${environment.apiUrl}/solar/tomorrow`, { params });
+        return this.http.get<SolarForecast>(`${environment.apiUrl}/solar/tomorrow`, { params });
     }
 }

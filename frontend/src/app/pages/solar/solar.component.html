@@ -2,7 +2,7 @@
 
     <div class="page-header">
         <h2>Zonne-energie voorspelling</h2>
-        <p class="source-info">Bron: Open-Meteo &mdash; verwacht paneelopbrengst morgen</p>
+        <p class="source-info">Bron: Open-Meteo &mdash; 3-daagse paneelopbrengst voorspelling</p>
     </div>
 
     <!-- Config form -->
@@ -113,11 +113,23 @@
     <!-- Results -->
     <ng-container *ngIf="!loading && result">
 
+        <!-- Day selector tabs -->
+        <div class="day-tabs">
+            <button *ngFor="let day of result.days; let i = index"
+                class="day-tab"
+                [class.active]="selectedDayIndex === i"
+                (click)="selectDay(i)">
+                <span class="day-tab-label">{{ dayTabLabel(i) }}</span>
+                <span class="day-tab-kwh">{{ day.total_kwh }} kWh</span>
+                <span class="day-tab-date">{{ dayTabDate(day.date) }}</span>
+            </button>
+        </div>
+
         <!-- Summary cards -->
         <div class="summary-cards">
             <div class="summary-card card-main">
-                <span class="card-label">Verwachte opbrengst morgen</span>
-                <span class="card-value">{{ result.total_kwh }} kWh</span>
+                <span class="card-label">Verwachte opbrengst</span>
+                <span class="card-value">{{ selectedDay?.total_kwh }} kWh</span>
             </div>
             <div class="summary-card">
                 <span class="card-label">Piekopbrengst</span>
@@ -154,7 +166,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr *ngFor="let h of result.hourly" [class.row-active]="h.energy_wh > 0">
+                    <tr *ngFor="let h of selectedDay?.hourly" [class.row-active]="h.energy_wh > 0">
                         <td>{{ h.hour | number:'2.0-0' }}:00</td>
                         <td class="td-wh">{{ formatWh(h.energy_wh) }}</td>
                         <td>{{ h.gti_wm2 != null ? h.gti_wm2 + ' W/m²' : '—' }}</td>

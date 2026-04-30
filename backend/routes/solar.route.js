@@ -275,7 +275,7 @@ router.get('/forecast', async (req, res) => {
 });
 
 // ─── GET /api/solar/tomorrow ─────────────────────────────────────────────────
-// Expected solar panel output for tomorrow using Open-Meteo forecast.
+// Expected solar panel output for today + 2 days using Open-Meteo forecast.
 // Supports multiple panel arrays (different tilt/azimuth) via the arrays param.
 //
 // Query params:
@@ -310,7 +310,7 @@ router.get('/tomorrow', async (req, res) => {
                     hourly:        'global_tilted_irradiance,temperature_2m,cloud_cover',
                     tilt:          arr.tilt,
                     azimuth:       arr.azimuth,
-                    forecast_days: 2,
+                    forecast_days: 4,
                     timezone:      'Europe/Amsterdam',
                 },
                 timeout: 10000,
@@ -321,15 +321,20 @@ router.get('/tomorrow', async (req, res) => {
         const temp  = fetches[0].data.hourly.temperature_2m;
         const cloud = fetches[0].data.hourly.cloud_cover;
 
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+        // Collect today + next 2 days (3 days total)
+        const today = new Date();
+        const dateStrings = [0, 1, 2].map(offset => {
+            const d = new Date(today);
+            d.setDate(d.getDate() + offset);
+            return d.toISOString().slice(0, 10);
+        });
 
-        const hours = [];
-        let totalWh = 0;
+        const dayMap = {};
+        dateStrings.forEach(ds => { dayMap[ds] = { totalWh: 0, hours: [] }; });
 
         times.forEach((t, i) => {
-            if (!t.startsWith(tomorrowStr)) return;
+            const dateStr = t.slice(0, 10);
+            if (!dayMap[dateStr]) return;
             const hour = parseInt(t.slice(11, 13));
 
             // Sum DC power across all arrays, then apply single inverter AC cap
@@ -347,13 +352,12 @@ router.get('/tomorrow', async (req, res) => {
             });
             if (maxAcW > 0 && combinedW > maxAcW) combinedW = maxAcW;
 
-            const energyWh = combinedW;
-            totalWh += energyWh;
-            hours.push({
+            dayMap[dateStr].totalWh += combinedW;
+            dayMap[dateStr].hours.push({
                 hour,
                 gti_wm2:   gtiCount > 0 ? Math.round(gtiSum / gtiCount) : null,
                 power_w:   combinedW,
-                energy_wh: energyWh,
+                energy_wh: combinedW,
                 temp_c:    temp[i]  != null ? Math.round(temp[i] * 10) / 10 : null,
                 cloud_pct: cloud[i] != null ? cloud[i] : null,
             });
@@ -361,14 +365,21 @@ router.get('/tomorrow', async (req, res) => {
 
         const totalWp = arrays.reduce((s, a) => s + a.panels * a.wp, 0);
 
+        const days = dateStrings.map(ds => {
+            const d = dayMap[ds];
+            return {
+                date:      ds,
+                total_wh:  d.totalWh,
+                total_kwh: Math.round(d.totalWh / 100) / 10,
+                hourly:    d.hours,
+            };
+        });
+
         res.json({
-            date:      tomorrowStr,
-            location:  { lat, lon },
-            arrays:    arrays.map(a => ({ ...a, total_wp: a.panels * a.wp })),
-            total_wp:  totalWp,
-            total_kwh: Math.round(totalWh / 100) / 10,
-            total_wh:  totalWh,
-            hourly:    hours,
+            location: { lat, lon },
+            arrays:   arrays.map(a => ({ ...a, total_wp: a.panels * a.wp })),
+            total_wp: totalWp,
+            days,
         });
     } catch (err) {
         console.error('[solar/tomorrow]', err);
