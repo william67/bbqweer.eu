@@ -288,21 +288,27 @@ router.get('/tomorrow', async (req, res) => {
     const lat        = parseFloat(req.query.lat)        || 52.09;
     const lon        = parseFloat(req.query.lon)        || 5.18;
     const efficiency = parseFloat(req.query.efficiency) || 0.85;
-    const maxAcW     = parseFloat(req.query.maxAcW)     || 0;
 
-    let arrays;
+    let inverters;
     try {
-        arrays = JSON.parse(req.query.arrays || '[]');
-        if (!Array.isArray(arrays) || !arrays.length) throw new Error('empty');
+        inverters = JSON.parse(req.query.inverters || '[]');
+        if (!Array.isArray(inverters) || !inverters.length) throw new Error('empty');
+        for (const inv of inverters) {
+            if (!Array.isArray(inv.arrays) || !inv.arrays.length) throw new Error('inverter missing arrays');
+        }
     } catch {
-        return res.status(400).json({ error: 'arrays param must be a non-empty JSON array' });
+        return res.status(400).json({ error: 'inverters param must be a non-empty JSON array, each with arrays' });
     }
 
     try {
         const url = 'https://api.open-meteo.com/v1/forecast';
 
-        // One Open-Meteo call per array (different tilt/azimuth) — run in parallel
-        const fetches = await Promise.all(arrays.map(arr =>
+        // Flatten all arrays across all inverters, keeping inverter index
+        const flatArrays = [];
+        inverters.forEach((inv, ii) => inv.arrays.forEach(arr => flatArrays.push({ ...arr, ii })));
+
+        // One Open-Meteo call per flat array (different tilt/azimuth) — run in parallel
+        const fetches = await Promise.all(flatArrays.map(arr =>
             axios.get(url, {
                 params: {
                     latitude:      lat,
@@ -337,33 +343,38 @@ router.get('/tomorrow', async (req, res) => {
             if (!dayMap[dateStr]) return;
             const hour = parseInt(t.slice(11, 13));
 
-            // Sum DC power across all arrays, then apply single inverter AC cap
-            let combinedW = 0;
-            let gtiSum    = 0;
-            let gtiCount  = 0;
-            fetches.forEach((f, ai) => {
-                const arr    = arrays[ai];
-                const gtiVal = f.data.hourly.global_tilted_irradiance[i];
-                if (gtiVal != null) {
-                    combinedW += Math.round((gtiVal / 1000) * arr.panels * arr.wp * efficiency);
-                    gtiSum    += gtiVal;
-                    gtiCount  += 1;
-                }
-            });
-            if (maxAcW > 0 && combinedW > maxAcW) combinedW = maxAcW;
+            let systemW  = 0;
+            let gtiSum   = 0;
+            let gtiCount = 0;
 
-            dayMap[dateStr].totalWh += combinedW;
+            // Per inverter: sum DC across its arrays, then apply per-inverter AC cap
+            inverters.forEach((inv, ii) => {
+                let invDcW = 0;
+                flatArrays.forEach((fa, fi) => {
+                    if (fa.ii !== ii) return;
+                    const gtiVal = fetches[fi].data.hourly.global_tilted_irradiance[i];
+                    if (gtiVal != null) {
+                        invDcW   += Math.round((gtiVal / 1000) * fa.panels * fa.wp * efficiency);
+                        gtiSum   += gtiVal;
+                        gtiCount += 1;
+                    }
+                });
+                systemW += (inv.maxAcW > 0 && invDcW > inv.maxAcW) ? inv.maxAcW : invDcW;
+            });
+
+            dayMap[dateStr].totalWh += systemW;
             dayMap[dateStr].hours.push({
                 hour,
                 gti_wm2:   gtiCount > 0 ? Math.round(gtiSum / gtiCount) : null,
-                power_w:   combinedW,
-                energy_wh: combinedW,
+                power_w:   systemW,
+                energy_wh: systemW,
                 temp_c:    temp[i]  != null ? Math.round(temp[i] * 10) / 10 : null,
                 cloud_pct: cloud[i] != null ? cloud[i] : null,
             });
         });
 
-        const totalWp = arrays.reduce((s, a) => s + a.panels * a.wp, 0);
+        const totalWp = inverters.reduce((s, inv) =>
+            s + inv.arrays.reduce((as, a) => as + a.panels * a.wp, 0), 0);
 
         const days = dateStrings.map(ds => {
             const d = dayMap[ds];
@@ -377,7 +388,6 @@ router.get('/tomorrow', async (req, res) => {
 
         res.json({
             location: { lat, lon },
-            arrays:   arrays.map(a => ({ ...a, total_wp: a.panels * a.wp })),
             total_wp: totalWp,
             days,
         });

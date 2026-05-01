@@ -1,30 +1,31 @@
 import { Component, OnInit } from '@angular/core';
-import { SolarService, SolarConfig, SolarForecast, SolarDay, PanelArray } from 'src/app/services/solar.service';
+import { SolarService, SolarConfig, SolarForecast, SolarDay, Inverter, InverterType, PanelArray } from 'src/app/services/solar.service';
 
-const STORAGE_KEY = 'solar_config_v2';
+const STORAGE_KEY = 'solar_config_v3';
 
 interface FullConfig {
-    arrays:       PanelArray[];
+    inverters:    Inverter[];
     lat:          number;
     lon:          number;
     lossInverter: number;
     lossWiring:   number;
     lossSoiling:  number;
     lossTemp:     number;
-    maxAcW:       number;
 }
 
 const DEFAULT: FullConfig = {
-    arrays: [
-        { panels: 10, wp: 400, tilt: 35, azimuth: 0 }
-    ],
+    inverters: [{
+        name:   'Omvormer 1',
+        type:   'string',
+        maxAcW: 5000,
+        arrays: [{ panels: 10, wp: 400, tilt: 35, azimuth: 0 }],
+    }],
     lat:          52.09,
     lon:          5.18,
     lossInverter: 3,
     lossWiring:   2,
     lossSoiling:  2,
     lossTemp:     5,
-    maxAcW:       5000,
 };
 
 const DEFAULT_ARRAY: PanelArray = { panels: 6, wp: 400, tilt: 35, azimuth: 0 };
@@ -37,7 +38,7 @@ const DEFAULT_ARRAY: PanelArray = { panels: 6, wp: 400, tilt: 35, azimuth: 0 };
 })
 export class SolarComponent implements OnInit {
 
-    cfg: FullConfig = { ...DEFAULT, arrays: DEFAULT.arrays.map(a => ({ ...a })) };
+    cfg: FullConfig = this.cloneDefault();
 
     loading           = false;
     errorMessage: string | null = null;
@@ -47,12 +48,38 @@ export class SolarComponent implements OnInit {
     chartData:    any = null;
     chartOptions: any = null;
 
+    expandedInverters: Record<number, boolean> = {};
+    lossExpanded = false;
+isInverterExpanded(ii: number): boolean {
+        return this.expandedInverters[ii] ?? false;
+    }
+
+    toggleInverter(ii: number) {
+        this.expandedInverters[ii] = !this.isInverterExpanded(ii);
+    }
+
+    toggleLoss() {
+        this.lossExpanded = !this.lossExpanded;
+    }
+
     constructor(private svc: SolarService) {}
 
     ngOnInit() {
         this.loadConfig();
         this.calculate();
     }
+
+    private cloneDefault(): FullConfig {
+        return {
+            ...DEFAULT,
+            inverters: DEFAULT.inverters.map(inv => ({
+                ...inv,
+                arrays: inv.arrays.map(a => ({ ...a })),
+            })),
+        };
+    }
+
+    // ── getters ────────────────────────────────────────────────────────────────
 
     get efficiency(): number {
         return (1 - this.cfg.lossInverter / 100)
@@ -66,7 +93,13 @@ export class SolarComponent implements OnInit {
     }
 
     get totalWp(): number {
-        return this.cfg.arrays.reduce((s, a) => s + a.panels * a.wp, 0);
+        return this.cfg.inverters.reduce((s, inv) =>
+            s + inv.arrays.reduce((as, a) => as + a.panels * a.wp, 0), 0);
+    }
+
+    get totalPanels(): number {
+        return this.cfg.inverters.reduce((s, inv) =>
+            s + inv.arrays.reduce((as, a) => as + a.panels, 0), 0);
     }
 
     get selectedDay(): SolarDay | null {
@@ -89,6 +122,49 @@ export class SolarComponent implements OnInit {
         return this.selectedDay.hourly.filter(h => h.energy_wh > 0).length;
     }
 
+    // ── inverter helpers ───────────────────────────────────────────────────────
+
+    invTotalWp(ii: number): number {
+        return this.cfg.inverters[ii].arrays.reduce((s, a) => s + a.panels * a.wp, 0);
+    }
+
+    invTotalPanels(ii: number): number {
+        return this.cfg.inverters[ii].arrays.reduce((s, a) => s + a.panels, 0);
+    }
+
+    setInverterType(ii: number, type: InverterType) {
+        this.cfg.inverters[ii].type = type;
+    }
+
+    addInverter() {
+        this.cfg.inverters = [...this.cfg.inverters, {
+            name:   `Omvormer ${this.cfg.inverters.length + 1}`,
+            type:   'string',
+            maxAcW: 5000,
+            arrays: [{ ...DEFAULT_ARRAY }],
+        }];
+    }
+
+    removeInverter(ii: number) {
+        if (this.cfg.inverters.length > 1) {
+            this.cfg.inverters = this.cfg.inverters.filter((_, i) => i !== ii);
+        }
+    }
+
+    addArray(ii: number) {
+        const inv = this.cfg.inverters[ii];
+        inv.arrays = [...inv.arrays, { ...DEFAULT_ARRAY }];
+    }
+
+    removeArray(ii: number, ai: number) {
+        const inv = this.cfg.inverters[ii];
+        if (inv.arrays.length > 1) {
+            inv.arrays = inv.arrays.filter((_, i) => i !== ai);
+        }
+    }
+
+    // ── day tabs ───────────────────────────────────────────────────────────────
+
     dayTabLabel(i: number): string {
         if (i === 0) return 'Vandaag';
         if (i === 1) return 'Morgen';
@@ -105,31 +181,30 @@ export class SolarComponent implements OnInit {
         if (this.result) this.buildChart(this.result.days[i]);
     }
 
+    // ── config persistence ─────────────────────────────────────────────────────
+
     loadConfig() {
         try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) {
-                this.cfg = { ...DEFAULT, ...JSON.parse(stored) };
-                return;
-            }
-            // Migrate from old single-array format (solar_config key)
-            const old = localStorage.getItem('solar_config');
-            if (old) {
-                const o = JSON.parse(old);
+            const v3 = localStorage.getItem(STORAGE_KEY);
+            if (v3) { this.cfg = { ...DEFAULT, ...JSON.parse(v3) }; return; }
+
+            // Migrate from solar_config_v2 (arrays + maxAcW at top level)
+            const v2str = localStorage.getItem('solar_config_v2');
+            if (v2str) {
+                const v2 = JSON.parse(v2str);
                 this.cfg = {
                     ...DEFAULT,
-                    lat:          o.lat          ?? DEFAULT.lat,
-                    lon:          o.lon          ?? DEFAULT.lon,
-                    lossInverter: o.lossInverter ?? DEFAULT.lossInverter,
-                    lossWiring:   o.lossWiring   ?? DEFAULT.lossWiring,
-                    lossSoiling:  o.lossSoiling  ?? DEFAULT.lossSoiling,
-                    lossTemp:     o.lossTemp     ?? DEFAULT.lossTemp,
-                    maxAcW:       o.maxAcW       ?? DEFAULT.maxAcW,
-                    arrays: [{
-                        panels:  o.panels  ?? DEFAULT.arrays[0].panels,
-                        wp:      o.wp      ?? DEFAULT.arrays[0].wp,
-                        tilt:    o.tilt    ?? DEFAULT.arrays[0].tilt,
-                        azimuth: o.azimuth ?? DEFAULT.arrays[0].azimuth,
+                    lat:          v2.lat          ?? DEFAULT.lat,
+                    lon:          v2.lon          ?? DEFAULT.lon,
+                    lossInverter: v2.lossInverter ?? DEFAULT.lossInverter,
+                    lossWiring:   v2.lossWiring   ?? DEFAULT.lossWiring,
+                    lossSoiling:  v2.lossSoiling  ?? DEFAULT.lossSoiling,
+                    lossTemp:     v2.lossTemp     ?? DEFAULT.lossTemp,
+                    inverters: [{
+                        name:   'Omvormer 1',
+                        type:   'string' as InverterType,
+                        maxAcW: v2.maxAcW ?? DEFAULT.inverters[0].maxAcW,
+                        arrays: v2.arrays ?? DEFAULT.inverters[0].arrays,
                     }],
                 };
             }
@@ -141,19 +216,11 @@ export class SolarComponent implements OnInit {
     }
 
     resetDefaults() {
-        this.cfg = { ...DEFAULT, arrays: DEFAULT.arrays.map(a => ({ ...a })) };
+        this.cfg = this.cloneDefault();
         this.calculate();
     }
 
-    addArray() {
-        this.cfg.arrays = [...this.cfg.arrays, { ...DEFAULT_ARRAY }];
-    }
-
-    removeArray(i: number) {
-        if (this.cfg.arrays.length > 1) {
-            this.cfg.arrays = this.cfg.arrays.filter((_, idx) => idx !== i);
-        }
-    }
+    // ── calculate ──────────────────────────────────────────────────────────────
 
     calculate() {
         this.saveConfig();
@@ -161,11 +228,10 @@ export class SolarComponent implements OnInit {
         this.errorMessage = null;
 
         const apiCfg: SolarConfig = {
-            arrays:     this.cfg.arrays,
+            inverters:  this.cfg.inverters,
             lat:        this.cfg.lat,
             lon:        this.cfg.lon,
             efficiency: this.efficiency,
-            maxAcW:     this.cfg.maxAcW,
         };
 
         this.svc.getTomorrow(apiCfg).subscribe({

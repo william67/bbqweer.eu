@@ -3,11 +3,20 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from 'src/environments/environment';
 
+export type InverterType = 'string' | 'micro';
+
 export interface PanelArray {
     panels:  number;
     wp:      number;
     tilt:    number;
     azimuth: number;
+}
+
+export interface Inverter {
+    name:   string;
+    type:   InverterType;
+    maxAcW: number;
+    arrays: PanelArray[];
 }
 
 export interface SolarHour {
@@ -28,17 +37,15 @@ export interface SolarDay {
 
 export interface SolarForecast {
     location:  { lat: number; lon: number };
-    arrays:    Array<PanelArray & { total_wp: number }>;
     total_wp:  number;
     days:      SolarDay[];
 }
 
 export interface SolarConfig {
-    arrays:     PanelArray[];
+    inverters:  Inverter[];
     efficiency: number;
     lat:        number;
     lon:        number;
-    maxAcW:     number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -50,8 +57,7 @@ export class SolarService {
             lat:        cfg.lat,
             lon:        cfg.lon,
             efficiency: cfg.efficiency,
-            maxAcW:     cfg.maxAcW,
-            arrays:     JSON.stringify(cfg.arrays),
+            inverters:  JSON.stringify(cfg.inverters),
         };
         return this.http.get<SolarForecast>(`${environment.apiUrl}/solar/tomorrow`, { params });
     }
