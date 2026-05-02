@@ -324,6 +324,22 @@ Open `https://bbqweer.eu` — should load with valid certificate.
 > secrets (`config.ini`, `.env`) are never in git and stay untouched on the VPS.
 > Frontend `dist/` is not in git — it is still built locally and uploaded via scp.
 
+> **`docker compose restart nodejs` does NOT pick up backend code changes.**
+> The nodejs container is built from a Docker image (baked in). After a `git pull`,
+> you must run `docker compose up -d --build nodejs` to rebuild the image with the new code.
+> `docker compose restart nginx` IS sufficient for frontend-only changes because the frontend
+> dist is bind-mounted into nginx (not baked into the image).
+
+### SSH known_hosts (one-time setup)
+
+If you get a host key prompt when running ssh/scp commands, run this once to add the host permanently:
+
+```powershell
+ssh-keyscan bbqweer.eu >> C:/Users/William/.ssh/known_hosts
+```
+
+After this, ssh/scp to `bbqweer.eu` will never prompt for host key confirmation.
+
 ### Backend change
 
 ```powershell
@@ -332,29 +348,34 @@ git add backend/
 git commit -m "your message"
 git push
 
-# 2. Pull on VPS and rebuild
-ssh root@<VPS_IP> "cd /opt/bbqweer && git pull && docker compose up -d --build nodejs"
+# 2. Pull on VPS and rebuild nodejs image (restart alone is not enough)
+ssh root@bbqweer.eu "cd /opt/bbqweer && git pull && docker compose up -d --build nodejs"
 ```
 
 ### Frontend change
 
 ```powershell
-# Build with timestamp
+# 1. Commit and push
+git add frontend/
+git commit -m "your message"
+git push
+
+# 2. Build with timestamp
 node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts',ts=new Date().toISOString().replace('T',' ').substring(0,19);fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('BUILD_TIME_PLACEHOLDER',ts));console.log('Stamped:',ts);"
 cd c:/Apps/bbqweer.eu/frontend
 ng build --configuration=production
 node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
 
-# Upload dist and restart nginx
-scp -r C:/Apps/bbqweer.eu/frontend/dist/* root@<VPS_IP>:/opt/bbqweer/frontend/dist/
-ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose restart nginx"
+# 3. Upload dist and restart nginx (dist is bind-mounted, restart picks it up)
+scp -r C:/Apps/bbqweer.eu/frontend/dist/frontend/* root@bbqweer.eu:/opt/bbqweer/frontend/dist/frontend/
+ssh root@bbqweer.eu "cd /opt/bbqweer && docker compose restart nginx"
 ```
 
 ### Both changed
 
 ```powershell
 # 1. Commit and push
-git add backend/ docs/ (other non-frontend files)
+git add -A
 git commit -m "your message"
 git push
 
@@ -364,9 +385,11 @@ cd c:/Apps/bbqweer.eu/frontend
 ng build --configuration=production
 node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
 
-# 3. Upload dist and deploy on VPS
-scp -r C:/Apps/bbqweer.eu/frontend/dist/* root@<VPS_IP>:/opt/bbqweer/frontend/dist/
-ssh root@<VPS_IP> "cd /opt/bbqweer && git pull && docker compose up -d --build"
+# 3. Upload dist
+scp -r C:/Apps/bbqweer.eu/frontend/dist/frontend/* root@bbqweer.eu:/opt/bbqweer/frontend/dist/frontend/
+
+# 4. Pull and rebuild on VPS
+ssh root@bbqweer.eu "cd /opt/bbqweer && git pull && docker compose up -d --build nodejs && docker compose restart nginx"
 ```
 
 ---

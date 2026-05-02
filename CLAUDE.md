@@ -255,7 +255,10 @@ angular.json: add `node_modules/leaflet/dist/leaflet.css` to styles array and `"
 - **Angular budget**: initial bundle is ~1.3MB+ (PrimeNG + AnyChart + Table/Tag/ProgressBar) — budget raised to 2MB warn, this is expected
 - **Windows live reload**: `poll: 1000` in angular.json serve options — without it, file changes may not trigger auto-reload
 - **zone.js is mandatory**: without it, async callbacks (HTTP, geolocation, timers) won't trigger change detection — pages will appear blank until a user click forces a CD cycle
-- **Hetzner deploy order**: always wait for `scp backend` to complete before running `docker compose up -d --build nodejs` — if SCP runs in background and build starts first, the container gets the old files
+- **`docker compose restart nodejs` does NOT deploy new backend code** — nodejs is baked into a Docker image, so `restart` just restarts the old image. Always use `docker compose up -d --build nodejs` after a `git pull` to rebuild the image with the new code.
+- **`docker compose restart nginx` IS sufficient for frontend changes** — the frontend dist is bind-mounted into nginx, so a restart picks up the new files immediately.
+- **SSH known_hosts for bbqweer.eu**: run `ssh-keyscan bbqweer.eu >> C:/Users/William/.ssh/known_hosts` once to avoid host key prompts. Without this, automated ssh/scp commands hang waiting for interactive input.
+- **Leaflet default marker icon breaks in production** — Angular's bundler cannot resolve the default icon image paths from node_modules. Fix: add leaflet images as an asset glob in `angular.json` and call `L.Icon.Default.mergeOptions()` with explicit paths. See the Leaflet Map section above.
 
 ## First Steps for New Chat
 1. Read `docs/system-architecture.md` for full stack overview
