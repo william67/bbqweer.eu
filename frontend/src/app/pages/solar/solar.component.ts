@@ -89,6 +89,12 @@ export class SolarComponent implements OnInit, OnDestroy {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
             maxZoom: 19,
         }).addTo(this.map);
+        delete (L.Icon.Default.prototype as any)._getIconUrl;
+        L.Icon.Default.mergeOptions({
+            iconUrl:       'assets/leaflet/marker-icon.png',
+            iconRetinaUrl: 'assets/leaflet/marker-icon-2x.png',
+            shadowUrl:     'assets/leaflet/marker-shadow.png',
+        });
         this.marker = L.marker([this.cfg.lat, this.cfg.lon], { draggable: true }).addTo(this.map);
         this.marker.on('dragend', () => {
             const pos = this.marker!.getLatLng();
