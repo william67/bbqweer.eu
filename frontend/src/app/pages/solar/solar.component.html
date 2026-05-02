@@ -139,6 +139,14 @@
                     </div>
                 </div>
             </div>
+            <div class="location-row" *ngIf="lossExpanded">
+                <button pButton type="button"
+                    [icon]="mapVisible ? 'pi pi-map' : 'pi pi-map-marker'"
+                    [label]="mapVisible ? 'Kaart sluiten' : 'Locatie op kaart'"
+                    class="p-button-outlined p-button-secondary p-button-sm"
+                    (click)="toggleMap()"></button>
+            </div>
+            <div class="location-map" *ngIf="mapVisible" #mapEl></div>
         </div>
 
         <div class="config-actions">

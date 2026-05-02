@@ -45,11 +45,13 @@
             ],
             "styles": [
               "src/styles.scss",
-              "src/assets/layout/scss/preloading.css"
+              "src/assets/layout/scss/preloading.css",
+              "node_modules/leaflet/dist/leaflet.css"
             ],
             "allowedCommonJsDependencies": [
               "file-saver",
-              "crypto-js"
+              "crypto-js",
+              "leaflet"
             ]
           },
           "configurations": {

@@ -206,14 +206,41 @@ docker compose exec nodejs node createUser.js
 
 ## Solar Page — Key Details
 - Uses Open-Meteo `global_tilted_irradiance` (GTI) — already corrected for tilt + azimuth
-- Supports **multiple panel arrays** — each with its own panels, Wp, tilt, azimuth
+- Supports **multiple inverters**, each with multiple panel arrays and its own AC cap (`maxAcW`)
 - One Open-Meteo call per array (parallel) — different tilt/azimuth = different GTI profile
-- Formula per array: `powerW = (GTI / 1000) × panels × wp × efficiency`, summed across arrays, capped at `maxAcW`
+- Formula per array: `powerW = (GTI / 1000) × panels × wp × efficiency`, summed per inverter, capped at `maxAcW`, then summed system total
 - Losses stored as percentages: inverter, wiring, soiling, temperature — combined into single efficiency factor (global, applies to all arrays)
-- Config persisted in `localStorage` under key `solar_config_v2`; migrates automatically from old `solar_config` single-array format
-- Inverter clipping: SE5000H = 5000W limit — applied on combined DC output of all arrays
+- Config persisted in `localStorage` under key `solar_config_v3`; migrates automatically from `solar_config_v2`
+- Inverter clipping: SE5000H = 5000W limit — applied on combined DC output of all arrays per inverter
 - Calibrated against SolarEdge history: real April max ~38 kWh with 16 × 370Wp, SE5000H
 - Azimuth convention: 0=South, -90=East, +90=West (Open-Meteo convention)
+- 3-day forecast with day tab selector (Vandaag / Morgen / Overmorgen)
+- Location picker: Leaflet map inside collapsible "Verliezen & locatie" section
+
+## Leaflet Map — Critical Pattern
+**Always use `@ViewChild` + `setTimeout` to initialize Leaflet — never `getElementById`.**
+
+```typescript
+@ViewChild('mapEl') mapEl!: ElementRef;
+
+toggleMap() {
+    this.mapVisible = !this.mapVisible;
+    if (this.mapVisible) setTimeout(() => this.initMap()); // defer 1 tick
+}
+
+private initMap() {
+    this.map = L.map(this.mapEl.nativeElement, { center: [...], zoom: 11 });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { ... }).addTo(this.map);
+}
+```
+
+**Why**: `getElementById` finds the element before the browser completes its layout pass — Leaflet
+measures the container as wrong/zero size, tiles get sub-pixel offsets → white seam lines between tiles.
+`@ViewChild` with `setTimeout` (even 0ms) defers init to the next event loop tick, after the browser
+has finished layout — container has correct dimensions → tiles position perfectly, no seams.
+
+Template: `<div class="location-map" *ngIf="mapVisible" #mapEl></div>`
+angular.json: add `node_modules/leaflet/dist/leaflet.css` to styles array and `"leaflet"` to allowedCommonJsDependencies.
 
 ## Environment Files
 - `src/environments/environment.ts` — dev: `apiUrl: 'http://localhost:3000/api'`

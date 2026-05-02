@@ -1,4 +1,5 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ElementRef, ViewChild } from '@angular/core';
+import * as L from 'leaflet';
 import { SolarService, SolarConfig, SolarForecast, SolarDay, Inverter, InverterType, PanelArray } from 'src/app/services/solar.service';
 
 const STORAGE_KEY = 'solar_config_v3';
@@ -36,7 +37,9 @@ const DEFAULT_ARRAY: PanelArray = { panels: 6, wp: 400, tilt: 35, azimuth: 0 };
     styleUrls: ['./solar.component.scss'],
     standalone: false
 })
-export class SolarComponent implements OnInit {
+export class SolarComponent implements OnInit, OnDestroy {
+
+    @ViewChild('mapEl') mapEl!: ElementRef;
 
     cfg: FullConfig = this.cloneDefault();
 
@@ -50,7 +53,12 @@ export class SolarComponent implements OnInit {
 
     expandedInverters: Record<number, boolean> = {};
     lossExpanded = false;
-isInverterExpanded(ii: number): boolean {
+    mapVisible   = false;
+
+    private map:    L.Map    | null = null;
+    private marker: L.Marker | null = null;
+
+    isInverterExpanded(ii: number): boolean {
         return this.expandedInverters[ii] ?? false;
     }
 
@@ -61,6 +69,46 @@ isInverterExpanded(ii: number): boolean {
     toggleLoss() {
         this.lossExpanded = !this.lossExpanded;
     }
+
+    toggleMap() {
+        this.mapVisible = !this.mapVisible;
+        if (this.mapVisible) {
+            setTimeout(() => this.initMap());
+        } else {
+            this.destroyMap();
+        }
+    }
+
+    private initMap() {
+        if (!this.mapEl) return;
+        this.map = L.map(this.mapEl.nativeElement, {
+            center: [this.cfg.lat, this.cfg.lon],
+            zoom: 11,
+        });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19,
+        }).addTo(this.map);
+        this.marker = L.marker([this.cfg.lat, this.cfg.lon], { draggable: true }).addTo(this.map);
+        this.marker.on('dragend', () => {
+            const pos = this.marker!.getLatLng();
+            this.cfg.lat = Math.round(pos.lat * 10000) / 10000;
+            this.cfg.lon = Math.round(pos.lng * 10000) / 10000;
+        });
+        this.map.on('click', (e: L.LeafletMouseEvent) => {
+            this.cfg.lat = Math.round(e.latlng.lat * 10000) / 10000;
+            this.cfg.lon = Math.round(e.latlng.lng * 10000) / 10000;
+            this.marker!.setLatLng(e.latlng);
+        });
+    }
+
+    private destroyMap() {
+        this.map?.remove();
+        this.map   = null;
+        this.marker = null;
+    }
+
+    ngOnDestroy() { this.destroyMap(); }
 
     constructor(private svc: SolarService) {}
 
