@@ -13,6 +13,5 @@ frontend/dist/
 # Logs
 *.log
 
-# Local tools and Claude Code workspace
-deploy-hetzner.ps1
+# Claude Code workspace
 .claude/
