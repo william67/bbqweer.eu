@@ -80,9 +80,13 @@
           <div style="display:flex;gap:0.5rem">
             <p-button label="Export" icon="pi pi-upload" severity="help" size="small"
               (onClick)="exportExcel()" [disabled]="!rawRows.length" />
-            <p-button label="Beheer" icon="pi pi-cog" severity="secondary" size="small"
-              (onClick)="adminMenu.toggle($event)" />
-            <p-menu #adminMenu [model]="adminMenuItems" [popup]="true" appendTo="body" />
+            <p-button label="Standaard instellingen" icon="pi pi-sliders-h" severity="secondary" size="small"
+              (onClick)="openSettingsDialog()" />
+            @if (authService.isLoggedIn) {
+              <p-button label="Beheer" icon="pi pi-cog" severity="secondary" size="small"
+                (onClick)="adminMenu.toggle($event)" />
+              <p-menu #adminMenu [model]="adminMenuItems" [popup]="true" appendTo="body" />
+            }
             <input #configFileInput type="file" accept=".json" style="display:none" (change)="onConfigFileSelected($event)" />
           </div>
         </div>
@@ -377,8 +381,8 @@
         <div class="flex flex-column gap-3 pt-2">
           <div class="flex flex-column gap-1">
             <label class="text-sm font-medium">Standaard dataset</label>
-            <p-select [options]="datasets" optionLabel="name" optionValue="id"
-              [(ngModel)]="setupModel.datasetId"
+            <p-select [options]="datasets" optionLabel="name" optionValue="code"
+              [(ngModel)]="setupModel.datasetCode"
               [showClear]="true" placeholder="Kies dataset..."
               appendTo="body" [style]="{'width':'100%'}">
             </p-select>
@@ -437,3 +441,55 @@
     </div>
   </div>
 </div>
+
+<!-- Settings dialog -->
+<p-dialog [(visible)]="settingsDialogVisible" [style]="{width: '420px'}" header="Standaard instellingen" [modal]="true" appendTo="body">
+    <div class="flex flex-column gap-3 pt-2">
+        <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Standaard dataset</label>
+            <p-select [options]="datasets" optionLabel="name" optionValue="code"
+                [(ngModel)]="settingsModel.datasetCode"
+                [showClear]="true" placeholder="Kies dataset..."
+                appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+        </div>
+        <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Standaard tijdsbasis</label>
+            <p-select [options]="timebaseOptions" optionLabel="label" optionValue="value"
+                [(ngModel)]="settingsModel.timebase"
+                [showClear]="true" placeholder="Kies tijdsbasis..."
+                appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+        </div>
+        <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Standaard station</label>
+            <p-select [options]="stations" optionLabel="omschrijving" optionValue="code"
+                [(ngModel)]="settingsModel.station"
+                [showClear]="true" [filter]="true" placeholder="Kies station..."
+                appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+        </div>
+        <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Standaard neerslagstation</label>
+            <p-select [options]="neerslagstations" optionLabel="omschrijving" optionValue="code"
+                [(ngModel)]="settingsModel.neerslagstation"
+                [showClear]="true" [filter]="true" placeholder="Kies neerslagstation..."
+                appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+        </div>
+        <div class="flex flex-column gap-1">
+            <label class="text-sm font-medium">Standaard weergave</label>
+            <p-select [options]="[{label:'Tabel', value:'table'},{label:'AnyChart', value:'anychart'},{label:'Chart.js', value:'chartjs'}]"
+                optionLabel="label" optionValue="value"
+                [(ngModel)]="settingsModel.outputMode"
+                [showClear]="true" placeholder="Kies weergave..."
+                appendTo="body" [style]="{'width':'100%'}">
+            </p-select>
+        </div>
+        <p class="text-xs text-color-secondary m-0">Jaar, maand, dag, week en decade worden automatisch ingesteld op vandaag.</p>
+    </div>
+    <ng-template pTemplate="footer">
+        <p-button label="Annuleren" severity="secondary" [text]="true" (onClick)="settingsDialogVisible = false"></p-button>
+        <p-button label="Opslaan" icon="pi pi-check" (onClick)="saveSettings()"></p-button>
+    </ng-template>
+</p-dialog>

@@ -1,13 +1,9 @@
 import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
-import { Subscription, forkJoin, of } from 'rxjs';
+import { Subscription } from 'rxjs';
 import { MenuItem } from 'primeng/api';
 import { AuthService } from 'src/app/services/auth.service';
-import { KnmiReportsService } from 'src/app/services/knmi-reports.service';
-import { LocalStorageService } from 'src/app/services/local-storage.service';
 import { MessageServiceWrapper } from 'src/app/services/message.service';
 import { ServerTasksComponent } from '../server-tasks/server-tasks.component';
-
-const SETTINGS_KEY = 'knmidata-settings';
 
 @Component({
     selector: 'app-login',
@@ -33,26 +29,8 @@ export class AppLoginComponent implements OnInit, OnDestroy {
     editNewPassword: string = '';
     editConfirmPassword: string = '';
 
-    // Settings
-    settingsDialogVisible: boolean = false;
-    settingsDatasets: any[] = [];
-    settingsStations: any[] = [];
-    settingsNeerslagstations: any[] = [];
-    readonly timebaseOptions = [
-        { value: 'uur',         label: 'Uur' },
-        { value: 'dag',         label: 'Dag' },
-        { value: 'maand',       label: 'Maand' },
-        { value: 'seizoen',     label: 'Seizoen' },
-        { value: 'decade',      label: 'Decade' },
-        { value: 'jaar',        label: 'Jaar' },
-        { value: 'overzicht',   label: 'Overzicht' },
-    ];
-    settingsModel: any = {};
-
     constructor(
         public authService: AuthService,
-        private knmiReports: KnmiReportsService,
-        private localStorage: LocalStorageService,
         private messageService: MessageServiceWrapper
     ) {}
 
@@ -69,7 +47,6 @@ export class AppLoginComponent implements OnInit, OnDestroy {
         if (this.authService.isLoggedIn) {
             this.menuItems = [
                 { label: 'Edit Profile', icon: 'pi pi-user-edit', command: () => this.openEditProfileDialog() },
-                { label: 'Standaard instellingen', icon: 'pi pi-cog', command: () => this.openSettingsDialog() },
                 { label: 'Taakstatus', icon: 'pi pi-server', command: () => this.serverTasksDialog.open() },
                 { separator: true },
                 { label: 'Logout', icon: 'pi pi-power-off', command: () => this.logout() }
@@ -134,27 +111,4 @@ export class AppLoginComponent implements OnInit, OnDestroy {
         });
     }
 
-    // ── Settings ───────────────────────────────────────────────────────────────
-
-    openSettingsDialog() {
-        const stored = this.localStorage.getData(SETTINGS_KEY);
-        this.settingsModel = stored ? JSON.parse(stored) : {};
-
-        const datasets$ = this.settingsDatasets.length ? of(this.settingsDatasets) : this.knmiReports.getDatasets();
-        const stations$ = this.settingsStations.length ? of(this.settingsStations) : this.knmiReports.getStations();
-        const neerslag$ = this.settingsNeerslagstations.length ? of(this.settingsNeerslagstations) : this.knmiReports.getNeerslagStations();
-
-        forkJoin([datasets$, stations$, neerslag$]).subscribe(([d, s, n]) => {
-            this.settingsDatasets = d;
-            this.settingsStations = s;
-            this.settingsNeerslagstations = n;
-            this.settingsDialogVisible = true;
-        });
-    }
-
-    saveSettings() {
-        this.localStorage.saveData(SETTINGS_KEY, JSON.stringify(this.settingsModel));
-        this.settingsDialogVisible = false;
-        this.messageService.showMessage('success', 'Instellingen opgeslagen', '');
-    }
 }

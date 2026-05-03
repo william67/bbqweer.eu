@@ -1,9 +1,11 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { MenuItem } from 'primeng/api';
 import { forkJoin, Observable } from 'rxjs';
+import { AuthService } from 'src/app/services/auth.service';
 import { ExcelExportService } from 'src/app/services/excel-export.service';
 import { KnmiReportsService } from 'src/app/services/knmi-reports.service';
 import { LocalStorageService } from 'src/app/services/local-storage.service';
+import { MessageServiceWrapper } from 'src/app/services/message.service';
 
 const SETTINGS_KEY = 'knmidata-settings';
 
@@ -147,10 +149,16 @@ export class KnmiDataComponent implements OnInit, OnDestroy {
     editDatasetAnychartText = '';
     editDatasetChartjsText  = '';
 
+    // Settings dialog
+    settingsDialogVisible = false;
+    settingsModel: any = {};
+
     constructor(
+        public authService: AuthService,
         private svc: KnmiReportsService,
         private excelExportService: ExcelExportService,
-        private localStorage: LocalStorageService
+        private localStorage: LocalStorageService,
+        private messageService: MessageServiceWrapper
     ) {}
 
     ngOnInit() {
@@ -163,6 +171,20 @@ export class KnmiDataComponent implements OnInit, OnDestroy {
             this.datasets = data;
             this.applyStoredDefaults();
         });
+    }
+
+    // ── Settings ───────────────────────────────────────────────────────────────
+
+    openSettingsDialog() {
+        const stored = this.localStorage.getData(SETTINGS_KEY);
+        this.settingsModel = stored ? JSON.parse(stored) : {};
+        this.settingsDialogVisible = true;
+    }
+
+    saveSettings() {
+        this.localStorage.saveData(SETTINGS_KEY, JSON.stringify(this.settingsModel));
+        this.settingsDialogVisible = false;
+        this.messageService.showMessage('success', 'Instellingen opgeslagen', '');
     }
 
     // ── Derived state ──────────────────────────────────────────────────────────
@@ -812,7 +834,7 @@ export class KnmiDataComponent implements OnInit, OnDestroy {
         const stored = this.localStorage.getData(SETTINGS_KEY);
         const saved  = stored ? JSON.parse(stored) : {};
         this.setupModel = {
-            datasetId:       saved.datasetId       ?? null,
+            datasetCode:     saved.datasetCode     ?? null,
             timebase:        saved.timebase        ?? null,
             outputMode:      saved.outputMode      ?? null,
             station:         saved.station         ?? null,
@@ -822,7 +844,7 @@ export class KnmiDataComponent implements OnInit, OnDestroy {
     }
 
     get setupDatasetTimebases(): { value: string; label: string }[] {
-        const ds = this.datasets.find((d: any) => d.id === this.setupModel?.datasetId);
+        const ds = this.datasets.find((d: any) => d.code === this.setupModel?.datasetCode);
         if (!ds?.timebases?.length) return this.timebaseOptions;
         return ds.timebases.map((t: any) => ({ value: t.timebase, label: this.timebaseLabels[t.timebase] || t.timebase }));
     }
@@ -835,17 +857,18 @@ export class KnmiDataComponent implements OnInit, OnDestroy {
 
     private applyStoredDefaults() {
         this.resetFilterValues();
-        let datasetId: number | null = null;
+        let datasetCode: string | null = null;
         let timebase: string | null = null;
         let outputMode: string | null = null;
         const stored = this.localStorage.getData(SETTINGS_KEY);
         if (stored) {
             try {
-                ({ datasetId, timebase, outputMode } = JSON.parse(stored));
+                ({ datasetCode, timebase, outputMode } = JSON.parse(stored));
             } catch { /* ignore */ }
         }
         if (outputMode) this.outputMode = outputMode as any;
-        const targetId = datasetId ?? this.datasets[0]?.id ?? null;
+        const resolvedDs = datasetCode ? this.datasets.find((d: any) => d.code === datasetCode) : null;
+        const targetId = resolvedDs?.id ?? this.datasets[0]?.id ?? null;
         if (targetId) {
             this.selectedDatasetId = targetId;
             if (timebase) this.selectedTimebase = timebase;
