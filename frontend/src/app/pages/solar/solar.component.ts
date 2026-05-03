@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ElementRef, ViewChild } from '@angular/core';
 import * as L from 'leaflet';
-import { SolarService, SolarConfig, SolarForecast, SolarDay, Inverter, InverterType, PanelArray } from 'src/app/services/solar.service';
+import { SolarService, SolarConfig, SolarForecast, SolarDay, Inverter, InverterType, PanelArray, Station, BacktestResult, BacktestHour } from 'src/app/services/solar.service';
 
 const STORAGE_KEY = 'solar_config_v3';
 
@@ -57,6 +57,19 @@ export class SolarComponent implements OnInit, OnDestroy {
 
     private map:    L.Map    | null = null;
     private marker: L.Marker | null = null;
+
+    // ── backtest ───────────────────────────────────────────────────────────────
+    stationOptions: { label: string; value: number }[] = [];
+    backtestStn         = 260;
+    backtestDate: Date  = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d; })();
+    yesterday: Date     = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d; })();
+    backtestExpanded    = false;
+    backtestLoading     = false;
+    backtestError: string | null  = null;
+    backtestResult:     BacktestResult | null = null;
+    backtestResultDate: Date           | null = null;
+    backtestChartData: any   = null;
+    backtestChartOptions: any = null;
 
     isInverterExpanded(ii: number): boolean {
         return this.expandedInverters[ii] ?? false;
@@ -121,6 +134,7 @@ export class SolarComponent implements OnInit, OnDestroy {
     ngOnInit() {
         this.loadConfig();
         this.calculate();
+        this.loadStations();
     }
 
     private cloneDefault(): FullConfig {
@@ -351,5 +365,133 @@ export class SolarComponent implements OnInit, OnDestroy {
 
     formatWh(wh: number): string {
         return wh >= 1000 ? `${(wh / 1000).toFixed(2)} kWh` : `${wh} Wh`;
+    }
+
+    // ── backtest ───────────────────────────────────────────────────────────────
+
+    private loadStations() {
+        this.svc.getStations().subscribe({
+            next: (stations: Station[]) => {
+                this.stationOptions = stations.map(s => ({
+                    label: `${s.name} (${s.code})`,
+                    value: s.code,
+                }));
+            },
+            error: () => { /* non-critical, backtest still works if stations fail */ }
+        });
+    }
+
+    toggleBacktest() {
+        this.backtestExpanded = !this.backtestExpanded;
+    }
+
+    private localDateToUtcRange(d: Date): { from: string; to: string } {
+        const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const end   = new Date(start.getTime() + 86400000);
+        const fmt   = (dt: Date) => dt.toISOString().slice(0, 19);
+        return { from: fmt(start), to: fmt(end) };
+    }
+
+    runBacktest() {
+        this.backtestLoading     = true;
+        this.backtestError       = null;
+        this.backtestResultDate  = this.backtestDate;
+
+        const cfg: SolarConfig = {
+            inverters:  this.cfg.inverters,
+            efficiency: this.efficiency,
+            lat:        this.cfg.lat,
+            lon:        this.cfg.lon,
+        };
+        const { from, to } = this.localDateToUtcRange(this.backtestDate);
+
+        this.svc.getBacktest(cfg, this.backtestStn, from, to).subscribe({
+            next: (result: BacktestResult) => {
+                this.backtestLoading = false;
+                this.backtestResult  = result;
+                this.buildBacktestChart(result);
+            },
+            error: (err: any) => {
+                this.backtestLoading = false;
+                this.backtestError   = err.message || 'Fout bij ophalen historische data';
+            }
+        });
+    }
+
+    get backtestPeakW(): number {
+        if (!this.backtestResult) return 0;
+        return Math.max(...this.backtestResult.hourly.map(h => h.power_w));
+    }
+
+    get backtestSunHours(): number {
+        if (!this.backtestResult) return 0;
+        return this.backtestResult.hourly.filter(h => h.energy_wh > 0).length;
+    }
+
+    get backtestDateLabel(): string {
+        const d = this.backtestResultDate ?? this.backtestDate;
+        return d.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    get backtestTzLabel(): string {
+        const dt = this.backtestResult?.hourly?.find(h => h.datum_tijd_van)?.datum_tijd_van;
+        if (!dt) return '';
+        const offset = -new Date(dt).getTimezoneOffset();
+        return offset === 120 ? 'CEST (UTC+2)' : offset === 60 ? 'CET (UTC+1)' : `UTC+${offset / 60}`;
+    }
+
+    backtestFmtTime(datumTijdVan: string): string {
+        return new Date(datumTijdVan).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+
+    backtestFmtInterval(van: string, tot: string): string {
+        const fmt = (s: string) => new Date(s).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return `${fmt(van)} – ${fmt(tot)}`;
+    }
+
+    private buildBacktestChart(result: BacktestResult) {
+        const activeHours = result.hourly.filter(h => h.energy_wh > 0);
+        const maxWh = activeHours.length ? Math.max(...activeHours.map(h => h.energy_wh)) : 1;
+
+        this.backtestChartData = {
+            labels: result.hourly.map(h => new Date(h.datum_tijd_van).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', hour12: false })),
+            datasets: [{
+                data:            result.hourly.map(h => h.energy_wh),
+                backgroundColor: result.hourly.map(h => this.barColor(h.energy_wh, maxWh)),
+                borderWidth:     1,
+            }]
+        };
+
+        this.backtestChartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: (items: any[]) => {
+                            const h = result.hourly[items[0].dataIndex] as BacktestHour;
+                            return this.backtestFmtInterval(h.datum_tijd_van, h.datum_tijd_tot);
+                        },
+                        label: (ctx: any) => {
+                            const h = result.hourly[ctx.dataIndex] as BacktestHour;
+                            const lines = [`${ctx.raw} Wh`];
+                            if (h.gti_wm2 != null) lines.push(`GTI: ${h.gti_wm2} W/m²`);
+                            if (h.ghi_wm2 != null) lines.push(`GHI: ${h.ghi_wm2} W/m²`);
+                            if (h.cloud_pct != null) lines.push(`Bewolking: ${h.cloud_pct}%`);
+                            if (h.temp_c   != null) lines.push(`Temp: ${h.temp_c} °C`);
+                            return lines;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    title: { display: true, text: 'Wh' },
+                    ticks: { callback: (v: number) => v >= 1000 ? `${(v/1000).toFixed(1)} kWh` : `${v} Wh` }
+                },
+                x: { grid: { display: false } }
+            }
+        };
     }
 }

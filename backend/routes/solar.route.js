@@ -7,6 +7,101 @@ const mySqlPoolKnmi = require('../helpers/mysqlpool-knmi.helper');
 
 const DEFAULT_STN = 260; // De Bilt
 
+// ─── station coordinates (lat/lon not stored in DB) ──────────────────────────
+const STATION_COORDS = {
+    209: { lat: 52.465, lon: 4.518 }, 210: { lat: 52.178, lon: 4.418 },
+    215: { lat: 52.125, lon: 4.432 }, 225: { lat: 52.463, lon: 4.557 },
+    229: { lat: 53.005, lon: 4.745 }, 235: { lat: 52.928, lon: 4.781 },
+    240: { lat: 52.318, lon: 4.790 }, 242: { lat: 53.241, lon: 4.922 },
+    248: { lat: 52.633, lon: 5.172 }, 249: { lat: 52.643, lon: 5.000 },
+    251: { lat: 53.392, lon: 5.346 }, 257: { lat: 52.505, lon: 4.603 },
+    258: { lat: 52.648, lon: 5.398 }, 260: { lat: 52.101, lon: 5.177 },
+    265: { lat: 52.127, lon: 5.277 }, 267: { lat: 52.880, lon: 5.383 },
+    269: { lat: 52.458, lon: 5.520 }, 270: { lat: 53.228, lon: 5.752 },
+    273: { lat: 52.703, lon: 5.888 }, 275: { lat: 52.057, lon: 5.874 },
+    277: { lat: 53.413, lon: 6.198 }, 278: { lat: 52.437, lon: 6.257 },
+    279: { lat: 52.727, lon: 6.517 }, 280: { lat: 53.125, lon: 6.585 },
+    283: { lat: 52.069, lon: 6.657 }, 285: { lat: 53.572, lon: 6.402 },
+    286: { lat: 53.196, lon: 7.150 }, 290: { lat: 52.274, lon: 6.897 },
+    308: { lat: 51.382, lon: 3.395 }, 310: { lat: 51.443, lon: 3.596 },
+    311: { lat: 51.379, lon: 3.701 }, 312: { lat: 51.768, lon: 3.622 },
+    313: { lat: 51.512, lon: 3.242 }, 315: { lat: 51.444, lon: 4.002 },
+    316: { lat: 51.663, lon: 3.697 }, 319: { lat: 51.229, lon: 3.861 },
+    323: { lat: 51.527, lon: 3.884 }, 324: { lat: 51.594, lon: 4.010 },
+    330: { lat: 51.978, lon: 4.122 }, 331: { lat: 51.516, lon: 4.215 },
+    340: { lat: 51.449, lon: 4.342 }, 343: { lat: 51.887, lon: 4.320 },
+    344: { lat: 51.962, lon: 4.447 }, 348: { lat: 51.971, lon: 4.927 },
+    350: { lat: 51.566, lon: 4.936 }, 356: { lat: 51.860, lon: 5.140 },
+    370: { lat: 51.451, lon: 5.377 }, 375: { lat: 51.655, lon: 5.707 },
+    377: { lat: 51.200, lon: 5.763 }, 380: { lat: 50.906, lon: 5.762 },
+    391: { lat: 51.499, lon: 6.196 },
+};
+
+// ─── solar position + Hay-Davies GTI ─────────────────────────────────────────
+// Decomposes KNMI GHI (Q in J/cm²/hour) into direct + diffuse (Erbs model),
+// then calculates irradiance on a tilted surface (Hay-Davies model).
+// Returns null when the sun is below the horizon.
+function solarHourData(ghiW, lat, lon, year, month, day, hh) {
+    if (ghiW == null || ghiW <= 0) return null;
+    const toRad = d => d * Math.PI / 180;
+    const doy = Math.floor((new Date(year, month - 1, day) - new Date(year, 0, 1)) / 86400000) + 1;
+
+    // Spencer declination (radians)
+    const B = 2 * Math.PI * (doy - 1) / 365;
+    const decl = 0.006918 - 0.399912*Math.cos(B) + 0.070257*Math.sin(B)
+               - 0.006758*Math.cos(2*B) + 0.000907*Math.sin(2*B)
+               - 0.002697*Math.cos(3*B) + 0.001480*Math.sin(3*B);
+
+    // Equation of time (minutes)
+    const EoT = 229.18 * (0.000075 + 0.001868*Math.cos(B) - 0.032077*Math.sin(B)
+              - 0.014615*Math.cos(2*B) - 0.04089*Math.sin(2*B));
+
+    // KNMI HH: hour ending at HH in UTC. Midpoint = HH - 0.5. Convert to solar time.
+    const solarHour = (hh - 0.5) + lon / 15 + EoT / 60;
+    const omega = toRad((solarHour - 12) * 15);
+
+    const latRad = toRad(lat);
+    const sinAlt = Math.sin(latRad)*Math.sin(decl) + Math.cos(latRad)*Math.cos(decl)*Math.cos(omega);
+    const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt)));
+    if (alt <= 0.1745) return null; // < 10°: Erbs overestimates DNI at high air mass
+
+    // Solar azimuth from South (0=South, negative=East, positive=West)
+    const cosAzN = (Math.sin(decl) - Math.sin(alt)*Math.sin(latRad)) / (Math.cos(alt)*Math.cos(latRad));
+    let azN = Math.acos(Math.max(-1, Math.min(1, cosAzN)));
+    if (solarHour > 12) azN = 2*Math.PI - azN;
+    const azS = azN - Math.PI;
+
+    const I0n  = 1367 * (1 + 0.033 * Math.cos(2 * Math.PI * doy / 365));
+    const ktRaw = ghiW / Math.max(I0n * Math.sin(alt), 1);
+    // kt > 1.1: clearly invalid (midpoint angle too low for measured GHI). Skip.
+    if (ktRaw > 1.1) return null;
+    const kt = Math.min(ktRaw, 1.0); // cap borderline overshoot (pyranometer uncertainty)
+
+    // Reindl diffuse fraction model — includes sin(alt), avoids Erbs spike at high kt/low sun
+    let Df;
+    if      (kt <= 0.30) Df = 1.02  - 0.254*kt  + 0.0123*Math.sin(alt);
+    else if (kt <= 0.78) Df = 1.4   - 1.749*kt  + 0.177 *Math.sin(alt);
+    else                 Df = 0.486*kt - 0.182*Math.sin(alt);
+    Df = Math.max(0.1, Math.min(1, Df));
+
+    const DNI = Math.min((ghiW*(1-Df)) / Math.max(Math.sin(alt), 0.01), I0n);
+    return { alt, azS, DNI, DHI: ghiW*Df, I0n, ghiW };
+}
+
+// Hay-Davies irradiance on a tilted panel (W/m²)
+function gtiHayDavies(s, tiltDeg, azimuthDeg) {
+    const betaR  = tiltDeg    * Math.PI / 180;
+    const gammaPR = azimuthDeg * Math.PI / 180;
+    const cosTheta = Math.sin(s.alt)*Math.cos(betaR)
+                   + Math.cos(s.alt)*Math.sin(betaR)*Math.cos(s.azS - gammaPR);
+    const Rb  = Math.max(cosTheta, 0) / Math.max(Math.sin(s.alt), 0.01);
+    const Ai  = s.DNI / Math.max(s.I0n, 1);
+    const gti = s.DNI  * Math.max(cosTheta, 0)
+              + s.DHI  * (Ai * Rb + (1 - Ai) * (1 + Math.cos(betaR)) / 2)
+              + s.ghiW * 0.2 * (1 - Math.cos(betaR)) / 2;
+    return Math.max(0, gti);
+}
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 const toKwhm2  = q  => q  == null ? null : Math.round(q * 10000 / 3600) / 1000;
@@ -393,6 +488,120 @@ router.get('/tomorrow', async (req, res) => {
         });
     } catch (err) {
         console.error('[solar/tomorrow]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── GET /api/solar/stations ─────────────────────────────────────────────────
+// Returns all KNMI stations that have known coordinates (for backtest UI)
+router.get('/stations', async (req, res) => {
+    try {
+        const db = mySqlPoolKnmi.promise();
+        const [rows] = await db.query('SELECT CODE, OMSCHRIJVING FROM stations ORDER BY CODE');
+        const result = rows
+            .filter(r => STATION_COORDS[r.CODE])
+            .map(r => ({
+                code: r.CODE,
+                name: r.OMSCHRIJVING,
+                lat:  STATION_COORDS[r.CODE].lat,
+                lon:  STATION_COORDS[r.CODE].lon,
+            }));
+        res.json(result);
+    } catch (err) {
+        console.error('[solar/stations]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── GET /api/solar/backtest ──────────────────────────────────────────────────
+// Historical panel output for a UTC time range using KNMI uurgeg radiation data.
+// Query: ?stn=260&from=2025-05-11T22:00:00&to=2025-05-12T22:00:00&inverters=[...]&efficiency=0.85
+router.get('/backtest', async (req, res) => {
+    const from       = req.query.from;
+    const to         = req.query.to;
+    const stn        = parseInt(req.query.stn) || DEFAULT_STN;
+    const efficiency = parseFloat(req.query.efficiency) || 0.85;
+
+    if (!from || !to) return res.status(400).json({ error: 'from and to required (ISO UTC, e.g. 2025-05-11T22:00:00)' });
+
+    const coords = STATION_COORDS[stn];
+    if (!coords) return res.status(400).json({ error: 'Unknown station: ' + stn });
+
+    let inverters;
+    try {
+        inverters = JSON.parse(req.query.inverters || '[]');
+        if (!Array.isArray(inverters) || !inverters.length) throw new Error('empty');
+        for (const inv of inverters) {
+            if (!Array.isArray(inv.arrays) || !inv.arrays.length) throw new Error('inverter missing arrays');
+        }
+    } catch {
+        return res.status(400).json({ error: 'inverters param must be a non-empty JSON array, each with arrays' });
+    }
+
+    try {
+        const db = mySqlPoolKnmi.promise();
+        const [rows] = await db.query(
+            `SELECT DATE_FORMAT(DATUM_TIJD_VAN, '%Y-%m-%dT%H:%i:%sZ') AS datum_tijd_van,
+                    DATE_FORMAT(DATUM_TIJD_TOT, '%Y-%m-%dT%H:%i:%sZ') AS datum_tijd_tot,
+                    JAAR AS jaar, MAAND AS maand, DAG AS dag, UUR AS hh,
+                    Q, N AS cloud_octants, T/10.0 AS temp_c
+             FROM uurgeg
+             WHERE STATION = ? AND DATUM_TIJD_VAN >= ? AND DATUM_TIJD_VAN < ?
+             ORDER BY DATUM_TIJD_VAN`,
+            [stn, from, to]
+        );
+
+        if (!rows.length) return res.status(404).json({ error: 'No hourly data for this range at station ' + stn });
+
+        let totalWh = 0;
+        const hourly = rows.map(row => {
+            const ghiW  = row.Q != null ? row.Q * 10000 / 3600 : 0;
+            const solar = solarHourData(ghiW, coords.lat, coords.lon, row.jaar, row.maand, row.dag, row.hh);
+
+            let systemW  = 0;
+            let gtiSum   = 0;
+            let gtiCount = 0;
+
+            if (solar) {
+                inverters.forEach(inv => {
+                    let invDcW = 0;
+                    inv.arrays.forEach(arr => {
+                        const gti = gtiHayDavies(solar, arr.tilt, arr.azimuth);
+                        invDcW   += Math.round((gti / 1000) * arr.panels * arr.wp * efficiency);
+                        gtiSum   += gti;
+                        gtiCount += 1;
+                    });
+                    systemW += (inv.maxAcW > 0 && invDcW > inv.maxAcW) ? inv.maxAcW : invDcW;
+                });
+            }
+
+            totalWh += systemW;
+            return {
+                datum_tijd_van: row.datum_tijd_van,
+                datum_tijd_tot: row.datum_tijd_tot,
+                gti_wm2:    gtiCount > 0 ? Math.round(gtiSum / gtiCount) : null,
+                ghi_wm2:    Math.round(ghiW),
+                q_jcm2:     row.Q != null ? Math.round(row.Q * 10) / 10 : null,
+                power_w:    systemW,
+                energy_wh:  systemW,
+                temp_c:     row.temp_c        != null ? Math.round(row.temp_c * 10) / 10 : null,
+                cloud_pct:  row.cloud_octants != null && row.cloud_octants !== 9
+                    ? Math.round(row.cloud_octants / 8 * 100) : null,
+            };
+        });
+
+        res.json({
+            from,
+            to,
+            stn,
+            station_lat: coords.lat,
+            station_lon: coords.lon,
+            total_wh:    totalWh,
+            total_kwh:   Math.round(totalWh / 100) / 10,
+            hourly,
+        });
+    } catch (err) {
+        console.error('[solar/backtest]', err);
         res.status(500).json({ error: err.message });
     }
 });

@@ -10,10 +10,10 @@ process.on('uncaughtException', (err) => {
 
 const fullSync = process.argv.includes('--full');
 
-const syncKnmiDataV3 = require('./tasks/knmidata-v3');
+const syncKnmiDataV4 = require('./tasks/knmidata-v4');
 
 console.log(`[callSyncKnmi] Starting KNMI sync (fullSync=${fullSync})...`);
 
-syncKnmiDataV3(fullSync)
+syncKnmiDataV4(fullSync)
     .then(() => { console.log('[callSyncKnmi] Done.'); process.exit(0); })
     .catch(err => { console.error('[callSyncKnmi] Error:', err); process.exit(1); });

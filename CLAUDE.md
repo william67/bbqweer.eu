@@ -30,7 +30,7 @@ C:\Apps\bbqweer.eu\
 │   ├── routes/             — knmi-reports, stars, satellites, auth, users, energy-prices, solar
 │   ├── helpers/            — mysqlpool-knmi.helper.js, server-tasks.js
 │   ├── tasks/              — knmidata-v4.js, satellites-sync.js, energy-prices-sync.js
-│   ├── callSyncKnmi.js     — manual sync trigger
+│   ├── callSyncKnmi.js     — manual sync trigger (uses knmidata-v4)
 │   ├── createUser.js       — one-off admin user creation script
 │   └── importReports.js    — import JSON configs into categories/datasets/reports_new
 ├── database/
@@ -46,6 +46,7 @@ C:\Apps\bbqweer.eu\
 │   │   └── 09-datafiles-http-lastmod.sql — http_lastmod column for datafiles
 │   ├── knmi reports/       — JSON export files per dataset (versioned, import via UI)
 │   ├── fix-procedures.sql  — one-time fix: lowercase table names in stored procedures
+│   ├── migrate-uurgeg-datum-tijd.sql — one-time: rename DATUM_TIJD → DATUM_TIJD_VAN, add DATUM_TIJD_TOT (run on live DB)
 │   └── knmi_stars.sql      — HYG star catalogue (87,475 rows)
 ├── docs/                   — Documentation
 │   ├── system-architecture.md
@@ -54,6 +55,7 @@ C:\Apps\bbqweer.eu\
 │   ├── dev-workflow.md
 │   └── knmi-config-export-import.md
 ├── nginx/nginx.conf        — static files + /api/* proxy to nodejs:3000
+├── deploy-hetzner.ps1      — automated deploy script (build + upload + VPS git pull + health check)
 ├── .env                    — MySQL root + app passwords — NOT in git
 ├── .gitignore
 └── docker-compose.yml
@@ -94,6 +96,17 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --no-buil
 ### Hetzner VPS (Stage 3 — HTTPS)
 Uses `docker-compose.yml` only — nginx.conf has SSL, certs at `/opt/bbqweer/certbot_certs`.
 See `docs/deploy-to-hetzner.md` for full deployment guide.
+
+**Automated deploy** (requires clean working tree):
+```powershell
+.\deploy-hetzner.ps1   # build + scp dist + git pull + rebuild nodejs + restart nginx + health check
+```
+
+**MySQL Workbench via SSH tunnel:**
+```powershell
+ssh -L 3307:127.0.0.1:3307 root@65.109.129.96   # keep open while working
+# then connect Workbench to 127.0.0.1:3307 as bbqweer_user
+```
 
 ## Build Timestamp
 - Footer shows `bbqweer.eu v1.0005 — YYYY-MM-DD HH:MM:SS` (version/timestamp in smaller font)
@@ -141,6 +154,7 @@ MYSQL_PASSWORD=...
 - **No FK constraints** on etmgeg/uurgeg/neerslaggeg → stations. Intentional — KNMI data contains historical station codes with no station record.
 - **Stored procedures**: `UpdateHistory()` chains 6 sub-procedures. All use lowercase table names (fixed directly in `01-schema.sql`).
 - **Views**: 30+ `v_*` views defined in `01-schema.sql`. Sync reads from `v_etmgeg`, `v_uurgeg`, `v_neerslaggeg`.
+- **uurgeg schema**: `DATUM_TIJD` was split into `DATUM_TIJD_VAN` (hour start, UTC) and `DATUM_TIJD_TOT` (hour end, UTC). Run `migrate-uurgeg-datum-tijd.sql` on any existing DB that still has the old column. New installs get the correct schema from `01-schema.sql`.
 
 ## Background Tasks
 
@@ -201,7 +215,7 @@ docker compose exec nodejs node createUser.js
 - Weersverwachting (`/knmidata/forecast`) — 3-day hourly forecast via Open-Meteo
 - Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions
 - Energie (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart
-- Zonne-energie (`/solar`) — solar panel output forecast for tomorrow via Open-Meteo GTI
+- Zonne-energie (`/solar`) — solar panel output forecast (3-day) via Open-Meteo GTI + historical backtest via KNMI uurgeg radiation data
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
 
 ## Solar Page — Key Details
@@ -250,7 +264,7 @@ angular.json: add `node_modules/leaflet/dist/leaflet.css` to styles array and `"
 
 ## Known Issues / Gotchas
 - **MySQL case sensitivity**: table names in stored procedures and task SQL must be lowercase (Linux Docker default)
-- **MaxListeners warning** in knmidata-v3: mitigated with `httpsAgent: maxSockets: 5` on axios instance
+- **knmidata-v4 `HTTP_LAST_MODIFIED`**: updated after both successful processing and date-unchanged skips — ensures `If-Modified-Since` stays current so future syncs 304 correctly. `maxSockets: 5` on axios to avoid throttling by KNMI server.
 - **config.local.ini vs config.ini**: pool helper auto-selects — never manually edit config.ini for local dev
 - **Angular budget**: initial bundle is ~1.3MB+ (PrimeNG + AnyChart + Table/Tag/ProgressBar) — budget raised to 2MB warn, this is expected
 - **Windows live reload**: `poll: 1000` in angular.json serve options — without it, file changes may not trigger auto-reload

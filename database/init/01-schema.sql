@@ -656,7 +656,8 @@ CREATE TABLE `uurgeg` (
   `DAG` tinyint NOT NULL,
   `DATUM` date NOT NULL,
   `UUR` tinyint NOT NULL,
-  `DATUM_TIJD` datetime NOT NULL,
+  `DATUM_TIJD_VAN` datetime NOT NULL,
+  `DATUM_TIJD_TOT` datetime NOT NULL,
   `DD` decimal(12,2) DEFAULT NULL,
   `FH` decimal(12,2) DEFAULT NULL,
   `FF` decimal(12,2) DEFAULT NULL,
@@ -2446,7 +2447,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`%` SQL SECURITY DEFINER */
-/*!50001 VIEW `v_knmidata_main_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD` AS `datum_tijd`,`ug`.`T` AS `t`,`ug`.`TD` AS `td`,`ug`.`FH` AS `fh`,`ug`.`P` AS `p`,`ug`.`SQ` AS `sq`,`ug`.`RH` AS `rh`,`ug`.`U` AS `u` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
+/*!50001 VIEW `v_knmidata_main_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD_VAN` AS `datum_tijd_van`,`ug`.`DATUM_TIJD_TOT` AS `datum_tijd_tot`,`ug`.`T` AS `t`,`ug`.`TD` AS `td`,`ug`.`FH` AS `fh`,`ug`.`P` AS `p`,`ug`.`SQ` AS `sq`,`ug`.`RH` AS `rh`,`ug`.`U` AS `u` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -2572,7 +2573,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`%` SQL SECURITY DEFINER */
-/*!50001 VIEW `v_knmidata_pres_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD` AS `datum_tijd`,`ug`.`P` AS `p` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
+/*!50001 VIEW `v_knmidata_pres_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD_VAN` AS `datum_tijd_van`,`ug`.`DATUM_TIJD_TOT` AS `datum_tijd_tot`,`ug`.`P` AS `p` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -2680,7 +2681,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`%` SQL SECURITY DEFINER */
-/*!50001 VIEW `v_knmidata_rain_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD` AS `datum_tijd`,`ug`.`RH` AS `rh`,`ug`.`DR` AS `dr` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
+/*!50001 VIEW `v_knmidata_rain_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD_VAN` AS `datum_tijd_van`,`ug`.`DATUM_TIJD_TOT` AS `datum_tijd_tot`,`ug`.`RH` AS `rh`,`ug`.`DR` AS `dr` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -2788,7 +2789,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`%` SQL SECURITY DEFINER */
-/*!50001 VIEW `v_knmidata_sun_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD` AS `datum_tijd`,`ug`.`SQ` AS `sq`,`ug`.`Q` AS `q` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
+/*!50001 VIEW `v_knmidata_sun_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD_VAN` AS `datum_tijd_van`,`ug`.`DATUM_TIJD_TOT` AS `datum_tijd_tot`,`ug`.`SQ` AS `sq`,`ug`.`Q` AS `q` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -2896,7 +2897,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`%` SQL SECURITY DEFINER */
-/*!50001 VIEW `v_knmidata_temp_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD` AS `datum_tijd`,`ug`.`T` AS `t`,`ug`.`T10` AS `t10`,`ug`.`TD` AS `td`,`ug`.`U` AS `u` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
+/*!50001 VIEW `v_knmidata_temp_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD_VAN` AS `datum_tijd_van`,`ug`.`DATUM_TIJD_TOT` AS `datum_tijd_tot`,`ug`.`T` AS `t`,`ug`.`T10` AS `t10`,`ug`.`TD` AS `td`,`ug`.`U` AS `u` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -2968,7 +2969,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`%` SQL SECURITY DEFINER */
-/*!50001 VIEW `v_knmidata_wind_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD` AS `datum_tijd`,`ug`.`FH` AS `fh`,`ug`.`FF` AS `ff`,`ug`.`FX` AS `fx` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
+/*!50001 VIEW `v_knmidata_wind_hourly` AS select `ug`.`STATION` AS `stationsCode`,`st`.`OMSCHRIJVING` AS `station`,`ug`.`JAAR` AS `jaar`,`ug`.`MAAND` AS `maand`,`ug`.`DECADE` AS `decade`,`ug`.`DAG` AS `dag`,`ug`.`UUR` AS `uur`,`ug`.`DATUM_TIJD_VAN` AS `datum_tijd_van`,`ug`.`DATUM_TIJD_TOT` AS `datum_tijd_tot`,`ug`.`FH` AS `fh`,`ug`.`FF` AS `ff`,`ug`.`FX` AS `fx` from (`uurgeg` `ug` join `stations` `st` on((`st`.`CODE` = `ug`.`STATION`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;

@@ -82,7 +82,8 @@ These fields are **not in the KNMI CSV** — they are computed from JAAR, MAAND,
 | Field | Computed as |
 |-------|-------------|
 | `DATUM` | `YYYY-MM-DD` formatted date string |
-| `DATUM_TIJD` | `YYYY-MM-DD HH:00:00` (UURGEG only; UUR-1 because KNMI uses end-of-hour) |
+| `DATUM_TIJD_VAN` | `YYYY-MM-DD HH:00:00` UTC — start of interval (UURGEG only; UUR-1 because KNMI HH is end-of-hour) |
+| `DATUM_TIJD_TOT` | `DATUM_TIJD_VAN` + 1 hour — end of interval (UURGEG only) |
 | `DECENNIUM` | `CEIL(JAAR / 10) * 10` (ETMGEG only) |
 | `WEEK` | ISO week number |
 | `JAAR_WEEK` | Year that owns the ISO week |

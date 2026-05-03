@@ -416,6 +416,14 @@
     }
 }
 
+.tz-note {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--text-color-secondary);
+    text-transform: none;
+    margin-left: 0.25rem;
+}
+
 .chart-wrap {
     height: 280px;
 
@@ -427,6 +435,18 @@
 .hour-table-wrap {
     overflow-x: auto;
     margin-bottom: 2rem;
+}
+
+.backtest-controls {
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+
+    ::ng-deep .p-select     { width: 240px; }
+    ::ng-deep .p-datepicker input { width: 130px; }
 }
 
 .hour-table {
@@ -449,6 +469,11 @@
         padding: 0.4rem 0.75rem;
         border-bottom: 1px solid var(--surface-border);
         color: var(--text-color-secondary);
+    }
+
+    .td-interval {
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
     }
 
     .td-wh {

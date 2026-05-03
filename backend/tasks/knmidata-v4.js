@@ -211,7 +211,7 @@ const UURGEG_NAMES = [
 
 const UURGEG_INSERT = `
     INSERT INTO uurgeg
-    (STATION,JAAR,MAAND,DAG,UUR,DATUM,DATUM_TIJD,WEEK,JAAR_WEEK,SEIZOEN,JAAR_SEIZOEN,WINTER,DECADE,
+    (STATION,JAAR,MAAND,DAG,UUR,DATUM,DATUM_TIJD_VAN,DATUM_TIJD_TOT,WEEK,JAAR_WEEK,SEIZOEN,JAAR_SEIZOEN,WINTER,DECADE,
      DD,FH,FF,FX,T,T10,TD,SQ,Q,DR,RH,P,VV,N,U,WW,IX,M,R,S,O,Y)
     VALUES ?`;
 
@@ -240,7 +240,9 @@ function parseUurgegRows(csvText) {
         const dag      = parseInt(yyyymmdd.slice(6, 8), 10);
         const uur      = parseInt(csv[2], 10);
         const { week, jaarWeek, seizoen, jaarSeizoen, winter, decade, datum } = getDerived(jaar, maand, dag);
-        const datumTijd = `${datum} ${String(uur - 1).padStart(2, '0')}:00:00`;
+        const vanMs         = Date.UTC(jaar, maand - 1, dag, uur - 1);
+        const datumTijdVan  = new Date(vanMs).toISOString().slice(0, 19).replace('T', ' ');
+        const datumTijdTot  = new Date(vanMs + 3600000).toISOString().slice(0, 19).replace('T', ' ');
 
         const dataVals = [
             parseNum(csv[3]),    parseDiv10(csv[4]),  parseDiv10(csv[5]),  parseDiv10(csv[6]),
@@ -256,7 +258,7 @@ function parseUurgegRows(csvText) {
             keyVals:   [station, jaar, maand, dag, uur],
             dataNames: UURGEG_NAMES,
             dataVals,
-            insertRow: [station, jaar, maand, dag, uur, datum, datumTijd, week, jaarWeek, seizoen, jaarSeizoen, winter, decade, ...dataVals],
+            insertRow: [station, jaar, maand, dag, uur, datum, datumTijdVan, datumTijdTot, week, jaarWeek, seizoen, jaarSeizoen, winter, decade, ...dataVals],
         });
     }
     return rows;
@@ -336,6 +338,7 @@ async function processFile(fileRow, fullSync = false) {
 
     let zipBuffer;
     let downloadedBytes = 0;
+    let httpLastMod = null;
     try {
         const headers = {};
         if (!fullSync && fileRow.HTTP_LAST_MODIFIED) {
@@ -354,10 +357,7 @@ async function processFile(fileRow, fullSync = false) {
         }
         zipBuffer = Buffer.from(response.data);
         downloadedBytes = zipBuffer.length;
-        const httpLastMod = response.headers['last-modified'];
-        if (httpLastMod) {
-            await db.execute('UPDATE datafiles SET HTTP_LAST_MODIFIED=? WHERE FILENAME=?', [httpLastMod, filename]);
-        }
+        httpLastMod = response.headers['last-modified'] || null;
     } catch (e) {
         await logMsg(`ERROR downloading ${filename}: ${e.message}`);
         await taskError('knmidata-sync');
@@ -388,6 +388,7 @@ async function processFile(fileRow, fullSync = false) {
 
     if (!fullSync && storedDateStr !== null && entryDateStr !== null && storedDateStr === entryDateStr) {
         console.log(`[knmidata-v4] SKIP ${filename} (date unchanged: ${entryDateStr})`);
+        if (httpLastMod) await db.execute('UPDATE datafiles SET HTTP_LAST_MODIFIED=? WHERE FILENAME=?', [httpLastMod, filename]);
         return { error: false, bytes: downloadedBytes };
     }
 
@@ -410,8 +411,8 @@ async function processFile(fileRow, fullSync = false) {
 
     const total = counts.inserted + counts.updated + counts.unchanged;
     await db.execute(
-        'UPDATE datafiles SET FILEDATE=?, DATE_LAST_IMPORT=NOW(), LINECOUNT=?, RECORDS=? WHERE FILENAME=?',
-        [entryDateStr, lineCount, total, filename]
+        'UPDATE datafiles SET FILEDATE=?, DATE_LAST_IMPORT=NOW(), LINECOUNT=?, RECORDS=?, HTTP_LAST_MODIFIED=COALESCE(?, HTTP_LAST_MODIFIED) WHERE FILENAME=?',
+        [entryDateStr, lineCount, total, httpLastMod, filename]
     );
 
     await logMsg(`${filename} -> inserted=${counts.inserted} updated=${counts.updated} unchanged=${counts.unchanged}`);

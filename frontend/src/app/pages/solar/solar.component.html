@@ -156,6 +156,96 @@
         </div>
     </div>
 
+    <!-- Backtest section -->
+    <div class="config-card">
+        <div class="loss-header" (click)="toggleBacktest()">
+            <i class="pi" [class.pi-chevron-right]="!backtestExpanded" [class.pi-chevron-down]="backtestExpanded"></i>
+            <span>Historische backtest</span>
+            <span class="loss-summary">Bereken opbrengst op een historische datum met KNMI-data</span>
+        </div>
+
+        <ng-container *ngIf="backtestExpanded">
+            <div class="backtest-controls">
+                <div class="config-field">
+                    <label>Station</label>
+                    <p-select [options]="stationOptions" [(ngModel)]="backtestStn"
+                        [filter]="true" filterBy="label"
+                        placeholder="Kies station"
+                        optionLabel="label" optionValue="value"></p-select>
+                </div>
+                <div class="config-field">
+                    <label>Datum</label>
+                    <p-datepicker [(ngModel)]="backtestDate" dateFormat="dd-mm-yy"
+                        [maxDate]="yesterday" [showIcon]="true"
+                        [readonlyInput]="true"></p-datepicker>
+                </div>
+                <button pButton label="Berekenen" icon="pi pi-history"
+                    (click)="runBacktest()" [loading]="backtestLoading"></button>
+            </div>
+
+            <div class="loading-state" *ngIf="backtestLoading">
+                <p-progressSpinner></p-progressSpinner>
+            </div>
+
+            <p-message *ngIf="backtestError" severity="error" [text]="backtestError" styleClass="mb-4"></p-message>
+
+            <ng-container *ngIf="backtestResult && !backtestLoading">
+                <div class="summary-cards" style="margin-top: 1.25rem">
+                    <div class="summary-card card-main">
+                        <span class="card-label">Opbrengst</span>
+                        <span class="card-value">{{ backtestResult.total_kwh }} kWh</span>
+                    </div>
+                    <div class="summary-card">
+                        <span class="card-label">Piekopbrengst</span>
+                        <span class="card-value">{{ backtestPeakW | number }} W</span>
+                    </div>
+                    <div class="summary-card">
+                        <span class="card-label">Zonuren</span>
+                        <span class="card-value">{{ backtestSunHours }} uur</span>
+                    </div>
+                    <div class="summary-card">
+                        <span class="card-label">Datum</span>
+                        <span class="card-value card-date">{{ backtestDateLabel }}</span>
+                    </div>
+                </div>
+
+                <div class="chart-section">
+                    <h3>Uurlijkse opbrengst &mdash; {{ backtestDateLabel }} <span class="tz-note">{{ backtestTzLabel }}</span></h3>
+                    <div class="chart-wrap">
+                        <p-chart type="bar" [data]="backtestChartData" [options]="backtestChartOptions"></p-chart>
+                    </div>
+                </div>
+
+                <div class="hour-table-wrap">
+                    <table class="hour-table">
+                        <thead>
+                            <tr>
+                                <th>Interval</th>
+                                <th>Opbrengst</th>
+                                <th>GTI W/m²</th>
+                                <th>GHI W/m²</th>
+                                <th>Q J/cm²</th>
+                                <th>Bewolking</th>
+                                <th>Temp</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr *ngFor="let h of backtestResult.hourly" [class.row-active]="h.energy_wh > 0">
+                                <td class="td-interval">{{ backtestFmtInterval(h.datum_tijd_van, h.datum_tijd_tot) }}</td>
+                                <td class="td-wh">{{ formatWh(h.energy_wh) }}</td>
+                                <td>{{ h.gti_wm2 != null ? h.gti_wm2 + ' W/m²' : '&mdash;' }}</td>
+                                <td>{{ h.ghi_wm2 != null ? h.ghi_wm2 + ' W/m²' : '&mdash;' }}</td>
+                                <td>{{ h.q_jcm2 != null ? h.q_jcm2 + ' J/cm²' : '&mdash;' }}</td>
+                                <td>{{ h.cloud_pct != null ? h.cloud_pct + '%' : '&mdash;' }}</td>
+                                <td>{{ h.temp_c != null ? h.temp_c + ' &deg;C' : '&mdash;' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </ng-container>
+        </ng-container>
+    </div>
+
     <!-- Loading -->
     <div class="loading-state" *ngIf="loading">
         <p-progressSpinner></p-progressSpinner>
