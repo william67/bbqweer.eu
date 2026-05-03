@@ -17,6 +17,12 @@
 .temp-min   { color: var(--text-color-secondary); }
 .day-precip { font-size: 0.78rem; color: #3b82f6; }
 
+.location-map {
+    height: 300px;
+    border-radius: 8px;
+    border: 1px solid var(--surface-border);
+}
+
 .temp-badge {
     display: inline-block;
     padding: 1px 6px;

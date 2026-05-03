@@ -6,7 +6,8 @@ const BASE = 'https://api.open-meteo.com/v1/forecast';
 
 const PARAMS = [
     'temperature_2m', 'precipitation', 'windspeed_10m', 'winddirection_10m',
-    'weathercode', 'cloudcover', 'relativehumidity_2m', 'pressure_msl', 'snowfall'
+    'weathercode', 'cloud_cover', 'relativehumidity_2m', 'pressure_msl', 'snowfall',
+    'global_tilted_irradiance'
 ].join(',');
 
 @Injectable({ providedIn: 'root' })
@@ -19,7 +20,9 @@ export class ForecastService {
             longitude:     lon,
             hourly:        PARAMS,
             models:        'knmi_seamless',
-            forecast_days: 3,
+            forecast_days: 10,
+            tilt:          0,
+            azimuth:       0,
             timezone:      'Europe/Amsterdam'
         }});
     }

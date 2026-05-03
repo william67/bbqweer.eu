@@ -4,15 +4,16 @@
 
       <!-- Header -->
       <div class="flex align-items-center justify-content-between mb-3">
-        <h5 class="m-0">Weersverwachting (3 dagen)</h5>
-        <p-select [options]="locations" optionLabel="label"
-          [(ngModel)]="selectedLocation" (onChange)="onLocationChange()"
-          [style]="{'width':'180px'}">
-        </p-select>
+        <h5 class="m-0">Weersverwachting (10 dagen)</h5>
+        <div class="flex gap-2 align-items-center">
+          <span class="text-color-secondary" style="font-size:0.9rem">{{ selectedLocation.label }}</span>
+          <p-button label="Locatie op kaart" icon="pi pi-map-marker" severity="secondary" size="small"
+            (onClick)="openMapDialog()" />
+        </div>
       </div>
 
       @if (errorMessage) {
-        <p-message severity="error" styleClass="mb-3">{{ errorMessage }}</p-message>
+        <p-message severity="error" class="mb-3">{{ errorMessage }}</p-message>
       }
 
       @if (loading) {
@@ -46,11 +47,13 @@
               <th style="width:70px">Tijd</th>
               <th style="width:60px">Weer</th>
               <th style="width:90px">Temp (°C)</th>
-              <th style="width:80px">Neerslag (mm)</th>
-              <th style="width:100px">Wind (km/h)</th>
-              <th style="width:80px">Bewolking (%)</th>
               <th style="width:80px">Vochtigheid (%)</th>
               <th style="width:90px">Druk (hPa)</th>
+              <th style="width:100px">Wind (km/h)</th>
+              <th style="width:80px">Neerslag (mm)</th>
+              <th style="width:80px">Sneeuw (cm)</th>
+              <th style="width:80px">Bewolking (%)</th>
+              <th style="width:90px">Straling (W/m²)</th>
             </tr>
           </ng-template>
           <ng-template pTemplate="body" let-row>
@@ -64,13 +67,19 @@
                   {{ row.temp | number:'1.1-1' }}°
                 </span>
               </td>
+              <td>{{ row.humidity }}</td>
+              <td>{{ row.pressure | number:'1.0-0' }}</td>
+              <td>{{ row.wind | number:'1.0-0' }} {{ windDirLabel(row.windDir) }}</td>
               <td [style.color]="row.precip > 0 ? '#3b82f6' : ''">
                 {{ row.precip > 0 ? (row.precip | number:'1.1-1') : '—' }}
               </td>
-              <td>{{ row.wind | number:'1.0-0' }} {{ windDirLabel(row.windDir) }}</td>
+              <td [style.color]="row.snow > 0 ? '#93c5fd' : ''">
+                {{ row.snow > 0 ? (row.snow | number:'1.1-1') : '—' }}
+              </td>
               <td>{{ row.clouds }}</td>
-              <td>{{ row.humidity }}</td>
-              <td>{{ row.pressure | number:'1.0-0' }}</td>
+              <td [style.color]="row.radiation > 0 ? '#f59e0b' : ''">
+                {{ row.radiation > 0 ? row.radiation : '—' }}
+              </td>
             </tr>
           </ng-template>
         </p-table>
@@ -86,3 +95,22 @@
     </div>
   </div>
 </div>
+
+<!-- Location map dialog -->
+<p-dialog header="Locatie kiezen" [(visible)]="mapDialogVisible" [modal]="true"
+  [style]="{'width':'600px'}" (onShow)="onMapDialogShow()" (onHide)="onMapDialogHide()">
+
+  <div #mapEl class="location-map"></div>
+  <div style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-color-secondary)">
+    Klik op de kaart om een locatie te kiezen.
+    @if (pendingLocation.label) {
+      <span style="margin-left:0.5rem;font-weight:600">{{ pendingLocation.label }}</span>
+    }
+  </div>
+
+  <ng-template pTemplate="footer">
+    <p-button label="Annuleren" icon="pi pi-times" severity="secondary" (onClick)="cancelMap()" />
+    <p-button label="Opslaan" icon="pi pi-check" [loading]="savingLocation" (onClick)="saveLocation()" />
+  </ng-template>
+
+</p-dialog>

@@ -212,7 +212,7 @@ docker compose exec nodejs node createUser.js
 
 ## Pages / Nav
 - KNMI Data (`/knmidata`) — weather data charts + admin (Beheer menu); chart-type buttons show text labels (Tabel/AnyChart/Chart.js) with active state highlighted
-- Weersverwachting (`/knmidata/forecast`) — 3-day hourly forecast via Open-Meteo
+- Weersverwachting (`/knmidata/forecast`) — 10-day hourly forecast via Open-Meteo (KNMI Seamless model); columns: temp, humidity, pressure, wind, rain, snow, cloud cover, radiation (GTI); location picked via Leaflet map dialog (saved in `localStorage` key `forecast_location`); Nominatim reverse geocoding resolves city name on save
 - Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions
 - Energie (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart
 - Zonne-energie (`/solar`) — solar panel output forecast (3-day) via Open-Meteo GTI + historical backtest via KNMI uurgeg radiation data
@@ -234,26 +234,41 @@ docker compose exec nodejs node createUser.js
 ## Leaflet Map — Critical Pattern
 **Always use `@ViewChild` + `setTimeout` to initialize Leaflet — never `getElementById`.**
 
+**Icon fix and `mergeOptions` go at module level (top of file, after imports) — not inside `initMap()`.**
+
 ```typescript
+import * as L from 'leaflet';
+
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconUrl:       'assets/leaflet/marker-icon.png',
+    iconRetinaUrl: 'assets/leaflet/marker-icon-2x.png',
+    shadowUrl:     'assets/leaflet/marker-shadow.png',
+});
+
+// inside the component:
 @ViewChild('mapEl') mapEl!: ElementRef;
 
 toggleMap() {
     this.mapVisible = !this.mapVisible;
     if (this.mapVisible) setTimeout(() => this.initMap()); // defer 1 tick
+    else this.destroyMap();
 }
 
 private initMap() {
+    if (this.map) return;
     this.map = L.map(this.mapEl.nativeElement, { center: [...], zoom: 11 });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { ... }).addTo(this.map);
 }
 ```
 
-**Why**: `getElementById` finds the element before the browser completes its layout pass — Leaflet
-measures the container as wrong/zero size, tiles get sub-pixel offsets → white seam lines between tiles.
-`@ViewChild` with `setTimeout` (even 0ms) defers init to the next event loop tick, after the browser
-has finished layout — container has correct dimensions → tiles position perfectly, no seams.
+**Why `@ViewChild` + `setTimeout`**: `getElementById` finds the element before the browser completes its layout pass — Leaflet measures the container as wrong/zero size, tiles get sub-pixel offsets → white seam lines between tiles. `setTimeout` (even 0ms) defers init to the next event loop tick, after the browser has finished layout.
 
-Template: `<div class="location-map" *ngIf="mapVisible" #mapEl></div>`
+**Why module level for icon fix**: `delete _getIconUrl` must run once before any marker is created. Module level is cleaner and ensures it runs exactly once regardless of how many times the map is toggled.
+
+**No NgZone needed** — zone.js patches native DOM `addEventListener`, so Leaflet click events naturally run inside Angular's zone.
+
+Template: `<div class="location-map mb-3" #mapEl></div>` (use `@if (mapVisible)` wrapper)
 angular.json: add `node_modules/leaflet/dist/leaflet.css` to styles array and `"leaflet"` to allowedCommonJsDependencies.
 
 ## Environment Files
@@ -272,7 +287,7 @@ angular.json: add `node_modules/leaflet/dist/leaflet.css` to styles array and `"
 - **`docker compose restart nodejs` does NOT deploy new backend code** — nodejs is baked into a Docker image, so `restart` just restarts the old image. Always use `docker compose up -d --build nodejs` after a `git pull` to rebuild the image with the new code.
 - **`docker compose restart nginx` IS sufficient for frontend changes** — the frontend dist is bind-mounted into nginx, so a restart picks up the new files immediately.
 - **SSH known_hosts for bbqweer.eu**: run `ssh-keyscan bbqweer.eu >> C:/Users/William/.ssh/known_hosts` once to avoid host key prompts. Without this, automated ssh/scp commands hang waiting for interactive input.
-- **Leaflet default marker icon breaks in production** — Angular's bundler cannot resolve the default icon image paths from node_modules. Fix: add leaflet images as an asset glob in `angular.json` and call `L.Icon.Default.mergeOptions()` with explicit paths. See the Leaflet Map section above.
+- **Leaflet default marker icon breaks in production** — Angular's bundler cannot resolve the default icon image paths from node_modules. Fix: `delete (L.Icon.Default.prototype as any)._getIconUrl` + `L.Icon.Default.mergeOptions()` at module level (top of component file). See the Leaflet Map section above.
 
 ## First Steps for New Chat
 1. Read `docs/system-architecture.md` for full stack overview

@@ -1,5 +1,15 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import * as L from 'leaflet';
+import { HttpClient } from '@angular/common/http';
 import { ForecastService } from 'src/app/services/forecast.service';
+import { LocalStorageService } from 'src/app/services/local-storage.service';
+
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconUrl:       'assets/leaflet/marker-icon.png',
+    iconRetinaUrl: 'assets/leaflet/marker-icon-2x.png',
+    shadowUrl:     'assets/leaflet/marker-shadow.png',
+});
 
 const WMO_LABELS: Record<number, string> = {
     0: 'Helder', 1: 'Overwegend helder', 2: 'Deels bewolkt', 3: 'Bewolkt',
@@ -36,15 +46,16 @@ export const LOCATIONS = [
     { label: 'Den Helder',   lat: 52.96, lon: 4.76  },
 ];
 
+const FORECAST_LOCATION_KEY = 'forecast_location';
+
 @Component({
     selector: 'app-forecast',
     templateUrl: './forecast.component.html',
     styleUrls: ['./forecast.component.css'],
     standalone: false
 })
-export class ForecastComponent implements OnInit {
+export class ForecastComponent implements OnInit, OnDestroy {
 
-    locations = LOCATIONS;
     selectedLocation = LOCATIONS[0];
 
     loading  = false;
@@ -54,10 +65,29 @@ export class ForecastComponent implements OnInit {
     days:  any[] = [];
     selectedDay: string | null = null;
 
-    constructor(private svc: ForecastService) {}
+    mapDialogVisible = false;
+    pendingLocation  = { ...LOCATIONS[0] };
+    savingLocation   = false;
+    private map: L.Map | null = null;
+    private marker: L.Marker | null = null;
+    @ViewChild('mapEl') mapEl!: ElementRef;
+
+    constructor(private svc: ForecastService, private localStorage: LocalStorageService, private http: HttpClient) {}
 
     ngOnInit() {
+        const stored = this.localStorage.getData(FORECAST_LOCATION_KEY);
+        if (stored) {
+            try {
+                const loc = JSON.parse(stored);
+                const preset = LOCATIONS.find(l => l.lat === loc.lat && l.lon === loc.lon);
+                this.selectedLocation = preset ?? loc;
+            } catch {}
+        }
         this.load();
+    }
+
+    ngOnDestroy() {
+        this.destroyMap();
     }
 
     load() {
@@ -69,8 +99,72 @@ export class ForecastComponent implements OnInit {
         });
     }
 
-    onLocationChange() {
+    openMapDialog() {
+        this.pendingLocation = { ...this.selectedLocation };
+        this.mapDialogVisible = true;
+    }
+
+    onMapDialogShow() {
+        setTimeout(() => this.initMap());
+    }
+
+    onMapDialogHide() {
+        this.destroyMap();
+    }
+
+    saveLocation() {
+        this.savingLocation = true;
+        const { lat, lon } = this.pendingLocation;
+        this.http.get<any>(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=nl`
+        ).subscribe({
+            next: (data) => {
+                const addr = data.address;
+                const label = addr.city || addr.town || addr.village || addr.municipality || addr.hamlet || `${lat}, ${lon}`;
+                this.applyLocation({ label, lat, lon });
+            },
+            error: () => this.applyLocation({ label: `${lat}, ${lon}`, lat, lon })
+        });
+    }
+
+    private applyLocation(loc: { label: string; lat: number; lon: number }) {
+        this.selectedLocation = loc;
+        this.localStorage.saveData(FORECAST_LOCATION_KEY, JSON.stringify(loc));
+        this.savingLocation    = false;
+        this.mapDialogVisible  = false;
         this.load();
+    }
+
+    cancelMap() {
+        this.mapDialogVisible = false;
+    }
+
+    private initMap() {
+        if (this.map) return;
+        this.map = L.map(this.mapEl.nativeElement, {
+            center: [this.pendingLocation.lat, this.pendingLocation.lon],
+            zoom: 8
+        });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(this.map);
+        this.marker = L.marker([this.pendingLocation.lat, this.pendingLocation.lon], { draggable: true }).addTo(this.map);
+        this.marker.on('dragend', () => {
+            const pos = this.marker!.getLatLng();
+            const lat = Math.round(pos.lat * 1000) / 1000;
+            const lon = Math.round(pos.lng * 1000) / 1000;
+            this.pendingLocation = { ...this.pendingLocation, lat, lon };
+        });
+        this.map.on('click', (e: L.LeafletMouseEvent) => {
+            const lat = Math.round(e.latlng.lat * 1000) / 1000;
+            const lon = Math.round(e.latlng.lng * 1000) / 1000;
+            this.pendingLocation = { ...this.pendingLocation, lat, lon };
+            this.marker!.setLatLng([lat, lon]);
+        });
+    }
+
+    private destroyMap() {
+        if (this.map) { this.map.remove(); this.map = null; this.marker = null; }
     }
 
     private processData(data: any) {
@@ -86,13 +180,13 @@ export class ForecastComponent implements OnInit {
             wmo:        h.weathercode[i],
             wmoLabel:   WMO_LABELS[h.weathercode[i]] ?? String(h.weathercode[i]),
             wmoIcon:    WMO_ICON[h.weathercode[i]] ?? '❓',
-            clouds:     h.cloudcover[i],
+            clouds:     h.cloud_cover[i],
+            radiation:  Math.round(h.global_tilted_irradiance[i]),
             humidity:   h.relativehumidity_2m[i],
             pressure:   h.pressure_msl[i],
             snow:       h.snowfall[i],
         }));
 
-        // Build daily summaries
         const byDay: Record<string, any[]> = {};
         for (const row of this.hours) {
             if (!byDay[row.date]) byDay[row.date] = [];
