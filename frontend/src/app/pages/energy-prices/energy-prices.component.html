@@ -5,62 +5,86 @@
         <p class="source-info">Bron: energyzero.nl &mdash; stroomprijs incl. btw (€/kWh)</p>
     </div>
 
-    <div class="loading-state" *ngIf="loading">
-        <p-progressSpinner></p-progressSpinner>
+    <!-- Date navigation -->
+    <div class="date-nav">
+        <p-button icon="pi pi-chevron-left" severity="secondary" size="small" variant="text" (onClick)="prevDay()" />
+        <p-datepicker [(ngModel)]="selectedDate" dateFormat="dd-mm-yy"
+            [showIcon]="true" (onSelect)="onDateSelect()"
+            [inputStyle]="{'width':'130px'}" />
+        <p-button icon="pi pi-chevron-right" severity="secondary" size="small" variant="text" (onClick)="nextDay()" />
+        <p-button label="Vandaag" severity="secondary" size="small" [outlined]="!isToday" (onClick)="goToday()" />
     </div>
 
-    <p-message *ngIf="errorMessage" severity="error" [text]="errorMessage" styleClass="mb-4"></p-message>
+    @if (loading) {
+        <div class="loading-state">
+            <p-progressSpinner></p-progressSpinner>
+        </div>
+    }
 
-    <ng-container *ngIf="!loading && !errorMessage">
+    @if (errorMessage) {
+        <p-message severity="error" [text]="errorMessage" class="mb-4"></p-message>
+    }
+
+    @if (!loading && !errorMessage) {
 
         <!-- Summary cards -->
-        <div class="summary-cards" *ngIf="currentPrice !== null || avgToday !== null">
-            <div class="summary-card">
-                <span class="card-label">Nu</span>
-                <span class="card-value">{{ formatEur(currentPrice) }}</span>
+        @if (avgDay !== null) {
+            <div class="summary-cards">
+                @if (currentPrice !== null) {
+                    <div class="summary-card">
+                        <span class="card-label">Nu</span>
+                        <span class="card-value">{{ formatEur(currentPrice) }}</span>
+                    </div>
+                }
+                <div class="summary-card">
+                    <span class="card-label">Gemiddeld</span>
+                    <span class="card-value">{{ formatEur(avgDay) }}</span>
+                </div>
+                <div class="summary-card">
+                    <span class="card-label">Laagste</span>
+                    <span class="card-value card-low">{{ formatEur(minDay) }}</span>
+                </div>
+                <div class="summary-card">
+                    <span class="card-label">Hoogste</span>
+                    <span class="card-value card-high">{{ formatEur(maxDay) }}</span>
+                </div>
             </div>
-            <div class="summary-card">
-                <span class="card-label">Gemiddeld vandaag</span>
-                <span class="card-value">{{ formatEur(avgToday) }}</span>
-            </div>
-            <div class="summary-card">
-                <span class="card-label">Laagste</span>
-                <span class="card-value card-low">{{ formatEur(minToday) }}</span>
-            </div>
-            <div class="summary-card">
-                <span class="card-label">Hoogste</span>
-                <span class="card-value card-high">{{ formatEur(maxToday) }}</span>
-            </div>
-        </div>
+        }
 
-        <!-- Today -->
+        <!-- Selected day -->
         <div class="chart-section">
-            <h3>Vandaag &mdash; {{ todayLabel }}</h3>
-            <div class="chart-wrap" *ngIf="todayData; else noToday">
-                <p-chart type="bar" [data]="todayData" [options]="chartOptions"></p-chart>
-            </div>
-            <ng-template #noToday>
-                <p class="no-data">Geen prijzen beschikbaar voor vandaag. Start de sync via Taakstatus.</p>
-            </ng-template>
+            <h3>{{ dayLabel }}</h3>
+            @if (dayData) {
+                <div class="chart-wrap">
+                    <p-chart type="bar" [data]="dayData" [options]="chartOptions"></p-chart>
+                </div>
+            } @else {
+                <p class="no-data">Geen prijzen beschikbaar voor deze dag.</p>
+            }
         </div>
 
-        <!-- Tomorrow -->
-        <div class="chart-section" *ngIf="tomorrowAvailable; else noTomorrow">
-            <h3>Morgen &mdash; {{ tomorrowLabel }}</h3>
-            <div class="chart-wrap">
-                <p-chart type="bar" [data]="tomorrowData" [options]="chartOptions"></p-chart>
+        <!-- Next day -->
+        @if (nextDayAvailable) {
+            <div class="chart-section">
+                <h3>{{ nextDayLabel }}</h3>
+                <div class="chart-wrap">
+                    <p-chart type="bar" [data]="nextDayData" [options]="chartOptions"></p-chart>
+                </div>
             </div>
-        </div>
-        <ng-template #noTomorrow>
+        } @else {
             <div class="chart-section no-tomorrow">
-                <h3>Morgen &mdash; {{ tomorrowLabel }}</h3>
-                <p>Prijzen voor morgen worden gepubliceerd rond 14:00.</p>
-                <button pButton label="Vernieuwen" icon="pi pi-refresh" class="p-button-sm p-button-outlined" (click)="load()"></button>
+                <h3>{{ nextDayLabel }}</h3>
+                @if (isToday) {
+                    <p>Prijzen voor morgen worden gepubliceerd rond 14:00.</p>
+                    <p-button label="Vernieuwen" icon="pi pi-refresh" severity="secondary" size="small" [outlined]="true" (onClick)="load()" />
+                } @else {
+                    <p>Geen prijzen beschikbaar.</p>
+                }
             </div>
-        </ng-template>
+        }
 
         <p class="updated-info">Bijgewerkt om {{ updatedAt }}</p>
 
-    </ng-container>
+    }
 
 </div>

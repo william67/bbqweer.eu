@@ -14,7 +14,8 @@ export interface PriceRow {
 export class EnergyPricesService {
     constructor(private http: HttpClient) {}
 
-    getPrices(): Observable<PriceRow[]> {
-        return this.http.get<PriceRow[]>(`${environment.apiUrl}/energie/prices`);
+    getPrices(date?: string): Observable<PriceRow[]> {
+        const options = date ? { params: { date } } : {};
+        return this.http.get<PriceRow[]>(`${environment.apiUrl}/energie/prices`, options);
     }
 }

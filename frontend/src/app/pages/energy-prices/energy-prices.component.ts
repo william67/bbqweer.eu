@@ -12,19 +12,22 @@ export class EnergyPricesComponent implements OnInit {
     loading       = false;
     errorMessage: string | null = null;
 
-    todayLabel    = '';
-    tomorrowLabel = '';
+    selectedDate  = new Date();
+    isToday       = true;
 
-    todayData:     any = null;
-    tomorrowData:  any = null;
-    chartOptions:  any = null;
+    dayLabel      = '';
+    nextDayLabel  = '';
 
-    tomorrowAvailable = false;
+    dayData:         any = null;
+    nextDayData:     any = null;
+    chartOptions:    any = null;
+
+    nextDayAvailable = false;
 
     currentPrice:  number | null = null;
-    avgToday:      number | null = null;
-    minToday:      number | null = null;
-    maxToday:      number | null = null;
+    avgDay:        number | null = null;
+    minDay:        number | null = null;
+    maxDay:        number | null = null;
     updatedAt:     string = '';
 
     constructor(private svc: EnergyPricesService) {}
@@ -36,20 +39,41 @@ export class EnergyPricesComponent implements OnInit {
     load() {
         this.loading      = true;
         this.errorMessage = null;
-        this.svc.getPrices().subscribe({
+        this.isToday      = this.localDateStr(this.selectedDate) === this.localDateStr(new Date());
+        const date        = this.isToday ? undefined : this.localDateStr(this.selectedDate);
+        this.svc.getPrices(date).subscribe({
             next:  (rows) => { this.loading = false; this.build(rows); },
             error: (err)  => { this.loading = false; this.errorMessage = err.message || 'Fout bij ophalen prijzen'; }
         });
     }
 
-    private build(rows: PriceRow[]) {
-        const now       = new Date();
-        const todayStr  = this.localDateStr(now);
-        const tomorrow  = new Date(now.getTime() + 86400000);
-        const tomorrowStr = this.localDateStr(tomorrow);
+    goToday() {
+        this.selectedDate = new Date();
+        this.load();
+    }
 
-        this.todayLabel    = now.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
-        this.tomorrowLabel = tomorrow.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+    prevDay() {
+        this.selectedDate = new Date(this.selectedDate.getTime() - 86400000);
+        this.load();
+    }
+
+    nextDay() {
+        this.selectedDate = new Date(this.selectedDate.getTime() + 86400000);
+        this.load();
+    }
+
+    onDateSelect() {
+        this.load();
+    }
+
+    private build(rows: PriceRow[]) {
+        const now        = new Date();
+        const selStr     = this.localDateStr(this.selectedDate);
+        const nextDate   = new Date(this.selectedDate.getTime() + 86400000);
+        const nextStr    = this.localDateStr(nextDate);
+
+        this.dayLabel     = this.selectedDate.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+        this.nextDayLabel = nextDate.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
 
         const byLocal: Record<string, { label: string; price: number; isNow: boolean }[]> = {};
 
@@ -58,26 +82,27 @@ export class EnergyPricesComponent implements OnInit {
             const dt        = new Date(`${dateStr}T${String(row.priceHour).padStart(2, '0')}:00:00Z`);
             const localDate = this.localDateStr(dt);
             const localHour = dt.getHours();
-            const isNow     = localDate === todayStr && localHour === now.getHours();
+            const isNow     = this.isToday && localDate === selStr && localHour === now.getHours();
 
             if (!byLocal[localDate]) byLocal[localDate] = [];
             byLocal[localDate].push({ label: `${String(localHour).padStart(2, '0')}:00`, price: row.priceKwh, isNow });
         }
 
-        const todayRows    = (byLocal[todayStr]    || []).sort((a, b) => a.label.localeCompare(b.label));
-        const tomorrowRows = (byLocal[tomorrowStr] || []).sort((a, b) => a.label.localeCompare(b.label));
+        const dayRows     = (byLocal[selStr]  || []).sort((a, b) => a.label.localeCompare(b.label));
+        const nextDayRows = (byLocal[nextStr] || []).sort((a, b) => a.label.localeCompare(b.label));
 
-        this.tomorrowAvailable = tomorrowRows.length > 0;
-        this.todayData    = this.buildDataset(todayRows);
-        this.tomorrowData = this.tomorrowAvailable ? this.buildDataset(tomorrowRows) : null;
+        this.nextDayAvailable = nextDayRows.length > 0;
+        this.dayData          = this.buildDataset(dayRows);
+        this.nextDayData      = this.nextDayAvailable ? this.buildDataset(nextDayRows) : null;
 
-        if (todayRows.length) {
-            const prices = todayRows.map(r => r.price);
-            this.minToday = Math.min(...prices);
-            this.maxToday = Math.max(...prices);
-            this.avgToday = prices.reduce((s, v) => s + v, 0) / prices.length;
-            const nowRow  = todayRows.find(r => r.isNow);
-            this.currentPrice = nowRow?.price ?? null;
+        this.currentPrice = null;
+        this.avgDay = this.minDay = this.maxDay = null;
+        if (dayRows.length) {
+            const prices  = dayRows.map(r => r.price);
+            this.minDay   = Math.min(...prices);
+            this.maxDay   = Math.max(...prices);
+            this.avgDay   = prices.reduce((s, v) => s + v, 0) / prices.length;
+            this.currentPrice = this.isToday ? (dayRows.find(r => r.isNow)?.price ?? null) : null;
         }
 
         this.updatedAt = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
@@ -87,17 +112,9 @@ export class EnergyPricesComponent implements OnInit {
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: (ctx: any) => `€ ${Number(ctx.raw).toFixed(4)} /kWh`
-                    }
-                }
+                tooltip: { callbacks: { label: (ctx: any) => `€ ${Number(ctx.raw).toFixed(4)} /kWh` } }
             },
-            scales: {
-                y: {
-                    ticks: { callback: (v: number) => `€ ${v.toFixed(3)}` }
-                }
-            }
+            scales: { y: { ticks: { callback: (v: number) => `€ ${v.toFixed(3)}` } } }
         };
     }
 
