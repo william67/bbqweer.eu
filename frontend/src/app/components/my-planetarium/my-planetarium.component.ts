@@ -1,18 +1,31 @@
 import { Component, AfterViewInit, ViewChild, ElementRef, OnDestroy } from '@angular/core';
 import { CommonModule, SlicePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { ButtonModule } from 'primeng/button';
 import { SelectModule } from 'primeng/select';
+import { DialogModule } from 'primeng/dialog';
+import * as L from 'leaflet';
 import { StarsService, Star } from 'src/app/services/stars.service';
 import { PlanetariumCalcService, PlanetInfo } from 'src/app/services/planetarium-calc.service';
 import { SatellitesService, SatellitePosition, PassInfo } from 'src/app/services/satellites.service';
+import { LocalStorageService } from 'src/app/services/local-storage.service';
+
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconUrl:       'assets/leaflet/marker-icon.png',
+    iconRetinaUrl: 'assets/leaflet/marker-icon-2x.png',
+    shadowUrl:     'assets/leaflet/marker-shadow.png',
+});
+
+const PLANETARIUM_LOCATION_KEY = 'planetarium_location';
 
 interface PlottedStar { star: Star; x: number; y: number; hitR: number; }
 
 @Component({
     selector: 'app-my-planetarium',
     standalone: true,
-    imports: [CommonModule, FormsModule, ButtonModule, SlicePipe, SelectModule],
+    imports: [CommonModule, FormsModule, ButtonModule, SlicePipe, SelectModule, DialogModule],
     templateUrl: './my-planetarium.component.html',
     styleUrls: ['./my-planetarium.component.css']
 })
@@ -22,6 +35,15 @@ export class MyPlanetariumComponent implements AfterViewInit, OnDestroy {
 
     lat =  52.0;
     lng =   5.0;
+    locationLabel = '';
+
+    mapDialogVisible = false;
+    savingLocation   = false;
+    private pendingLat = 52.0;
+    private pendingLng =  5.0;
+    private locMap:    L.Map    | null = null;
+    private locMarker: L.Marker | null = null;
+    @ViewChild('locationMapEl') locationMapEl!: ElementRef;
 
     loading = true;
     currentTime = new Date();
@@ -90,7 +112,9 @@ export class MyPlanetariumComponent implements AfterViewInit, OnDestroy {
     constructor(
         private starsService: StarsService,
         private calc: PlanetariumCalcService,
-        public satellitesSvc: SatellitesService
+        public satellitesSvc: SatellitesService,
+        private http: HttpClient,
+        private localStorage: LocalStorageService
     ) {}
 
     ngAfterViewInit(): void {
@@ -103,7 +127,14 @@ export class MyPlanetariumComponent implements AfterViewInit, OnDestroy {
         });
         this.resizeObserver.observe(this.canvasRef.nativeElement);
 
-        if (navigator.geolocation) {
+        const stored = this.localStorage.getData(PLANETARIUM_LOCATION_KEY);
+        if (stored) {
+            try {
+                const loc = JSON.parse(stored);
+                this.lat = loc.lat; this.lng = loc.lng; this.locationLabel = loc.label ?? '';
+            } catch {}
+            this.loadStars();
+        } else if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 pos => { this.lat = pos.coords.latitude; this.lng = pos.coords.longitude; this.loadStars(); },
                 ()  => { this.loadStars(); }
@@ -646,8 +677,76 @@ export class MyPlanetariumComponent implements AfterViewInit, OnDestroy {
         return `LST ${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m`;
     }
 
+    openMapDialog() {
+        this.pendingLat = this.lat;
+        this.pendingLng = this.lng;
+        this.mapDialogVisible = true;
+    }
+
+    onMapDialogShow() {
+        setTimeout(() => this.initLocMap());
+    }
+
+    onMapDialogHide() {
+        this.destroyLocMap();
+    }
+
+    saveLocation() {
+        this.savingLocation = true;
+        const lat = Math.round(this.pendingLat * 10000) / 10000;
+        const lng = Math.round(this.pendingLng * 10000) / 10000;
+        this.http.get<any>(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=nl`
+        ).subscribe({
+            next: (data) => {
+                const addr = data.address;
+                const label = addr.city || addr.town || addr.village || addr.municipality || addr.hamlet || `${lat}, ${lng}`;
+                this.applyLocation(lat, lng, label);
+            },
+            error: () => this.applyLocation(lat, lng, `${lat}, ${lng}`)
+        });
+    }
+
+    cancelMap() {
+        this.mapDialogVisible = false;
+    }
+
+    private applyLocation(lat: number, lng: number, label: string) {
+        this.lat = lat; this.lng = lng; this.locationLabel = label;
+        this.localStorage.saveData(PLANETARIUM_LOCATION_KEY, JSON.stringify({ lat, lng, label }));
+        this.savingLocation   = false;
+        this.mapDialogVisible = false;
+    }
+
+    private initLocMap() {
+        if (this.locMap) return;
+        this.locMap = L.map(this.locationMapEl.nativeElement, {
+            center: [this.pendingLat, this.pendingLng],
+            zoom: 10
+        });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(this.locMap);
+        this.locMarker = L.marker([this.pendingLat, this.pendingLng], { draggable: true }).addTo(this.locMap);
+        this.locMarker.on('dragend', () => {
+            const pos = this.locMarker!.getLatLng();
+            this.pendingLat = pos.lat;
+            this.pendingLng = pos.lng;
+        });
+        this.locMap.on('click', (e: L.LeafletMouseEvent) => {
+            this.pendingLat = e.latlng.lat;
+            this.pendingLng = e.latlng.lng;
+            this.locMarker!.setLatLng(e.latlng);
+        });
+    }
+
+    private destroyLocMap() {
+        if (this.locMap) { this.locMap.remove(); this.locMap = null; this.locMarker = null; }
+    }
+
     ngOnDestroy(): void {
         if (this.timer) clearInterval(this.timer);
         if (this.resizeObserver) this.resizeObserver.disconnect();
+        this.destroyLocMap();
     }
 }

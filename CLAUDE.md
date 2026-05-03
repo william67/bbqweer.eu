@@ -213,7 +213,7 @@ docker compose exec nodejs node createUser.js
 ## Pages / Nav
 - KNMI Data (`/knmidata`) — weather data charts + admin (Beheer menu); chart-type buttons show text labels (Tabel/AnyChart/Chart.js) with active state highlighted
 - Weersverwachting (`/knmidata/forecast`) — 10-day hourly forecast via Open-Meteo (KNMI Seamless model); columns: temp, humidity, pressure, wind, rain, snow, cloud cover, radiation (GTI); location picked via Leaflet map dialog (saved in `localStorage` key `forecast_location`); Nominatim reverse geocoding resolves city name on save
-- Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions
+- Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions; location picked via Leaflet map dialog (saved in `localStorage` key `planetarium_location`); Nominatim reverse geocoding resolves city name on save; falls back to geolocation if no stored location
 - Energie (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart
 - Zonne-energie (`/solar`) — solar panel output forecast (3-day) via Open-Meteo GTI + historical backtest via KNMI uurgeg radiation data
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)

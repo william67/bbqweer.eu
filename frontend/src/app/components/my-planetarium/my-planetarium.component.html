@@ -123,18 +123,11 @@
       [outlined]="!showSatList" (click)="showSatList = !showSatList"></p-button>
     <p-button label="Passes" icon="pi pi-calendar" size="small"
       [outlined]="!showPasses" (click)="openPasses()"></p-button>
-    <span style="color:#556; font-size:11px; font-family:monospace; margin-left:4px;">Lat</span>
-    <input type="number" step="0.0001"
-      [value]="lat | number:'1.4-4'"
-      (change)="lat = +$any($event.target).value"
-      style="width:80px; background:#0d1128; color:#8a9bcc; border:1px solid #2a3050;
-             border-radius:4px; padding:3px 6px; font-size:11px; font-family:monospace; outline:none;">
-    <span style="color:#556; font-size:11px; font-family:monospace;">Lng</span>
-    <input type="number" step="0.0001"
-      [value]="lng | number:'1.4-4'"
-      (change)="lng = +$any($event.target).value"
-      style="width:80px; background:#0d1128; color:#8a9bcc; border:1px solid #2a3050;
-             border-radius:4px; padding:3px 6px; font-size:11px; font-family:monospace; outline:none;">
+    <p-button label="Locatie" icon="pi pi-map-marker" size="small"
+      [outlined]="true" (click)="openMapDialog()"></p-button>
+    @if (locationLabel) {
+      <span style="color:#8a9bcc; font-size:11px; font-family:monospace;">{{ locationLabel }}</span>
+    }
     <input type="datetime-local" step="1"
       [value]="editTimeValue" (change)="onTimeEdit($event)"
       style="background:#0d1128; color:#8a9bcc; border:1px solid #2a3050;
@@ -157,6 +150,22 @@
     </div>
   }
 </div>
+
+<!-- Location map dialog -->
+<p-dialog header="Locatie kiezen" [(visible)]="mapDialogVisible" [modal]="true"
+  [style]="{'width':'600px'}" [appendTo]="'body'"
+  (onShow)="onMapDialogShow()" (onHide)="onMapDialogHide()">
+
+  <div #locationMapEl style="height:350px; border-radius:8px;"></div>
+  <div style="margin-top:0.5rem; font-size:0.8rem; color:var(--text-color-secondary)">
+    Klik op de kaart of sleep de pin om een locatie te kiezen.
+  </div>
+
+  <ng-template pTemplate="footer">
+    <p-button label="Annuleren" icon="pi pi-times" severity="secondary" (onClick)="cancelMap()" />
+    <p-button label="Opslaan" icon="pi pi-check" [loading]="savingLocation" (onClick)="saveLocation()" />
+  </ng-template>
+</p-dialog>
 
 @if (hoveredSat) {
   <div style="position:fixed; pointer-events:none; z-index:9999;
