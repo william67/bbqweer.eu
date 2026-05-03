@@ -4,6 +4,8 @@ import { AppRoutingModule } from './app-routing-module';
 import { App } from './app';
 import { AppLayoutModule } from './layout/app.layout.module';
 import { MessageServiceWrapper } from './services/message.service';
+import { AuthService } from './services/auth.service';
+import { LocalStorageService } from './services/local-storage.service';
 import { providePrimeNG } from 'primeng/config';
 import { definePreset } from '@primeuix/themes';
 import Aura from '@primeuix/themes/aura';
@@ -53,5 +55,16 @@ const AppPreset = definePreset(Aura, {
     bootstrap: [App]
 })
 export class AppModule {
-    constructor(private messageServiceWrapper: MessageServiceWrapper) {}
+    constructor(
+        private messageServiceWrapper: MessageServiceWrapper,
+        localStorageService: LocalStorageService,
+        authService: AuthService
+    ) {
+        const token = localStorageService.getData('jwtToken');
+        if (token) {
+            authService.checkToken({ token }).subscribe({
+                error: () => {} // silently ignore — token expired or invalid
+            });
+        }
+    }
 }
