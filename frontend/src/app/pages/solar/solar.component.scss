@@ -19,6 +19,25 @@
     }
 }
 
+.header-main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.location-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.location-label-text {
+    font-size: 0.9rem;
+    color: var(--text-color-secondary);
+}
+
 .config-card {
     background: var(--surface-card);
     border: 1px solid var(--surface-border);

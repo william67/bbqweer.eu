@@ -10,6 +10,7 @@ import { ButtonModule } from 'primeng/button';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { SelectModule } from 'primeng/select';
 import { DatePickerModule } from 'primeng/datepicker';
+import { DialogModule } from 'primeng/dialog';
 
 @NgModule({
     imports: [
@@ -23,6 +24,7 @@ import { DatePickerModule } from 'primeng/datepicker';
         InputNumberModule,
         SelectModule,
         DatePickerModule,
+        DialogModule,
     ],
     declarations: [SolarComponent]
 })

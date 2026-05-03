@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, ElementRef, ViewChild } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import * as L from 'leaflet';
 import { SolarService, SolarConfig, SolarForecast, SolarDay, Inverter, InverterType, PanelArray, Station, BacktestResult, BacktestHour } from 'src/app/services/solar.service';
 
@@ -9,7 +10,8 @@ L.Icon.Default.mergeOptions({
     shadowUrl:     'assets/leaflet/marker-shadow.png',
 });
 
-const STORAGE_KEY = 'solar_config_v3';
+const STORAGE_KEY      = 'solar_config_v3';
+const LOCATION_KEY     = 'solar_location';
 
 interface FullConfig {
     inverters:    Inverter[];
@@ -46,7 +48,7 @@ const DEFAULT_ARRAY: PanelArray = { panels: 6, wp: 400, tilt: 35, azimuth: 0 };
 })
 export class SolarComponent implements OnInit, OnDestroy {
 
-    @ViewChild('mapEl') mapEl!: ElementRef;
+    @ViewChild('locationMapEl') locationMapEl!: ElementRef;
 
     cfg: FullConfig = this.cloneDefault();
 
@@ -60,10 +62,15 @@ export class SolarComponent implements OnInit, OnDestroy {
 
     expandedInverters: Record<number, boolean> = {};
     lossExpanded = false;
-    mapVisible   = false;
 
-    private map:    L.Map    | null = null;
-    private marker: L.Marker | null = null;
+    locationLabel    = '';
+    mapDialogVisible = false;
+    savingLocation   = false;
+    pendingLat       = 0;
+    pendingLng       = 0;
+
+    private locMap:    L.Map    | null = null;
+    private locMarker: L.Marker | null = null;
 
     // ── backtest ───────────────────────────────────────────────────────────────
     stationOptions: { label: string; value: number }[] = [];
@@ -90,50 +97,86 @@ export class SolarComponent implements OnInit, OnDestroy {
         this.lossExpanded = !this.lossExpanded;
     }
 
-    toggleMap() {
-        this.mapVisible = !this.mapVisible;
-        if (this.mapVisible) {
-            setTimeout(() => this.initMap());
-        } else {
-            this.destroyMap();
-        }
+    openLocationDialog() {
+        this.pendingLat = this.cfg.lat;
+        this.pendingLng = this.cfg.lon;
+        this.mapDialogVisible = true;
     }
 
-    private initMap() {
-        if (!this.mapEl) return;
-        this.map = L.map(this.mapEl.nativeElement, {
-            center: [this.cfg.lat, this.cfg.lon],
+    onLocationDialogShow() {
+        setTimeout(() => this.initLocationMap());
+    }
+
+    onLocationDialogHide() {
+        this.destroyLocationMap();
+    }
+
+    saveLocation() {
+        this.savingLocation = true;
+        const lat = this.pendingLat;
+        const lon = this.pendingLng;
+        this.http.get<any>(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=nl`
+        ).subscribe({
+            next: (data) => {
+                const addr  = data.address;
+                const label = addr.city || addr.town || addr.village || addr.municipality || addr.hamlet || `${lat}, ${lon}`;
+                this.applyLocation(lat, lon, label);
+            },
+            error: () => this.applyLocation(lat, lon, `${lat}, ${lon}`)
+        });
+    }
+
+    private applyLocation(lat: number, lon: number, label: string) {
+        this.cfg.lat       = lat;
+        this.cfg.lon       = lon;
+        this.locationLabel = label;
+        localStorage.setItem(LOCATION_KEY, JSON.stringify({ label, lat, lon }));
+        this.savingLocation   = false;
+        this.mapDialogVisible = false;
+    }
+
+    cancelLocation() {
+        this.mapDialogVisible = false;
+    }
+
+    private initLocationMap() {
+        if (this.locMap) return;
+        this.locMap = L.map(this.locationMapEl.nativeElement, {
+            center: [this.pendingLat, this.pendingLng],
             zoom: 11,
         });
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            attribution: '© OpenStreetMap contributors',
             maxZoom: 19,
-        }).addTo(this.map);
-        this.marker = L.marker([this.cfg.lat, this.cfg.lon], { draggable: true }).addTo(this.map);
-        this.marker.on('dragend', () => {
-            const pos = this.marker!.getLatLng();
-            this.cfg.lat = Math.round(pos.lat * 10000) / 10000;
-            this.cfg.lon = Math.round(pos.lng * 10000) / 10000;
+        }).addTo(this.locMap);
+        this.locMarker = L.marker([this.pendingLat, this.pendingLng], { draggable: true }).addTo(this.locMap);
+        this.locMarker.on('dragend', () => {
+            const pos = this.locMarker!.getLatLng();
+            this.pendingLat = Math.round(pos.lat * 10000) / 10000;
+            this.pendingLng = Math.round(pos.lng * 10000) / 10000;
         });
-        this.map.on('click', (e: L.LeafletMouseEvent) => {
-            this.cfg.lat = Math.round(e.latlng.lat * 10000) / 10000;
-            this.cfg.lon = Math.round(e.latlng.lng * 10000) / 10000;
-            this.marker!.setLatLng(e.latlng);
+        this.locMap.on('click', (e: L.LeafletMouseEvent) => {
+            this.pendingLat = Math.round(e.latlng.lat * 10000) / 10000;
+            this.pendingLng = Math.round(e.latlng.lng * 10000) / 10000;
+            this.locMarker!.setLatLng(e.latlng);
         });
     }
 
-    private destroyMap() {
-        this.map?.remove();
-        this.map   = null;
-        this.marker = null;
+    private destroyLocationMap() {
+        if (this.locMap) { this.locMap.remove(); this.locMap = null; this.locMarker = null; }
     }
 
-    ngOnDestroy() { this.destroyMap(); }
+    ngOnDestroy() { this.destroyLocationMap(); }
 
-    constructor(private svc: SolarService) {}
+    constructor(private svc: SolarService, private http: HttpClient) {}
 
     ngOnInit() {
         this.loadConfig();
+        try {
+            const stored = localStorage.getItem(LOCATION_KEY);
+            if (stored) { this.locationLabel = JSON.parse(stored).label ?? ''; }
+        } catch {}
         this.calculate();
         this.loadStations();
     }
@@ -284,9 +327,11 @@ export class SolarComponent implements OnInit, OnDestroy {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.cfg));
     }
 
-    resetDefaults() {
-        this.cfg = this.cloneDefault();
-        this.calculate();
+    resetLossDefaults() {
+        this.cfg.lossInverter = DEFAULT.lossInverter;
+        this.cfg.lossWiring   = DEFAULT.lossWiring;
+        this.cfg.lossSoiling  = DEFAULT.lossSoiling;
+        this.cfg.lossTemp     = DEFAULT.lossTemp;
     }
 
     // ── calculate ──────────────────────────────────────────────────────────────

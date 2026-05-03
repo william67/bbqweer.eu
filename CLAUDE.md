@@ -229,7 +229,8 @@ docker compose exec nodejs node createUser.js
 - Calibrated against SolarEdge history: real April max ~38 kWh with 16 × 370Wp, SE5000H
 - Azimuth convention: 0=South, -90=East, +90=West (Open-Meteo convention)
 - 3-day forecast with day tab selector (Vandaag / Morgen / Overmorgen)
-- Location picker: Leaflet map inside collapsible "Verliezen & locatie" section
+- Location picker: `p-dialog` with draggable Leaflet map, Nominatim reverse geocoding, Save/Cancel — opened via "Locatie op kaart" button in the page header (top-right, next to city label); city label + coordinates stored in `localStorage` under key `solar_location`
+- "Verliezen" section (collapsible): 4 loss inputs only; "Standaard" button resets only those 4 values — inverters/arrays are not affected
 
 ## Leaflet Map — Critical Pattern
 **Always use `@ViewChild` + `setTimeout` to initialize Leaflet — never `getElementById`.**

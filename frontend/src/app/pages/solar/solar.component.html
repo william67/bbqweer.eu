@@ -1,8 +1,18 @@
 <div class="solar-page">
 
     <div class="page-header">
-        <h2>Zonne-energie voorspelling</h2>
-        <p class="source-info">Bron: Open-Meteo &mdash; 3-daagse paneelopbrengst voorspelling</p>
+        <div class="header-main">
+            <div>
+                <h2>Zonne-energie voorspelling</h2>
+                <p class="source-info">Bron: Open-Meteo &mdash; 3-daagse paneelopbrengst voorspelling</p>
+            </div>
+            <div class="location-header">
+                <span class="location-label-text" *ngIf="locationLabel">{{ locationLabel }}</span>
+                <button pButton type="button" icon="pi pi-map-marker" label="Locatie op kaart"
+                    class="p-button-outlined p-button-secondary p-button-sm"
+                    (click)="openLocationDialog()"></button>
+            </div>
+        </div>
     </div>
 
     <!-- Config form -->
@@ -107,8 +117,8 @@
         <div class="loss-section">
             <div class="loss-header" (click)="toggleLoss()">
                 <i class="pi" [class.pi-chevron-right]="!lossExpanded" [class.pi-chevron-down]="lossExpanded"></i>
-                <span>Verliezen &amp; locatie</span>
-                <span class="loss-summary">{{ efficiencyPct }} rendement &mdash; {{ cfg.lat }}, {{ cfg.lon }}</span>
+                <span>Verliezen</span>
+                <span class="loss-summary">{{ efficiencyPct }} rendement</span>
             </div>
             <div class="config-grid" *ngIf="lossExpanded">
                 <div class="config-field">
@@ -131,27 +141,16 @@
                     <p-inputNumber [(ngModel)]="cfg.lossTemp" [min]="0" [max]="20" [step]="0.5"
                         [minFractionDigits]="1" [maxFractionDigits]="1"></p-inputNumber>
                 </div>
-                <div class="config-field">
-                    <label>Locatie (lat, lon)</label>
-                    <div class="latlon">
-                        <p-inputNumber [(ngModel)]="cfg.lat" [minFractionDigits]="2" [maxFractionDigits]="4" [step]="0.01"></p-inputNumber>
-                        <p-inputNumber [(ngModel)]="cfg.lon" [minFractionDigits]="2" [maxFractionDigits]="4" [step]="0.01"></p-inputNumber>
-                    </div>
-                </div>
             </div>
-            <div class="location-row" *ngIf="lossExpanded">
-                <button pButton type="button"
-                    [icon]="mapVisible ? 'pi pi-map' : 'pi pi-map-marker'"
-                    [label]="mapVisible ? 'Kaart sluiten' : 'Locatie op kaart'"
+            <div class="inv-footer" *ngIf="lossExpanded">
+                <button pButton icon="pi pi-refresh" label="Standaard"
                     class="p-button-outlined p-button-secondary p-button-sm"
-                    (click)="toggleMap()"></button>
+                    (click)="resetLossDefaults()"></button>
             </div>
-            <div class="location-map" *ngIf="mapVisible" #mapEl></div>
         </div>
 
         <div class="config-actions">
             <button pButton label="Berekenen" icon="pi pi-sun" (click)="calculate()" [loading]="loading"></button>
-            <button pButton label="Standaard" icon="pi pi-refresh" class="p-button-outlined p-button-secondary" (click)="resetDefaults()"></button>
             <span class="config-hint">{{ totalPanels }} panelen &mdash; {{ totalWp | number }} Wp &mdash; rendement: {{ efficiencyPct }}</span>
         </div>
     </div>
@@ -176,8 +175,7 @@
                 <div class="config-field">
                     <label>Datum</label>
                     <p-datepicker [(ngModel)]="backtestDate" dateFormat="dd-mm-yy"
-                        [maxDate]="yesterday" [showIcon]="true"
-                        [readonlyInput]="true"></p-datepicker>
+                        [maxDate]="yesterday" [showIcon]="true"></p-datepicker>
                 </div>
                 <button pButton label="Berekenen" icon="pi pi-history"
                     (click)="runBacktest()" [loading]="backtestLoading"></button>
@@ -324,3 +322,19 @@
     </ng-container>
 
 </div>
+
+<!-- Location map dialog -->
+<p-dialog header="Locatie kiezen" [(visible)]="mapDialogVisible" [modal]="true"
+    [style]="{'width':'600px'}" (onShow)="onLocationDialogShow()" (onHide)="onLocationDialogHide()">
+
+    <div #locationMapEl class="location-map"></div>
+    <div style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-color-secondary)">
+        Klik op de kaart om een locatie te kiezen.
+    </div>
+
+    <ng-template pTemplate="footer">
+        <p-button label="Annuleren" icon="pi pi-times" severity="secondary" (onClick)="cancelLocation()" />
+        <p-button label="Opslaan" icon="pi pi-check" [loading]="savingLocation" (onClick)="saveLocation()" />
+    </ng-template>
+
+</p-dialog>
