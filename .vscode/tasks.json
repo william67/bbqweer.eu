@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Backend: nodemon",
+      "type": "shell",
+      "command": "nodemon app.js",
+      "options": {
+        "cwd": "${workspaceFolder}/backend"
+      },
+      "presentation": {
+        "label": "Backend",
+        "group": "dev",
+        "panel": "new",
+        "reveal": "always"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Frontend: ng serve",
+      "type": "shell",
+      "command": "ng serve --open",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "presentation": {
+        "label": "Frontend",
+        "group": "dev",
+        "panel": "new",
+        "reveal": "always"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Dev: Start All",
+      "dependsOn": ["Backend: nodemon", "Frontend: ng serve"],
+      "dependsOrder": "parallel",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

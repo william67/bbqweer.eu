@@ -23,6 +23,10 @@ const routes: Routes = [
             {
                 path: 'solar',
                 loadChildren: () => import('./pages/solar/solar.module').then(m => m.SolarModule)
+            },
+            {
+                path: 'forecast',
+                loadChildren: () => import('./pages/forecast/forecast.module').then(m => m.ForecastModule)
             }
         ]
     },

@@ -16,8 +16,6 @@ import { TableModule } from 'primeng/table';
 import { MyKnmiTableComponent } from 'src/app/components/my-knmi-table/my-knmi-table.component';
 import { MyKnmiAnychartComponent } from 'src/app/components/my-knmi-anychart/my-knmi-anychart.component';
 import { MyKnmiChartjsComponent } from 'src/app/components/my-knmi-chartjs/my-knmi-chartjs.component';
-import { ForecastComponent } from './forecast/forecast.component';
-
 @NgModule({
     imports: [
         CommonModule,
@@ -37,6 +35,6 @@ import { ForecastComponent } from './forecast/forecast.component';
         MyKnmiAnychartComponent,
         MyKnmiChartjsComponent
     ],
-    declarations: [KnmiDataComponent, ForecastComponent]
+    declarations: [KnmiDataComponent]
 })
 export class KnmiDataModule { }
