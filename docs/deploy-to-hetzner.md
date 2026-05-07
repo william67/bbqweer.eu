@@ -417,6 +417,17 @@ MySQL is not exposed to the internet. Use an SSH tunnel:
 ssh -L 3307:127.0.0.1:3307 root@<VPS_IP>
 ```
 
+## Portainer access from Windows (SSH tunnel)
+
+Portainer is not exposed to the internet. Use an SSH tunnel:
+
+```powershell
+# In a PowerShell window — keep it open while you work
+ssh -L 9000:127.0.0.1:9000 root@bbqweer.eu
+```
+
+Then open `http://localhost:9000` in your browser.
+
 Then connect your MySQL client (Workbench, DBeaver, etc.) to:
 - **Host**: `127.0.0.1`
 - **Port**: `3307`
