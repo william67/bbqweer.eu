@@ -12,23 +12,30 @@ export class EnergyPricesComponent implements OnInit {
     loading       = false;
     errorMessage: string | null = null;
 
-    selectedDate  = new Date();
-    isToday       = true;
+    todayLabel    = '';
+    tomorrowLabel = '';
 
-    dayLabel      = '';
-    nextDayLabel  = '';
+    todayData:    any = null;
+    tomorrowData: any = null;
+    chartOptions: any = null;
 
-    dayData:         any = null;
-    nextDayData:     any = null;
-    chartOptions:    any = null;
-
-    nextDayAvailable = false;
+    tomorrowAvailable = false;
 
     currentPrice:  number | null = null;
-    avgDay:        number | null = null;
-    minDay:        number | null = null;
-    maxDay:        number | null = null;
+    avgToday:      number | null = null;
+    minToday:      number | null = null;
+    maxToday:      number | null = null;
+    avgTomorrow:   number | null = null;
+    minTomorrow:   number | null = null;
+    maxTomorrow:   number | null = null;
     updatedAt:     string = '';
+
+    historicalSelectedDate: Date | null = null;
+    historicalDate:  string = '';
+    historicalData:  any = null;
+    historicalStats: { avg: number | null; min: number | null; max: number | null } = { avg: null, min: null, max: null };
+    historicalLoading = false;
+    maxHistoricalDate = new Date();
 
     constructor(private svc: EnergyPricesService) {}
 
@@ -39,41 +46,64 @@ export class EnergyPricesComponent implements OnInit {
     load() {
         this.loading      = true;
         this.errorMessage = null;
-        this.isToday      = this.localDateStr(this.selectedDate) === this.localDateStr(new Date());
-        const date        = this.isToday ? undefined : this.localDateStr(this.selectedDate);
-        this.svc.getPrices(date).subscribe({
+        this.svc.getPrices().subscribe({
             next:  (rows) => { this.loading = false; this.build(rows); },
             error: (err)  => { this.loading = false; this.errorMessage = err.message || 'Fout bij ophalen prijzen'; }
         });
     }
 
-    goToday() {
-        this.selectedDate = new Date();
-        this.load();
+    onHistoricalDateSelect(date: Date) {
+        const dateStr = this.localDateStr(date);
+        this.historicalDate    = date.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        this.historicalLoading = true;
+        this.historicalData    = null;
+        this.historicalStats   = { avg: null, min: null, max: null };
+        this.svc.getPrices(dateStr).subscribe({
+            next: (rows) => {
+                this.historicalLoading = false;
+                const items: { label: string; price: number; isNow: boolean }[] = [];
+                for (const r of rows) {
+                    const rowDate = (r.priceDate as string).slice(0, 10);
+                    const dt        = new Date(`${rowDate}T${String(r.priceHour).padStart(2, '0')}:00:00Z`);
+                    const localDate = this.localDateStr(dt);
+                    const localHour = dt.getHours();
+                    if (localDate === dateStr) {
+                        items.push({ label: `${String(localHour).padStart(2, '0')}:00`, price: r.priceKwh, isNow: false });
+                    }
+                }
+                items.sort((a, b) => a.label.localeCompare(b.label));
+                if (items.length) {
+                    const prices = items.map(r => r.price);
+                    this.historicalStats = {
+                        avg: prices.reduce((s, v) => s + v, 0) / prices.length,
+                        min: Math.min(...prices),
+                        max: Math.max(...prices)
+                    };
+                }
+                this.historicalData = this.buildDataset(items);
+            },
+            error: (err) => {
+                this.historicalLoading = false;
+                this.errorMessage = err.error?.error || err.message || 'Fout bij ophalen historische prijzen';
+            }
+        });
     }
 
-    prevDay() {
-        this.selectedDate = new Date(this.selectedDate.getTime() - 86400000);
-        this.load();
-    }
-
-    nextDay() {
-        this.selectedDate = new Date(this.selectedDate.getTime() + 86400000);
-        this.load();
-    }
-
-    onDateSelect() {
-        this.load();
+    clearHistoricalDate() {
+        this.historicalSelectedDate = null;
+        this.historicalData         = null;
+        this.historicalDate         = '';
+        this.historicalStats        = { avg: null, min: null, max: null };
     }
 
     private build(rows: PriceRow[]) {
-        const now        = new Date();
-        const selStr     = this.localDateStr(this.selectedDate);
-        const nextDate   = new Date(this.selectedDate.getTime() + 86400000);
-        const nextStr    = this.localDateStr(nextDate);
+        const now         = new Date();
+        const todayStr    = this.localDateStr(now);
+        const tomorrow    = new Date(now.getTime() + 86400000);
+        const tomorrowStr = this.localDateStr(tomorrow);
 
-        this.dayLabel     = this.selectedDate.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
-        this.nextDayLabel = nextDate.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+        this.todayLabel    = now.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+        this.tomorrowLabel = tomorrow.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
 
         const byLocal: Record<string, { label: string; price: number; isNow: boolean }[]> = {};
 
@@ -82,27 +112,32 @@ export class EnergyPricesComponent implements OnInit {
             const dt        = new Date(`${dateStr}T${String(row.priceHour).padStart(2, '0')}:00:00Z`);
             const localDate = this.localDateStr(dt);
             const localHour = dt.getHours();
-            const isNow     = this.isToday && localDate === selStr && localHour === now.getHours();
+            const isNow     = localDate === todayStr && localHour === now.getHours();
 
             if (!byLocal[localDate]) byLocal[localDate] = [];
             byLocal[localDate].push({ label: `${String(localHour).padStart(2, '0')}:00`, price: row.priceKwh, isNow });
         }
 
-        const dayRows     = (byLocal[selStr]  || []).sort((a, b) => a.label.localeCompare(b.label));
-        const nextDayRows = (byLocal[nextStr] || []).sort((a, b) => a.label.localeCompare(b.label));
+        const todayRows    = (byLocal[todayStr]    || []).sort((a, b) => a.label.localeCompare(b.label));
+        const tomorrowRows = (byLocal[tomorrowStr] || []).sort((a, b) => a.label.localeCompare(b.label));
 
-        this.nextDayAvailable = nextDayRows.length > 0;
-        this.dayData          = this.buildDataset(dayRows);
-        this.nextDayData      = this.nextDayAvailable ? this.buildDataset(nextDayRows) : null;
+        this.tomorrowAvailable = tomorrowRows.length > 0;
+        this.todayData    = this.buildDataset(todayRows);
+        this.tomorrowData = this.tomorrowAvailable ? this.buildDataset(tomorrowRows) : null;
 
-        this.currentPrice = null;
-        this.avgDay = this.minDay = this.maxDay = null;
-        if (dayRows.length) {
-            const prices  = dayRows.map(r => r.price);
-            this.minDay   = Math.min(...prices);
-            this.maxDay   = Math.max(...prices);
-            this.avgDay   = prices.reduce((s, v) => s + v, 0) / prices.length;
-            this.currentPrice = this.isToday ? (dayRows.find(r => r.isNow)?.price ?? null) : null;
+        if (todayRows.length) {
+            const prices      = todayRows.map(r => r.price);
+            this.minToday     = Math.min(...prices);
+            this.maxToday     = Math.max(...prices);
+            this.avgToday     = prices.reduce((s, v) => s + v, 0) / prices.length;
+            this.currentPrice = todayRows.find(r => r.isNow)?.price ?? null;
+        }
+
+        if (tomorrowRows.length) {
+            const prices    = tomorrowRows.map(r => r.price);
+            this.minTomorrow = Math.min(...prices);
+            this.maxTomorrow = Math.max(...prices);
+            this.avgTomorrow = prices.reduce((s, v) => s + v, 0) / prices.length;
         }
 
         this.updatedAt = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });

@@ -30,7 +30,8 @@ C:\Apps\bbqweer.eu\
 │   ├── routes/             — knmi-reports, stars, satellites, auth, users, energy-prices, solar
 │   ├── helpers/            — mysqlpool-knmi.helper.js, server-tasks.js
 │   ├── tasks/              — knmidata-v4.js, satellites-sync.js, energy-prices-sync.js
-│   ├── callSyncKnmi.js     — manual sync trigger (uses knmidata-v4)
+│   ├── callSyncKnmiData.js        — manual sync trigger (uses knmidata-v4)
+│   ├── callSyncEnergiePrices.js   — manual/historical energy price sync from energyzero.nl
 │   ├── createUser.js       — one-off admin user creation script
 │   └── importReports.js    — import JSON configs into categories/datasets/reports_new
 ├── database/
@@ -170,11 +171,14 @@ Manual trigger:
 ```powershell
 # Local
 cd backend
-node callSyncKnmi.js           # incremental
-node callSyncKnmi.js --full    # full re-sync
+node callSyncKnmiData.js           # incremental
+node callSyncKnmiData.js --full    # full re-sync
+node callSyncEnergiePrices.js              # yesterday → tomorrow
+node callSyncEnergiePrices.js 2025-01-01   # historical backfill from date
 
 # On VPS (run inside container)
-docker compose exec nodejs node callSyncKnmi.js --full
+docker compose exec nodejs node callSyncKnmiData.js --full
+docker compose exec nodejs node callSyncEnergiePrices.js 2025-01-01
 docker compose exec nodejs node createUser.js
 ```
 
@@ -187,7 +191,7 @@ docker compose exec nodejs node createUser.js
 - `zone.js` installed and configured — required for automatic change detection after async ops
   - `"polyfills": ["zone.js"]` in `angular.json` build options
   - `provideZoneChangeDetection()` in `src/main.ts` bootstrap options
-- Four lazy-loaded modules: `KnmiDataModule`, `PlanetariumModule`, `EnergyPricesModule`, `SolarModule`
+- Five lazy-loaded modules: `KnmiDataModule`, `ForecastModule`, `PlanetariumModule`, `EnergyPricesModule`, `SolarModule`
 - Budget limit raised to `2MB` warn / `3MB` error in `angular.json` (PrimeNG Table/Tag/ProgressBar)
 - `"hmr": false` in `angular.json` serve options — required; HMR is unreliable with NgModule apps
 - `platformBrowserDynamic` (from `@angular/platform-browser-dynamic`) required in `main.ts` — `platformBrowser` breaks live reload
@@ -212,9 +216,9 @@ docker compose exec nodejs node createUser.js
 
 ## Pages / Nav
 - KNMI Data (`/knmidata`) — weather data charts + admin (Beheer menu); chart-type buttons show text labels (Tabel/AnyChart/Chart.js) with active state highlighted
-- Weersverwachting (`/knmidata/forecast`) — 10-day hourly forecast via Open-Meteo (KNMI Seamless model); columns: temp, humidity, pressure, wind, rain, snow, cloud cover, radiation (GTI); location picked via Leaflet map dialog (saved in `localStorage` key `forecast_location`); Nominatim reverse geocoding resolves city name on save
+- Weersverwachting (`/forecast`) — own lazy module (`ForecastModule`); 10-day hourly forecast via Open-Meteo (KNMI Seamless model); columns: temp, humidity, pressure, wind, rain, snow, cloud cover, radiation (GTI); location picked via Leaflet map dialog (saved in `localStorage` key `forecast_location`); Nominatim reverse geocoding resolves city name on save
 - Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions; location picked via Leaflet map dialog (saved in `localStorage` key `planetarium_location`); Nominatim reverse geocoding resolves city name on save; falls back to geolocation if no stored location
-- Energie (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart
+- Energieprijzen (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart; always shows today + tomorrow (fixed, no date nav); summary cards (Nu/Gemiddeld/Laagste/Hoogste) for today, summary cards (Gemiddeld/Laagste/Hoogste) for tomorrow; historical section with date picker below; UTC→local time conversion (Dutch UTC+1/+2 offsets); backend fetches CURDATE-1 through CURDATE+1 so local 00:00–01:00 hours are included; manual backfill: `node callSyncEnergiePrices.js [YYYY-MM-DD]`
 - Zonne-energie (`/solar`) — solar panel output forecast (3-day) via Open-Meteo GTI + historical backtest via KNMI uurgeg radiation data
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
 
@@ -289,6 +293,7 @@ angular.json: add `node_modules/leaflet/dist/leaflet.css` to styles array and `"
 - **`docker compose restart nginx` IS sufficient for frontend changes** — the frontend dist is bind-mounted into nginx, so a restart picks up the new files immediately.
 - **SSH known_hosts for bbqweer.eu**: run `ssh-keyscan bbqweer.eu >> C:/Users/William/.ssh/known_hosts` once to avoid host key prompts. Without this, automated ssh/scp commands hang waiting for interactive input.
 - **Leaflet default marker icon breaks in production** — Angular's bundler cannot resolve the default icon image paths from node_modules. Fix: `delete (L.Icon.Default.prototype as any)._getIconUrl` + `L.Icon.Default.mergeOptions()` at module level (top of component file). See the Leaflet Map section above.
+- **Topbar logo** — `frontend/src/assets/logo.png` (44px height, `border-radius: 8px`); source file in `logo/` folder (not served, just version-controlled).
 
 ## First Steps for New Chat
 1. Read `docs/system-architecture.md` for full stack overview

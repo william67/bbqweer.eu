@@ -203,7 +203,7 @@ docker compose restart nodejs
 docker compose exec nodejs node createUser.js
 
 # Run full KNMI data sync (takes 30–60 minutes, runs in background)
-docker compose exec nodejs node callSyncKnmi.js --full
+docker compose exec nodejs node callSyncKnmiData.js --full
 ```
 
 After creating the admin user: log in via the UI → Beheer → Load Config → import JSON files from `database/knmi reports/`.
@@ -455,7 +455,7 @@ docker compose restart nginx
 docker exec -it bbqweer-mysql mysql -u bbqweer_user -p bbqweer
 
 # Run a node script inside the container
-docker compose exec nodejs node callSyncKnmi.js --full
+docker compose exec nodejs node callSyncKnmiData.js --full
 docker compose exec nodejs node createUser.js
 
 # Check disk usage

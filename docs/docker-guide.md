@@ -138,7 +138,7 @@ Useful after changing `config.ini` without rebuilding.
 docker exec -it bbqweer-nodejs sh
 
 # Run the KNMI sync manually inside the container
-docker exec -it bbqweer-nodejs node callSyncKnmi.js
+docker exec -it bbqweer-nodejs node callSyncKnmiData.js
 
 # Run a MySQL query
 docker exec -it bbqweer-mysql mysql -ubbqweer_user -pbbqweer_pass_2024 bbqweer

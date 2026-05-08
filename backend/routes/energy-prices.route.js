@@ -11,7 +11,7 @@ router.get('/prices', async (req, res) => {
         const [rows] = await db.query(`
             SELECT priceDate, priceHour, priceKwh, source
             FROM energie_prices
-            WHERE priceDate BETWEEN COALESCE(?, CURDATE())
+            WHERE priceDate BETWEEN DATE_SUB(COALESCE(?, CURDATE()), INTERVAL 1 DAY)
                               AND DATE_ADD(COALESCE(?, CURDATE()), INTERVAL 1 DAY)
             ORDER BY priceDate, priceHour
         `, [date, date]);

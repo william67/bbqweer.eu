@@ -1,7 +1,7 @@
 # KNMI Data Sync — v3 (Two-Pointer Merge)
 
 **File**: `backend/tasks/knmidata-v3.js`  
-**Trigger**: `backend/callSyncKnmi.js` (manual) or cron in `backend/app.js` (hourly)
+**Trigger**: `backend/callSyncKnmiData.js` (manual) or cron in `backend/app.js` (hourly)
 
 ---
 
@@ -208,14 +208,14 @@ After all files are processed, `CALL UpdateHistory()` recalculates aggregate tab
 
 ```powershell
 cd C:\Apps\bbqweer.eu\backend
-node callSyncKnmi.js           # incremental (skips unchanged files)
-node callSyncKnmi.js --full    # full re-sync (re-processes all files)
+node callSyncKnmiData.js           # incremental (skips unchanged files)
+node callSyncKnmiData.js --full    # full re-sync (re-processes all files)
 ```
 
 Inside the Docker container:
 ```bash
-docker exec -it bbqweer-nodejs node callSyncKnmi.js
-docker exec -it bbqweer-nodejs node callSyncKnmi.js --full
+docker exec -it bbqweer-nodejs node callSyncKnmiData.js
+docker exec -it bbqweer-nodejs node callSyncKnmiData.js --full
 ```
 
 ---

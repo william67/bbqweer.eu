@@ -103,5 +103,5 @@ The footer shows `bbqweer.eu v1.0003 — YYYY-MM-DD HH:MM:SS`.
 - [ ] `docker compose up -d mysql` — start MySQL
 - [ ] Wait ~15 seconds for MySQL init scripts to run
 - [ ] `cd backend && node createUser.js` — create first admin user
-- [ ] `cd backend && node callSyncKnmi.js --full` — initial data sync (~30–60 min)
+- [ ] `cd backend && node callSyncKnmiData.js --full` — initial data sync (~30–60 min)
 - [ ] `cd frontend && ng serve --open` — start dev server

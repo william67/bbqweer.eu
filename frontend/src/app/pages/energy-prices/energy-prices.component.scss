@@ -36,7 +36,7 @@
     display: flex;
     gap: 1rem;
     flex-wrap: wrap;
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
 }
 
 .summary-card {
@@ -68,7 +68,7 @@
 }
 
 .chart-section {
-    margin-bottom: 2rem;
+    margin-bottom: 0.75rem;
 
     h3 {
         margin: 0 0 1rem;
@@ -79,10 +79,10 @@
 }
 
 .chart-wrap {
-    height: 280px;
+    height: 180px;
 
     ::ng-deep canvas {
-        max-height: 280px;
+        max-height: 180px;
     }
 }
 
@@ -91,6 +91,33 @@
     color: var(--text-color-secondary);
     font-size: 0.9rem;
     margin: 0 0 0.75rem;
+}
+
+.no-tomorrow {
+    margin-bottom: 0.5rem;
+}
+
+.historical-section {
+    border-top: 1px solid var(--surface-border);
+    padding-top: 1.5rem;
+    margin-top: 0.5rem;
+
+    h4 {
+        margin: 0 0 1rem;
+        font-size: 1rem;
+        font-weight: 600;
+        text-transform: capitalize;
+        color: var(--text-color-secondary);
+    }
+}
+
+.historical-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+
+    h3 { margin: 0; }
 }
 
 .updated-info {
