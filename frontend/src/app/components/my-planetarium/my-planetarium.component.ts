@@ -133,15 +133,8 @@ export class MyPlanetariumComponent implements AfterViewInit, OnDestroy {
                 const loc = JSON.parse(stored);
                 this.lat = loc.lat; this.lng = loc.lng; this.locationLabel = loc.label ?? '';
             } catch {}
-            this.loadStars();
-        } else if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                pos => { this.lat = pos.coords.latitude; this.lng = pos.coords.longitude; this.loadStars(); },
-                ()  => { this.loadStars(); }
-            );
-        } else {
-            this.loadStars();
         }
+        this.loadStars();
     }
 
     private updateSize(): void {
