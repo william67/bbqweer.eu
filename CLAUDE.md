@@ -110,7 +110,7 @@ ssh -L 3307:127.0.0.1:3307 root@65.109.129.96   # keep open while working
 ```
 
 ## Build Timestamp
-- Footer shows `bbqweer.eu v1.0005 — YYYY-MM-DD HH:MM:SS` (version/timestamp in smaller font)
+- Footer shows `bbqweer.eu v1.0009 — YYYY-MM-DD HH:MM:SS` (version/timestamp in smaller font)
 - `environment.production.ts` contains `buildTime: 'BUILD_TIME_PLACEHOLDER'`
 - The build command above injects the real timestamp before `ng build`, then restores the placeholder
 - **Never commit with a real timestamp** — always restore `BUILD_TIME_PLACEHOLDER` after building
@@ -219,7 +219,7 @@ docker compose exec nodejs node createUser.js
 - Weersverwachting (`/forecast`) — own lazy module (`ForecastModule`); 10-day hourly forecast via Open-Meteo (KNMI Seamless model); columns: temp, humidity, pressure, wind, rain, snow, cloud cover, radiation (GTI); location picked via Leaflet map dialog (saved in `localStorage` key `forecast_location`); Nominatim reverse geocoding resolves city name on save
 - Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions; location picked via Leaflet map dialog (saved in `localStorage` key `planetarium_location`); Nominatim reverse geocoding resolves city name on save; falls back to geolocation if no stored location
 - Energieprijzen (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart; always shows today + tomorrow (fixed, no date nav); summary cards (Nu/Gemiddeld/Laagste/Hoogste) for today, summary cards (Gemiddeld/Laagste/Hoogste) for tomorrow; historical section with date picker below; UTC→local time conversion (Dutch UTC+1/+2 offsets); backend fetches CURDATE-1 through CURDATE+1 so local 00:00–01:00 hours are included; manual backfill: `node callSyncEnergiePrices.js [YYYY-MM-DD]`
-- Zonne-energie (`/solar`) — solar panel output forecast (3-day) via Open-Meteo GTI + historical backtest via KNMI uurgeg radiation data
+- Zonne-energie (`/solar`) — solar panel output forecast (3-day) via Open-Meteo GTI + historical backtest via KNMI uurgeg radiation data; backtest at bottom of page (collapsible); selected station saved in `localStorage` key `solar_backtest_stn`
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
 
 ## Solar Page — Key Details

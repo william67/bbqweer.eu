@@ -12,6 +12,7 @@ L.Icon.Default.mergeOptions({
 
 const STORAGE_KEY      = 'solar_config_v3';
 const LOCATION_KEY     = 'solar_location';
+const BACKTEST_STN_KEY = 'solar_backtest_stn';
 
 interface FullConfig {
     inverters:    Inverter[];
@@ -75,8 +76,8 @@ export class SolarComponent implements OnInit, OnDestroy {
     // ── backtest ───────────────────────────────────────────────────────────────
     stationOptions: { label: string; value: number }[] = [];
     backtestStn         = 260;
-    backtestDate: Date  = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d; })();
-    yesterday: Date     = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d; })();
+    backtestDate: Date    = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d; })();
+    maxBacktestDate: Date = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d; })();
     backtestExpanded    = false;
     backtestLoading     = false;
     backtestError: string | null  = null;
@@ -177,6 +178,8 @@ export class SolarComponent implements OnInit, OnDestroy {
             const stored = localStorage.getItem(LOCATION_KEY);
             if (stored) { this.locationLabel = JSON.parse(stored).label ?? ''; }
         } catch {}
+        const savedStn = localStorage.getItem(BACKTEST_STN_KEY);
+        if (savedStn) this.backtestStn = parseInt(savedStn, 10);
         this.calculate();
         this.loadStations();
     }
@@ -439,6 +442,7 @@ export class SolarComponent implements OnInit, OnDestroy {
     }
 
     runBacktest() {
+        localStorage.setItem(BACKTEST_STN_KEY, String(this.backtestStn));
         this.backtestLoading     = true;
         this.backtestError       = null;
         this.backtestResultDate  = this.backtestDate;
@@ -458,8 +462,12 @@ export class SolarComponent implements OnInit, OnDestroy {
                 this.buildBacktestChart(result);
             },
             error: (err: any) => {
-                this.backtestLoading = false;
-                this.backtestError   = err.message || 'Fout bij ophalen historische data';
+                this.backtestLoading  = false;
+                this.backtestResult   = null;
+                this.backtestChartData = null;
+                this.backtestError = err.status === 404
+                    ? 'Geen data beschikbaar voor deze datum.'
+                    : err.error?.error || err.message || 'Fout bij ophalen historische data';
             }
         });
     }

@@ -425,7 +425,7 @@
 }
 
 .chart-section {
-    margin-bottom: 2rem;
+    margin-bottom: 0.75rem;
 
     h3 {
         margin: 0 0 1rem;
@@ -444,10 +444,10 @@
 }
 
 .chart-wrap {
-    height: 280px;
+    height: 180px;
 
     ::ng-deep canvas {
-        max-height: 280px;
+        max-height: 180px;
     }
 }
 

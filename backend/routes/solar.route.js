@@ -544,7 +544,7 @@ router.get('/backtest', async (req, res) => {
             `SELECT DATE_FORMAT(DATUM_TIJD_VAN, '%Y-%m-%dT%H:%i:%sZ') AS datum_tijd_van,
                     DATE_FORMAT(DATUM_TIJD_TOT, '%Y-%m-%dT%H:%i:%sZ') AS datum_tijd_tot,
                     JAAR AS jaar, MAAND AS maand, DAG AS dag, UUR AS hh,
-                    Q, N AS cloud_octants, T/10.0 AS temp_c
+                    Q, N AS cloud_octants, T AS temp_c
              FROM uurgeg
              WHERE STATION = ? AND DATUM_TIJD_VAN >= ? AND DATUM_TIJD_VAN < ?
              ORDER BY DATUM_TIJD_VAN`,
