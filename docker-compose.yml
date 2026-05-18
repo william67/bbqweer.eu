@@ -12,6 +12,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./database/init:/docker-entrypoint-initdb.d
+      - ./database/mysql-binlog-expire.cnf:/etc/mysql/conf.d/binlog-expire.cnf:ro
     ports:
       - "3307:3306"   # 3307 on host so it doesn't clash with a local MySQL
 
