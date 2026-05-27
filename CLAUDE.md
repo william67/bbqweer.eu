@@ -48,14 +48,16 @@ C:\Apps\bbqweer.eu\
 │   ├── knmi reports/       — JSON export files per dataset (versioned, import via UI)
 │   ├── fix-procedures.sql  — one-time fix: lowercase table names in stored procedures
 │   ├── migrate-uurgeg-datum-tijd.sql — one-time: rename DATUM_TIJD → DATUM_TIJD_VAN, add DATUM_TIJD_TOT (run on live DB)
+│   ├── mysql-binlog-expire.cnf — MySQL config: binlog_expire_logs_seconds = 604800 (7 days)
 │   └── knmi_stars.sql      — HYG star catalogue (87,475 rows)
 ├── docs/                   — Documentation
 │   ├── system-architecture.md
 │   ├── knmi-data-sync.md
 │   ├── docker-guide.md
 │   ├── dev-workflow.md
+│   ├── deploy-to-hetzner.md
 │   └── knmi-config-export-import.md
-├── nginx/nginx.conf        — static files + /api/* proxy to nodejs:3000
+├── nginx/nginx.conf        — serves bbqweer.eu; HTTP→HTTPS redirect + SSL + /api/* proxy to nodejs:3000
 ├── deploy-hetzner.ps1      — automated deploy script (build + upload + VPS git pull + health check)
 ├── .env                    — MySQL root + app passwords — NOT in git
 ├── .gitignore
@@ -217,7 +219,7 @@ docker compose exec nodejs node createUser.js
 ## Pages / Nav
 - KNMI Data (`/knmidata`) — weather data charts + admin (Beheer menu); chart-type buttons show text labels (Tabel/AnyChart/Chart.js) with active state highlighted
 - Weersverwachting (`/forecast`) — own lazy module (`ForecastModule`); 10-day hourly forecast via Open-Meteo (KNMI Seamless model); columns: temp, humidity, pressure, wind, rain, snow, cloud cover, radiation (GTI); location picked via Leaflet map dialog (saved in `localStorage` key `forecast_location`); Nominatim reverse geocoding resolves city name on save
-- Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions; location picked via Leaflet map dialog (saved in `localStorage` key `planetarium_location`); Nominatim reverse geocoding resolves city name on save; falls back to geolocation if no stored location
+- Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions; location picked via Leaflet map dialog (saved in `localStorage` key `planetarium_location`); Nominatim reverse geocoding resolves city name on save; uses default coords if no stored location (no geolocation)
 - Energieprijzen (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart; always shows today + tomorrow (fixed, no date nav); summary cards (Nu/Gemiddeld/Laagste/Hoogste) for today, summary cards (Gemiddeld/Laagste/Hoogste) for tomorrow; historical section with date picker below; UTC→local time conversion (Dutch UTC+1/+2 offsets); backend fetches CURDATE-1 through CURDATE+1 so local 00:00–01:00 hours are included; manual backfill: `node callSyncEnergiePrices.js [YYYY-MM-DD]`
 - Zonne-energie (`/solar`) — solar panel output forecast (3-day) via Open-Meteo GTI + historical backtest via KNMI uurgeg radiation data; backtest at bottom of page (collapsible); selected station saved in `localStorage` key `solar_backtest_stn`
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
@@ -294,6 +296,7 @@ angular.json: add `node_modules/leaflet/dist/leaflet.css` to styles array and `"
 - **SSH known_hosts for bbqweer.eu**: run `ssh-keyscan bbqweer.eu >> C:/Users/William/.ssh/known_hosts` once to avoid host key prompts. Without this, automated ssh/scp commands hang waiting for interactive input.
 - **Leaflet default marker icon breaks in production** — Angular's bundler cannot resolve the default icon image paths from node_modules. Fix: `delete (L.Icon.Default.prototype as any)._getIconUrl` + `L.Icon.Default.mergeOptions()` at module level (top of component file). See the Leaflet Map section above.
 - **Topbar logo** — `frontend/src/assets/logo.png` (44px height, `border-radius: 8px`); source file in `logo/` folder (not served, just version-controlled).
+- **MySQL binary logs**: configured to expire after 7 days via `database/mysql-binlog-expire.cnf` (mounted into bbqweer-mysql). Without this, binlogs accumulate indefinitely and can fill the disk (17GB observed before fix).
 
 ## First Steps for New Chat
 1. Read `docs/system-architecture.md` for full stack overview
