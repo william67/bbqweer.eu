@@ -84,6 +84,16 @@ function extractStation(csvText) {
     return null;
 }
 
+// ─── Deduplicate + sort parsed rows (guards against duplicate/out-of-order rows in KNMI files) ───
+
+function dedupeRows(rows) {
+    const map = new Map();
+    for (const row of rows) {
+        if (!map.has(row.key)) map.set(row.key, row); // first occurrence wins
+    }
+    return [...map.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}
+
 // ─── Two-pointer merge ────────────────────────────────────────────────────────
 
 async function mergeSync(rowsA, rowsB, insertSql, updateSql) {
@@ -193,7 +203,7 @@ function parseEtmgegRows(csvText) {
 }
 
 async function syncEtmgeg(station, csvText) {
-    const rowsA = parseEtmgegRows(csvText);
+    const rowsA = dedupeRows(parseEtmgegRows(csvText));
     if (rowsA.length === 0) return { inserted: 0, updated: 0, unchanged: 0 };
     const [rowsB] = await db.query(
         `SELECT SYNC_KEY, ${ETMGEG_NAMES.join(',')} FROM v_etmgeg WHERE STATION=? ORDER BY SYNC_KEY`,
@@ -265,7 +275,7 @@ function parseUurgegRows(csvText) {
 }
 
 async function syncUurgeg(station, csvText) {
-    const rowsA = parseUurgegRows(csvText);
+    const rowsA = dedupeRows(parseUurgegRows(csvText));
     if (rowsA.length === 0) return { inserted: 0, updated: 0, unchanged: 0 };
     const [rowsB] = await db.query(
         `SELECT SYNC_KEY, ${UURGEG_NAMES.join(',')} FROM v_uurgeg WHERE STATION=? ORDER BY SYNC_KEY`,
@@ -320,7 +330,7 @@ function parseNeerslaggegRows(csvText) {
 }
 
 async function syncNeerslaggeg(station, csvText) {
-    const rowsA = parseNeerslaggegRows(csvText);
+    const rowsA = dedupeRows(parseNeerslaggegRows(csvText));
     if (rowsA.length === 0) return { inserted: 0, updated: 0, unchanged: 0 };
     const [rowsB] = await db.query(
         `SELECT SYNC_KEY, ${NEERS_NAMES.join(',')} FROM v_neerslaggeg WHERE STATION=? ORDER BY SYNC_KEY`,
