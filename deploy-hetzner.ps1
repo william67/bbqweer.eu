@@ -69,7 +69,7 @@ Write-Ok "Uploaded"
 
 # -- 5. VPS: git pull + rebuild nodejs + restart nginx ------------------------
 Write-Step "Deploying on VPS (git pull + rebuild nodejs + restart nginx)"
-ssh $VPS "cd /opt/bbqweer && git pull && docker compose up -d --build nodejs && docker compose up -d --no-build nginx"
+ssh $VPS "cd /opt/bbqweer && git fetch origin && git reset --hard origin/main && docker compose up -d --build nodejs && docker compose up -d --no-build nginx"
 if ($LASTEXITCODE -ne 0) { Write-Fail "VPS deploy commands failed" }
 Write-Ok "VPS updated"
 
