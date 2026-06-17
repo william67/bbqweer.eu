@@ -19,6 +19,7 @@ L.Icon.Default.mergeOptions({
 });
 
 const PLANETARIUM_LOCATION_KEY = 'planetarium_location';
+const PLANETARIUM_VIEW_KEY     = 'planetarium_view';
 
 interface PlottedStar { star: Star; x: number; y: number; hitR: number; }
 
@@ -132,6 +133,18 @@ export class MyPlanetariumComponent implements AfterViewInit, OnDestroy {
             try {
                 const loc = JSON.parse(stored);
                 this.lat = loc.lat; this.lng = loc.lng; this.locationLabel = loc.label ?? '';
+            } catch {}
+        }
+        const storedView = this.localStorage.getData(PLANETARIUM_VIEW_KEY);
+        if (storedView) {
+            try {
+                const v = JSON.parse(storedView);
+                if (v.viewMode)      this.viewMode      = v.viewMode;
+                if (v.domeRotation  !== undefined) this.domeRotation  = v.domeRotation;
+                if (v.domeViewAlt   !== undefined) this.domeViewAlt   = v.domeViewAlt;
+                if (v.viewAz        !== undefined) this.viewAz        = v.viewAz;
+                if (v.viewAlt       !== undefined) this.viewAlt       = v.viewAlt;
+                if (v.horizonFov    !== undefined) this.horizonFov    = v.horizonFov;
             } catch {}
         }
         this.loadStars();
@@ -698,6 +711,17 @@ export class MyPlanetariumComponent implements AfterViewInit, OnDestroy {
             },
             error: () => this.applyLocation(lat, lng, `${lat}, ${lng}`)
         });
+    }
+
+    saveView() {
+        this.localStorage.saveData(PLANETARIUM_VIEW_KEY, JSON.stringify({
+            viewMode:     this.viewMode,
+            domeRotation: this.domeRotation,
+            domeViewAlt:  this.domeViewAlt,
+            viewAz:       this.viewAz,
+            viewAlt:      this.viewAlt,
+            horizonFov:   this.horizonFov,
+        }));
     }
 
     cancelMap() {

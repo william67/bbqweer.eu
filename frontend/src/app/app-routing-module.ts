@@ -7,7 +7,7 @@ const routes: Routes = [
         path: '',
         component: AppLayoutComponent,
         children: [
-            { path: '', redirectTo: 'knmidata', pathMatch: 'full' },
+            { path: '', redirectTo: 'forecast', pathMatch: 'full' },
             {
                 path: 'knmidata',
                 loadChildren: () => import('./pages/knmidata/knmidata.module').then(m => m.KnmiDataModule)
@@ -30,7 +30,7 @@ const routes: Routes = [
             }
         ]
     },
-    { path: '**', redirectTo: 'knmidata' }
+    { path: '**', redirectTo: 'forecast' }
 ];
 
 @NgModule({

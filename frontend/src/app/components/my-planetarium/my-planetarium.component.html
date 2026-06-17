@@ -125,6 +125,8 @@
       [outlined]="!showPasses" (click)="openPasses()"></p-button>
     <p-button label="Locatie" icon="pi pi-map-marker" size="small"
       [outlined]="true" (click)="openMapDialog()"></p-button>
+    <p-button label="Sla weergave op" icon="pi pi-bookmark" size="small"
+      [outlined]="true" (click)="saveView()"></p-button>
     @if (locationLabel) {
       <span style="color:#8a9bcc; font-size:11px; font-family:monospace;">{{ locationLabel }}</span>
     }

@@ -6,9 +6,6 @@
         </a>
     </div>
     <div class="topbar-nav">
-        <a class="topbar-nav-link" [routerLink]="['/knmidata']" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
-            <i class="pi pi-chart-bar mr-2"></i>KNMI Data
-        </a>
         <a class="topbar-nav-link" [routerLink]="['/forecast']" routerLinkActive="active">
             <i class="pi pi-sun mr-2"></i>Verwachting
         </a>
@@ -20,6 +17,9 @@
         </a>
         <a class="topbar-nav-link" [routerLink]="['/solar']" routerLinkActive="active">
             <i class="pi pi-sun mr-2"></i>Zonne-energie
+        </a>
+        <a class="topbar-nav-link" [routerLink]="['/knmidata']" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
+            <i class="pi pi-chart-bar mr-2"></i>KNMI Data
         </a>
     </div>
     <app-login></app-login>
