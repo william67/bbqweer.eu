@@ -154,6 +154,12 @@ function initBlitzortung(socketIo) {
     redis.connect().then(() => {
         console.log(`[blitzortung] Redis connected (${redisHost}:6379)`);
         startWss();
+        setInterval(async () => {
+            try {
+                const count = await redis.zcount('strikes:time', Date.now() - 30_000, '+inf');
+                if (io) io.emit('lightning-index', count);
+            } catch {}
+        }, 5_000);
     }).catch(err => {
         console.error('[blitzortung] Redis connect failed:', err.message);
     });

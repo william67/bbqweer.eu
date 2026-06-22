@@ -1,8 +1,22 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Subscription } from 'rxjs';
+import { LightningService } from '../services/lightning.service';
 
 @Component({
     selector: 'app-topbar',
     templateUrl: './app.topbar.component.html',
     standalone: false
 })
-export class AppTopbarComponent {}
+export class AppTopbarComponent implements OnInit, OnDestroy {
+
+    lightningIndex = 0;
+    private sub?: Subscription;
+
+    constructor(private lightningSvc: LightningService) {}
+
+    ngOnInit(): void {
+        this.sub = this.lightningSvc.lightningIndex$.subscribe(n => this.lightningIndex = n);
+    }
+
+    ngOnDestroy(): void { this.sub?.unsubscribe(); }
+}

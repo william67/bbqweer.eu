@@ -1,5 +1,5 @@
 import { Injectable, OnDestroy } from '@angular/core';
-import { Subject } from 'rxjs';
+import { BehaviorSubject, Subject } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
 import { environment } from 'src/environments/environment';
 
@@ -16,16 +16,18 @@ export class LightningService implements OnDestroy {
 
     private socket: Socket;
 
-    readonly initialList$ = new Subject<Strike[]>();
-    readonly newStrike$   = new Subject<Strike>();
+    readonly initialList$    = new Subject<Strike[]>();
+    readonly newStrike$      = new Subject<Strike>();
+    readonly lightningIndex$ = new BehaviorSubject<number>(0);
 
     constructor() {
         this.socket = io(environment.wsUrl, { transports: ['websocket'] });
 
         // Set up all listeners once in the constructor — service owns the connection
-        this.socket.on('connect',      () => this.requestInitialList());
-        this.socket.on('initial-list', (list: Strike[]) => this.initialList$.next(list));
-        this.socket.on('new-strike',   (s: Strike)      => this.newStrike$.next(s));
+        this.socket.on('connect',         () => this.requestInitialList());
+        this.socket.on('initial-list',    (list: Strike[]) => this.initialList$.next(list));
+        this.socket.on('new-strike',      (s: Strike)      => this.newStrike$.next(s));
+        this.socket.on('lightning-index', (n: number)      => this.lightningIndex$.next(n));
     }
 
     // Called by the component when it mounts and socket is already connected

@@ -99,6 +99,17 @@
             &.active {
                 color: var(--primary-color);
             }
+
+            .lightning-index-badge {
+                margin-left: 0.4rem;
+                padding: 0.1rem 0.4rem;
+                border-radius: 0.75rem;
+                font-size: 0.75rem;
+                font-weight: 700;
+                line-height: 1.2;
+                background: #facc15;
+                color: #1a1a1a;
+            }
         }
     }
 
