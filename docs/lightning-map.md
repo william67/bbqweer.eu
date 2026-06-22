@@ -32,9 +32,9 @@ lightningmaps.org (WSS)
         │  pruneOld() 30s     │ ZRANGEBYSCORE / GEOSEARCH
         ▼                     ▼
   Socket.IO ──────────► Frontend (Angular)
-     'new-strike'         'initial-list' on connect
-                          'new-strike'   live updates
-                          'get-window'   on-demand viewport query
+     'new-strike'         'get-initial-list' → 'initial-list' (client-driven, after map init)
+                          'new-strike'        live updates
+                          'get-window'        on-demand viewport query
 ```
 
 This is the one page in bbqweer.eu that uses **Socket.IO** — lightning strikes are real-time push events, not batch data. This follows the `handle-live-data` skill. The existing HTTP REST deviation in CLAUDE.md applies only to the weather/forecast pages.
@@ -102,7 +102,9 @@ Exported functions:
 ```js
 function initBlitzortung(io) { ... }       // call once on app start
 function initSocketBlitzortung(socket) {   // called for each new socket connection
-  socket.emit('initial-list', await getAllCurrent());
+  const sendInitialList = () =>
+    getAllCurrent().then(strikes => socket.emit('initial-list', strikes));
+  socket.on('get-initial-list', sendInitialList); // client requests after map is ready
   socket.on('get-window', async ({ lon, lat, widthKm, heightKm }) => {
     socket.emit('window-result', await getInGpsWindow(...));
   });
@@ -303,6 +305,9 @@ When the browser tab is in the background, Socket.IO queues messages. On focus, 
 
 ### isNew flag
 The backend emits `{ ...strike, isNew: true }` for live strikes only. The Redis `initial-list` reply has no `isNew` flag — so historical strikes on connect become grey bolts without rings.
+
+### Initial list is client-driven, not auto-pushed
+The backend does NOT auto-send `initial-list` on connect. The frontend emits `get-initial-list` inside `ngAfterViewInit` after `initMap()` completes, guaranteeing the map exists before strikes arrive. `LightningService` is root-scoped (socket survives navigation), so the explicit request also handles the second-visit case where the socket is already connected and no connect event fires.
 
 ### Local dev connection
 `ng serve` → `environment.wsUrl = 'http://localhost:3000'` → Socket.IO connects directly to the backend, bypassing nginx entirely. Nginx only handles Socket.IO in Docker/production via the `/socket.io/` proxy block.

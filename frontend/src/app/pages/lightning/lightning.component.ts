@@ -69,15 +69,16 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
 
     constructor(private svc: LightningService) {}
 
-    ngOnInit(): void {
-        this.subs.push(
-            this.svc.initialList().subscribe(list => list.forEach(s => this.flashStrike(s))),
-            this.svc.newStrike().subscribe(s => this.flashStrike(s))
-        );
-    }
+    ngOnInit(): void {}
 
     ngAfterViewInit(): void {
-        setTimeout(() => this.initMap());
+        setTimeout(() => {
+            this.initMap();
+            this.subs.push(
+                this.svc.initialList().subscribe(list => list.forEach(s => this.flashStrike(s))),
+                this.svc.newStrike().subscribe(s => this.flashStrike(s))
+            );
+        });
     }
 
     private initMap(): void {

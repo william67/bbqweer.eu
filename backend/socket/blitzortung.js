@@ -165,8 +165,7 @@ function initSocketBlitzortung(socket) {
             .then(strikes => socket.emit('initial-list', strikes))
             .catch(() => socket.emit('initial-list', []));
 
-    sendInitialList();                          // on first connect
-    socket.on('get-initial-list', sendInitialList); // on explicit re-request (second visit)
+    socket.on('get-initial-list', sendInitialList);
 
     socket.on('get-window', ({ lon, lat, widthKm, heightKm }) => {
         getInWindow(lon, lat, widthKm, heightKm)
