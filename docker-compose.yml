@@ -16,6 +16,12 @@ services:
     ports:
       - "3307:3306"   # 3307 on host so it doesn't clash with a local MySQL
 
+  redis:
+    image: redis:8-alpine
+    container_name: bbqweer-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+
   nodejs:
     build:
       context: ./backend
@@ -24,6 +30,7 @@ services:
     restart: unless-stopped
     depends_on:
       - mysql
+      - redis
     volumes:
       - ./backend/config.ini:/app/config.ini:ro
     environment:
