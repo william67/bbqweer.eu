@@ -16,7 +16,7 @@ Data source: [lightningmaps.org](https://lightningmaps.org) WebSocket (Blitzortu
 - [x] `LightningModule` + `LightningComponent` — Leaflet map, bolt markers, thunder ring, counter
 - [x] Route `/#/lightning` wired in `app-routing-module.ts`
 - [x] **Bliksem** added to topbar nav
-- [x] Lightning index badge in topbar — strikes/15s via Socket.IO, yellow pill
+- [x] Lightning index badge in topbar — strikes/30s via Socket.IO, yellow pill, 500ms refresh
 - [x] ntfy.sh push alerts — geo-distance check per strike, optional `[ntfy]` config section
 
 ---
@@ -91,15 +91,15 @@ TTL: 10 minutes. `pruneOld()` runs every 30s via `setInterval`.
 ### New file: `backend/socket/blitzortung.js`
 
 Responsibilities:
-- Open WSS to `wss://live.lightningmaps.org/` (or `live2`, picked at random)
+- Open WSS to `wss://live.lightningmaps.org/` (single server — no random selection)
 - Handle auth challenge-response: server sends `k` → client sends `(k*3604)%7081 * Date.now()/100`; requires `Origin: https://www.lightningmaps.org` header
 - On first message: read `port` field; use it for subsequent reconnects (typically `8085`)
-- Dedup incoming strikes by nanosecond `time` field (Map, 150s TTL, cleaned every 30s)
+- Dedup incoming strikes by `${time}:${lat.toFixed(4)}:${lon.toFixed(4)}` (Map, 150s TTL, cleaned every 30s) — same key as frontend; guards against reconnect replays and cross-connection duplicates
+- Server `reload` message: `ws.removeAllListeners('close')` before `ws.close()` — prevents race where both the reload handler and the close event schedule a reconnect simultaneously
 - Filter to BOUNDS
 - Store in Redis via `addStrike()`, emit `new-strike` to all Socket.IO clients
 - Auto-reconnect after 5s on close; `isNew: true` only on live strikes, not reconnect replay
-- `MAX_BUFFER = 500` strikes, `MAX_AGE_MS = 10min` (guards against reconnect storms)
-- Every 5s: `redis.zcount('strikes:time', now-15s, '+inf')` → emit `lightning-index` to all clients (15s window matches frontend active window after ~14s propagation delay)
+- Every 500ms: `redis.zcount('strikes:time', now-30s, '+inf')` → emit `lightning-index` to all clients
 - ntfy.sh optional alerts: Haversine distance check per strike; POST to topic when within `radius_km` of home and cooldown elapsed; reads `[ntfy]` section from `config.ini` — skipped silently if absent
 
 Exported functions:
@@ -225,8 +225,8 @@ location /socket.io/ {
 **Strike lifecycle — `flashStrike(strike, updateDisplay)`**:
 1. Dedup check via `strikeKeys: Set<string>` (key = `timeMs:lat(4dp):lon(4dp)`) — prevents the same strike from being rendered twice when `newStrike$` and `initialList$` race
 2. Compute `remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs)`
-3. `isLive = strike.isNew && remainingMs > 0` → white flash (`STYLE_FLASH`, 300ms) → yellow bolt (`STYLE_ACTIVE`) + ring + `styleTimer`
-4. `isLive = false` → grey bolt immediately (initial-list items, old/background strikes)
+3. `isLive = remainingMs > 0` → yellow bolt (`STYLE_ACTIVE`) + `styleTimer`; if also `strike.isNew`: white flash (`STYLE_FLASH`, 300ms) first
+4. `isLive = false` → grey bolt immediately (strikes older than `RING_DURATION_MS = 30s`)
 5. `styleTimer` fires at `remainingMs`: flips `entry.isLive = false`, switches to grey, calls `updateCounts()`
 6. Fade interval (every 10s): opacity fade based on age, removes at 10min
 
@@ -248,7 +248,7 @@ All markers share a single `L.canvas()` renderer — drawn on one `<canvas>` ele
 | Style | Fill | Stroke | Radius | Duration |
 |---|---|---|---|---|
 | `STYLE_FLASH`  | `#ffffff` white  | `#ffffff` white | 13px | 300ms on arrival |
-| `STYLE_ACTIVE` | `#facc15` yellow | `#ef4444` red   | 10px | until `styleTimer` fires (~29s) |
+| `STYLE_ACTIVE` | `#facc15` yellow | `#ef4444` red   | 10px | until `styleTimer` fires (30s)  |
 | `STYLE_OLD`    | `#e5e7eb` grey   | `#000000` black |  7px | until fade-out at 10min |
 
 **Thunder ring** (only when `map.getZoom() >= 10`):
@@ -359,8 +359,10 @@ cooldown_min = 5
 ```
 Install the ntfy iOS/Android app and subscribe to the same topic. If the section is absent, alerts are silently disabled — no crash.
 
-### Lightning index window (15s) vs frontend active window (~29s)
-`RING_DURATION_MS ≈ 29s` but production propagation delay is ~14s, leaving each strike `isLive` for ~15s on screen. The backend uses a 15s Redis window so the badge matches the map's `activeCount`. If propagation delay changes significantly, adjust the zcount window accordingly.
+### Lightning index badge — why badge ≈ activeCount
+`RING_DURATION_MS = 30_000ms`. `isLive = remainingMs > 0` applies to both initial-list strikes and live arrivals. The backend uses a 30s Redis window (`zcount now-30s`). Propagation delay is ~2s, so both Redis and the frontend effectively count the same 30s window — badge ≈ activeCount in steady state.
+
+Root cause of the historical 2× mismatch: `live.lightningmaps.org` and `live2.lightningmaps.org` assign different stroke IDs to the same physical lightning bolt. When both servers were connected simultaneously (random selection + reload race condition), each bolt was stored twice in Redis. The frontend deduped by `timeMs:lat:lon` (seeing 1 per bolt); Redis had 2 per bolt → badge = 2× activeCount. Fixed by: single server + dedup key matching the frontend + reload race fix.
 
 ---
 

@@ -6,7 +6,7 @@ import { LightningService, Strike } from 'src/app/services/lightning.service';
 const RING_SPEED       = 343;
 const RING_MAX_M       = 10_000;
 const RING_STEP_MS     = 200;
-const RING_DURATION_MS = Math.ceil(RING_MAX_M / RING_SPEED * 1000);
+const RING_DURATION_MS = 30_000;
 const MAX_AGE_MS       = 10 * 60 * 1000;
 
 const BOUNDS = { latMin: 40.0, latMax: 59.0, lonMin: -12.0, lonMax: 30.0 };
@@ -198,7 +198,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         }
 
         const remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs);
-        const isLive      = !!strike.isNew && remainingMs > 0;
+        const isLive      = remainingMs > 0;
 
         const marker = boltMarker(
             [strike.lat, strike.lon],
@@ -210,12 +210,14 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         this.strikes.push(entry);
 
         if (isLive) {
-            marker.setStyle(STYLE_FLASH);
-            marker.setRadius(STYLE_FLASH.radius);
-            setTimeout(() => {
-                marker.setStyle(STYLE_ACTIVE);
-                marker.setRadius(STYLE_ACTIVE.radius);
-            }, 300);
+            if (strike.isNew) {
+                marker.setStyle(STYLE_FLASH);
+                marker.setRadius(STYLE_FLASH.radius);
+                setTimeout(() => {
+                    marker.setStyle(STYLE_ACTIVE);
+                    marker.setRadius(STYLE_ACTIVE.radius);
+                }, 300);
+            }
 
             entry.styleTimer = setTimeout(() => {
                 entry.isLive = false;

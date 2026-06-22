@@ -9,7 +9,7 @@ const axios     = require('axios');
 const BOUNDS = { latMin: 40.0, latMax: 59.0, lonMin: -12.0, lonMax: 30.0 };
 const TTL_MS = 10 * 60 * 1000;
 
-const WSS_SERVERS = ['live.lightningmaps.org', 'live2.lightningmaps.org'];
+const WSS_SERVER  = 'live.lightningmaps.org';
 let   wssNextPort = 443;
 
 // Initial subscription message — tells server which geographic area we want
@@ -125,8 +125,7 @@ async function getInWindow(lon, lat, widthKm, heightKm) {
 // ── WebSocket (lightningmaps.org) ─────────────────────────────────────────────
 
 function startWss() {
-    const server = WSS_SERVERS[Math.floor(Math.random() * WSS_SERVERS.length)];
-    const url    = `wss://${server}:${wssNextPort}/`;
+    const url    = `wss://${WSS_SERVER}:${wssNextPort}/`;
 
     const ws = new WebSocket(url, {
         rejectUnauthorized: false,
@@ -158,6 +157,7 @@ function startWss() {
 
             // Server requests a reconnect after a delay
             if ('reload' in msg) {
+                ws.removeAllListeners('close');
                 ws.close();
                 setTimeout(startWss, parseInt(msg.reload, 10) || 30_000);
                 return;
@@ -167,7 +167,7 @@ function startWss() {
             if (msg.strokes && Array.isArray(msg.strokes)) {
                 for (const stroke of msg.strokes) {
                     if (!inBounds(stroke.lat, stroke.lon)) continue;
-                    if (isDupe(`wss:${stroke.id}`)) continue;
+                    if (isDupe(`${stroke.time}:${stroke.lat.toFixed(4)}:${stroke.lon.toFixed(4)}`)) continue;
                     addStrike({ lat: stroke.lat, lon: stroke.lon, timeMs: stroke.time, pol: 0 })
                         .catch(() => {});
                 }
@@ -192,10 +192,10 @@ function initBlitzortung(socketIo) {
         startWss();
         setInterval(async () => {
             try {
-                const count = await redis.zcount('strikes:time', Date.now() - 15_000, '+inf');
+                const count = await redis.zcount('strikes:time', Date.now() - 30_000, '+inf');
                 if (io) io.emit('lightning-index', count);
             } catch {}
-        }, 5_000);
+        }, 500);
     }).catch(err => {
         console.error('[blitzortung] Redis connect failed:', err.message);
     });
