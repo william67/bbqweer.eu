@@ -3,6 +3,8 @@
 const WebSocket = require('ws');
 const Redis     = require('ioredis');
 const fs        = require('fs');
+const ini       = require('ini');
+const axios     = require('axios');
 
 const BOUNDS = { latMin: 40.0, latMax: 59.0, lonMin: -12.0, lonMax: 30.0 };
 const TTL_MS = 10 * 60 * 1000;
@@ -29,8 +31,22 @@ setInterval(() => {
 }, 30_000);
 
 // Auto-detect local vs Docker — same pattern as mysqlpool helper
+const configFile = fs.existsSync('./config.local.ini') ? './config.local.ini' : './config.ini';
+const appConfig  = ini.parse(fs.readFileSync(configFile, 'utf-8'));
+
 const redisHost = fs.existsSync('./config.local.ini') ? '127.0.0.1' : 'redis';
 const redis     = new Redis({ host: redisHost, port: 6379, lazyConnect: true });
+
+// ntfy push notifications — optional; skipped silently if [ntfy] section absent
+const ntfyCfg     = appConfig.ntfy || null;
+const ntfyEnabled = !!(ntfyCfg && ntfyCfg.url && ntfyCfg.home_lat && ntfyCfg.home_lon);
+const HOME_LAT    = ntfyEnabled ? parseFloat(ntfyCfg.home_lat)      : 0;
+const HOME_LON    = ntfyEnabled ? parseFloat(ntfyCfg.home_lon)      : 0;
+const RADIUS_KM   = ntfyEnabled ? parseFloat(ntfyCfg.radius_km)  || 30 : 0;
+const COOLDOWN_MS = ntfyEnabled ? (parseFloat(ntfyCfg.cooldown_min) || 5) * 60_000 : 0;
+let   lastNotifiedAt = 0;
+
+if (ntfyEnabled) console.log(`[blitzortung] ntfy alerts enabled — home ${HOME_LAT},${HOME_LON} radius ${RADIUS_KM}km cooldown ${COOLDOWN_MS / 60_000}min`);
 
 redis.on('error', (err) => console.error('[blitzortung] Redis error:', err.message));
 
@@ -41,6 +57,16 @@ let io = null;
 function inBounds(lat, lon) {
     return lat >= BOUNDS.latMin && lat <= BOUNDS.latMax &&
            lon >= BOUNDS.lonMin && lon <= BOUNDS.lonMax;
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+    const R    = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a    = Math.sin(dLat / 2) ** 2 +
+                 Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                 Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function isDupe(key) {
@@ -59,6 +85,16 @@ async function addStrike(strike) {
         .hset('strikes:data', id, JSON.stringify(strike))
         .exec();
     if (io) io.emit('new-strike', { ...strike, isNew: true });
+
+    if (ntfyEnabled && Date.now() - lastNotifiedAt > COOLDOWN_MS) {
+        const dist = haversineKm(strike.lat, strike.lon, HOME_LAT, HOME_LON);
+        if (dist <= RADIUS_KM) {
+            lastNotifiedAt = Date.now();
+            axios.post(ntfyCfg.url, `Bliksem op ${Math.round(dist)}km van huis`, {
+                headers: { Title: '⚡ Bliksemwaarschuwing', Tags: 'warning,zap', Priority: 'high' }
+            }).catch(() => {});
+        }
+    }
 }
 
 async function pruneOld() {
@@ -156,7 +192,7 @@ function initBlitzortung(socketIo) {
         startWss();
         setInterval(async () => {
             try {
-                const count = await redis.zcount('strikes:time', Date.now() - 30_000, '+inf');
+                const count = await redis.zcount('strikes:time', Date.now() - 15_000, '+inf');
                 if (io) io.emit('lightning-index', count);
             } catch {}
         }, 5_000);
