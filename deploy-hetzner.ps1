@@ -14,10 +14,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $VPS      = 'root@bbqweer.eu'
-$DIST_SRC = 'C:/Apps/bbqweer.eu/frontend/dist/frontend/*'
-$DIST_DST = '/opt/bbqweer/frontend/dist/frontend/'
+$DIST_SRC = 'C:/Apps/bbqweer.eu/frontend/dist/frontend'
+$DIST_DST = '/opt/bbqweer/frontend/dist/frontend'
+$TARBALL  = 'C:/Temp/bbqweer-dist.tar.gz'
 $ENV_FILE = 'C:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts'
 $HEALTH   = 'https://bbqweer.eu/api/solar/tomorrow?lat=52.09&lon=5.18&efficiency=0.85&inverters=[{"name":"test","type":"string","maxAcW":5000,"arrays":[{"panels":10,"wp":400,"tilt":35,"azimuth":0}]}]'
+$SSH_OPTS = '-o ServerAliveInterval=30 -o ServerAliveCountMax=6'
 
 function Write-Step { param($msg) Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-Ok   { param($msg) Write-Host "    OK: $msg" -ForegroundColor Green }
@@ -61,15 +63,19 @@ try {
 }
 Write-Ok "Build complete, placeholder restored"
 
-# -- 4. Upload dist to VPS ----------------------------------------------------
+# -- 4. Upload dist to VPS (tarball — avoids connection resets on recursive scp) --
 Write-Step "Uploading frontend dist to VPS"
-scp -r $DIST_SRC "${VPS}:${DIST_DST}"
+if (-not (Test-Path 'C:/Temp')) { New-Item -ItemType Directory -Path 'C:/Temp' | Out-Null }
+& tar -czf $TARBALL -C $DIST_SRC .
+if ($LASTEXITCODE -ne 0) { Write-Fail "tar failed" }
+& scp $SSH_OPTS.Split(' ') $TARBALL "${VPS}:/tmp/bbqweer-dist.tar.gz"
 if ($LASTEXITCODE -ne 0) { Write-Fail "scp failed" }
+Remove-Item $TARBALL -ErrorAction SilentlyContinue
 Write-Ok "Uploaded"
 
 # -- 5. VPS: git pull + rebuild nodejs + restart nginx ------------------------
 Write-Step "Deploying on VPS (git pull + rebuild nodejs + restart nginx)"
-ssh $VPS "cd /opt/bbqweer && git fetch origin && git reset --hard origin/main && docker compose up -d --build nodejs && docker compose up -d --no-build nginx"
+& ssh $SSH_OPTS.Split(' ') $VPS "cd /opt/bbqweer && git fetch origin && git reset --hard origin/main && rm -rf ${DIST_DST}/* && tar xzf /tmp/bbqweer-dist.tar.gz -C ${DIST_DST} && rm /tmp/bbqweer-dist.tar.gz && docker compose up -d --build nodejs && docker compose up -d --no-build nginx"
 if ($LASTEXITCODE -ne 0) { Write-Fail "VPS deploy commands failed" }
 Write-Ok "VPS updated"
 
