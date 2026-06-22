@@ -75,7 +75,7 @@ Write-Ok "Uploaded"
 
 # -- 5. VPS: git pull + rebuild nodejs + restart nginx ------------------------
 Write-Step "Deploying on VPS (git pull + rebuild nodejs + restart nginx)"
-& ssh $SSH_OPTS.Split(' ') $VPS "cd /opt/bbqweer && git fetch origin && git reset --hard origin/main && rm -rf ${DIST_DST}/* && tar xzf /tmp/bbqweer-dist.tar.gz -C ${DIST_DST} && rm /tmp/bbqweer-dist.tar.gz && docker compose up -d --build nodejs && docker compose up -d --no-build nginx"
+& ssh $SSH_OPTS.Split(' ') $VPS "cd /opt/bbqweer && git fetch origin && git reset --hard origin/main && rm -rf ${DIST_DST}/* && tar xzf /tmp/bbqweer-dist.tar.gz -C ${DIST_DST} && rm /tmp/bbqweer-dist.tar.gz && docker compose up -d --build nodejs && docker compose restart nginx"
 if ($LASTEXITCODE -ne 0) { Write-Fail "VPS deploy commands failed" }
 Write-Ok "VPS updated"
 
