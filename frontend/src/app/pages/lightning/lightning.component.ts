@@ -11,6 +11,7 @@ const MAX_AGE_MS       = 10 * 60 * 1000;
 
 const BOUNDS = { latMin: 40.0, latMax: 59.0, lonMin: -12.0, lonMax: 30.0 };
 
+const STYLE_FLASH  = { radius: 13, color: '#ffffff', fillColor: '#ffffff', fillOpacity: 1, weight: 2,   fill: true };
 const STYLE_ACTIVE = { radius: 10, color: '#ef4444', fillColor: '#facc15', fillOpacity: 1, weight: 1.5, fill: true };
 const STYLE_OLD    = { radius:  7, color: '#000000', fillColor: '#e5e7eb', fillOpacity: 1, weight: 1,   fill: true };
 
@@ -209,6 +210,13 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         this.strikes.push(entry);
 
         if (isLive) {
+            marker.setStyle(STYLE_FLASH);
+            marker.setRadius(STYLE_FLASH.radius);
+            setTimeout(() => {
+                marker.setStyle(STYLE_ACTIVE);
+                marker.setRadius(STYLE_ACTIVE.radius);
+            }, 300);
+
             entry.styleTimer = setTimeout(() => {
                 entry.isLive = false;
                 marker.setStyle(STYLE_OLD);
