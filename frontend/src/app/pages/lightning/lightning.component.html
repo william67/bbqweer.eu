@@ -1,0 +1,28 @@
+<div class="lightning-page">
+
+  <div class="map-container" #mapEl></div>
+
+  <!-- Counter pill — top-left, after Leaflet zoom controls -->
+  <div class="map-pill counter-pill">
+    <span class="total-chip">{{ totalCount }}</span>
+    <span class="pill-label">10 min</span>
+    <span class="legend">
+      <svg width="11" height="17" viewBox="0 0 10 16"><path d="M6 0L0 9h4l-1 7 7-9H6Z" fill="#facc15" stroke="#ef4444" stroke-width="0.8"/></svg>
+      actief
+      <svg width="9" height="14" viewBox="0 0 10 16" style="margin-left:6px"><path d="M6 0L0 9h4l-1 7 7-9H6Z" fill="#e5e7eb" stroke="#000" stroke-width="0.8"/></svg>
+      oud
+    </span>
+    <span class="divider"></span>
+    <span class="strike-badge">⚡ {{ activeCount }} / {{ viewportCount }}</span>
+    <span class="pill-label">actief / zichtbaar</span>
+    <span class="divider"></span>
+    <span class="delay-chip">~{{ (avgDelayMs / 1000).toFixed(1) }}s</span>
+    <span class="pill-label">vertraging</span>
+  </div>
+
+  <!-- Zoom badge — top-right -->
+  <div class="map-pill zoom-pill">
+    <span class="pill-label">Zoom</span>&nbsp;<strong>{{ mapZoom }}</strong>
+  </div>
+
+</div>

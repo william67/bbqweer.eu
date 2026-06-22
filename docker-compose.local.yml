@@ -1,4 +1,7 @@
 services:
+  redis:
+    ports:
+      - "6379:6379"   # expose for local dev (backend runs outside Docker)
   nginx:
     ports:
       - "80:80"

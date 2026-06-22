@@ -56,7 +56,8 @@
             "allowedCommonJsDependencies": [
               "file-saver",
               "crypto-js",
-              "leaflet"
+              "leaflet",
+              "socket.io-client"
             ]
           },
           "configurations": {

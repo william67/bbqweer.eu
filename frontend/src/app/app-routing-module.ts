@@ -27,6 +27,10 @@ const routes: Routes = [
             {
                 path: 'forecast',
                 loadChildren: () => import('./pages/forecast/forecast.module').then(m => m.ForecastModule)
+            },
+            {
+                path: 'lightning',
+                loadChildren: () => import('./pages/lightning/lightning.module').then(m => m.LightningModule)
             }
         ]
     },

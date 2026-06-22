@@ -3,13 +3,18 @@ process.on('uncaughtException', (err) => {
 });
 
 const express    = require('express');
+const http       = require('http');
 const path       = require('path');
 const cors       = require('cors');
 const compression = require('compression');
 const bodyParser = require('body-parser');
+const { Server } = require('socket.io');
+const { initBlitzortung, initSocketBlitzortung } = require('./socket/blitzortung');
 
-const app  = express();
-const port = 3000;
+const app    = express();
+const server = http.createServer(app);
+const io     = new Server(server, { cors: { origin: '*' } });
+const port   = 3000;
 
 app.use(cors());
 app.use(compression());
@@ -46,7 +51,10 @@ app.use('/api/server-tasks',  serverTasksRouter);
 app.use('/api/energie',       energieRouter);
 app.use('/api/solar',         solarRouter);
 
-app.listen(port, () => console.log(`bbqweer backend listening on port ${port}`));
+server.listen(port, () => console.log(`bbqweer backend listening on port ${port}`));
+
+io.on('connection', socket => initSocketBlitzortung(socket));
+initBlitzortung(io);
 
 // Cron tasks — skipped in local dev (config.local.ini present)
 const fs = require('fs');

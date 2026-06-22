@@ -16,15 +16,17 @@ C:\Apps\bbqweer.eu\
 │   │   ├── pages/planetarium/ — PlanetariumComponent (lazy module)
 │   │   ├── pages/energy-prices/ — EnergyPricesComponent (lazy module)
 │   │   ├── pages/solar/    — SolarComponent (lazy module)
+│   │   ├── pages/lightning/ — LightningComponent (lazy module) — real-time strike map
 │   │   ├── components/     — my-knmi-anychart, my-knmi-chartjs, my-knmi-table,
 │   │   │                     my-planetarium, login
 │   │   ├── services/       — knmi-reports, forecast, anychart, local-storage,
 │   │   │                     stars, planetarium-calc, satellites, satellite-js,
-│   │   │                     energy-prices, solar
+│   │   │                     energy-prices, solar, lightning
 │   │   └── layout/         — topbar, footer, layout (AppLayoutModule)
 │   └── proxy.conf.json     — deleted; not needed (environment.ts uses full localhost:3000 URL directly)
 ├── backend/                — Node.js/Express, CommonJS
-│   ├── app.js              — Express + node-cron wiring
+│   ├── app.js              — Express + Socket.IO + node-cron wiring
+│   ├── socket/             — blitzortung.js (WSS → Redis → Socket.IO)
 │   ├── config.ini          — Docker settings (host=mysql, port=3306) — NOT in git
 │   ├── config.local.ini    — Local dev settings (host=127.0.0.1, port=3307) — NOT in git
 │   ├── routes/             — knmi-reports, stars, satellites, auth, users, energy-prices, solar
@@ -70,6 +72,7 @@ C:\Apps\bbqweer.eu\
 | Container | Image | Port |
 |-----------|-------|------|
 | bbqweer-mysql | mysql:8.0 | 3307 (host) / 3306 (internal) |
+| bbqweer-redis | redis:8-alpine | internal only (6379 exposed on host via docker-compose.local.yml) |
 | bbqweer-nodejs | node:20-alpine (built from backend/) | 3000 (internal only) |
 | bbqweer-nginx | nginx:alpine | 80, 443 |
 | bbqweer-certbot | certbot/certbot | — (auto-renew) |
@@ -193,7 +196,8 @@ docker compose exec nodejs node createUser.js
 - `zone.js` installed and configured — required for automatic change detection after async ops
   - `"polyfills": ["zone.js"]` in `angular.json` build options
   - `provideZoneChangeDetection()` in `src/main.ts` bootstrap options
-- Five lazy-loaded modules: `KnmiDataModule`, `ForecastModule`, `PlanetariumModule`, `EnergyPricesModule`, `SolarModule`
+- Six lazy-loaded modules: `KnmiDataModule`, `ForecastModule`, `PlanetariumModule`, `EnergyPricesModule`, `SolarModule`, `LightningModule`
+- `socket.io-client` installed; added to `allowedCommonJsDependencies`; `environment.wsUrl` points to backend Socket.IO server (`http://localhost:3000` dev, `''` prod)
 - Budget limit raised to `2MB` warn / `3MB` error in `angular.json` (PrimeNG Table/Tag/ProgressBar)
 - `"hmr": false` in `angular.json` serve options — required; HMR is unreliable with NgModule apps
 - `platformBrowserDynamic` (from `@angular/platform-browser-dynamic`) required in `main.ts` — `platformBrowser` breaks live reload
@@ -222,6 +226,7 @@ docker compose exec nodejs node createUser.js
 - Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions; location picked via Leaflet map dialog (saved in `localStorage` key `planetarium_location`); Nominatim reverse geocoding resolves city name on save; uses default coords if no stored location (no geolocation)
 - Energieprijzen (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart; always shows today + tomorrow (fixed, no date nav); summary cards (Nu/Gemiddeld/Laagste/Hoogste) for today, summary cards (Gemiddeld/Laagste/Hoogste) for tomorrow; historical section with date picker below; UTC→local time conversion (Dutch UTC+1/+2 offsets); backend fetches CURDATE-1 through CURDATE+1 so local 00:00–01:00 hours are included; manual backfill: `node callSyncEnergiePrices.js [YYYY-MM-DD]`
 - Zonne-energie (`/solar`) — solar panel output forecast (3-day) via Open-Meteo GTI + historical backtest via KNMI uurgeg radiation data; backtest at bottom of page (collapsible); selected station saved in `localStorage` key `solar_backtest_stn`
+- Bliksem (`/lightning`) — real-time lightning strike map via Blitzortung/lightningmaps.org WebSocket; strikes stored in Redis (10min TTL); Socket.IO pushes live updates; yellow bolt = active (<60s), grey = older; thunder ring animates at zoom ≥ 10; counter shows viewport/active counts
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
 
 ## Solar Page — Key Details

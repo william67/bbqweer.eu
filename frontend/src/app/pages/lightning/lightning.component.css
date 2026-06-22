@@ -1,0 +1,93 @@
+:host {
+    display: block;
+}
+
+.lightning-page {
+    position: fixed;
+    top: 4rem;       /* = topbar min-height */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;     /* above content, below topbar (z-index 999) */
+    overflow: hidden;
+}
+
+.map-container {
+    position: absolute;
+    inset: 0;
+}
+
+/* Floating pill — shared base */
+.map-pill {
+    position: absolute;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 4px 12px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: #374151;
+    white-space: nowrap;
+}
+
+.counter-pill {
+    top: 10px;
+    left: 54px;   /* clears Leaflet zoom controls */
+}
+
+.zoom-pill {
+    top: 10px;
+    right: 10px;
+}
+
+.strike-badge {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #1d4ed8;
+}
+
+.pill-label {
+    color: #6b7280;
+    font-size: 0.74rem;
+}
+
+.divider {
+    width: 1px;
+    height: 18px;
+    background: #d1d5db;
+    flex-shrink: 0;
+}
+
+.total-chip {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #fff;
+    background: #1d4ed8;
+    border-radius: 10px;
+    padding: 1px 8px;
+}
+
+.delay-chip {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #92400e;
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: 10px;
+    padding: 1px 8px;
+}
+
+.legend {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.74rem;
+    color: #374151;
+    border-left: 1px solid #e5e7eb;
+    padding-left: 8px;
+    margin-left: 2px;
+}
