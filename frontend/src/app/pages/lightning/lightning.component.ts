@@ -75,7 +75,10 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         setTimeout(() => {
             this.initMap();
             this.subs.push(
-                this.svc.initialList().subscribe(list => list.forEach(s => this.flashStrike(s))),
+                this.svc.initialList().subscribe(list => {
+                    list.forEach(s => this.flashStrike(s, false));
+                    this.updateCounts();
+                }),
                 this.svc.newStrike().subscribe(s => this.flashStrike(s))
             );
         });
@@ -103,7 +106,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         this.fadeTimer = setInterval(() => this.fade(), 10_000);
     }
 
-    private flashStrike(strike: Strike): void {
+    private flashStrike(strike: Strike, updateDisplay = true): void {
         if (!this.map) return;
 
         if (strike.isNew) {
@@ -137,7 +140,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
             }, remainingMs);
         }
 
-        this.updateCounts();
+        if (updateDisplay) this.updateCounts();
     }
 
     private drawRing(lat: number, lon: number, remainingMs: number): void {
