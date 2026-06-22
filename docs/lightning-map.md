@@ -165,27 +165,25 @@ Route: `/#/lightning`, topbar label: **Bliksem**, icon: `pi-bolt` (or `⚡`).
 
 ### New service: `LightningService`
 
+Service owns the socket lifecycle. All listeners are set up once in the constructor. On every `connect` (first connect + reconnects) it auto-requests the initial list. Exposes plain Subjects for the component to subscribe to.
+
 ```typescript
-// src/app/services/lightning.service.ts
 @Injectable({ providedIn: 'root' })
-export class LightningService {
-  private socket = io(environment.wsUrl);   // e.g. 'http://localhost:3000'
+export class LightningService implements OnDestroy {
+    private socket: Socket;
+    readonly initialList$ = new Subject<Strike[]>();
+    readonly newStrike$   = new Subject<Strike>();
 
-  getInitialList(): Observable<Strike[]> {
-    return fromEvent(this.socket, 'initial-list');
-  }
+    constructor() {
+        this.socket = io(environment.wsUrl, { transports: ['websocket'] });
+        this.socket.on('connect',      () => this.requestInitialList());
+        this.socket.on('initial-list', (list: Strike[]) => this.initialList$.next(list));
+        this.socket.on('new-strike',   (s: Strike)      => this.newStrike$.next(s));
+    }
 
-  getNewStrikes(): Observable<Strike> {
-    return fromEvent(this.socket, 'new-strike');
-  }
-
-  getWindow(lon: number, lat: number, widthKm: number, heightKm: number): void {
-    this.socket.emit('get-window', { lon, lat, widthKm, heightKm });
-  }
-
-  getWindowResult(): Observable<Strike[]> {
-    return fromEvent(this.socket, 'window-result');
-  }
+    requestInitialList(): void { this.socket.emit('get-initial-list'); }
+    get connected(): boolean   { return this.socket.connected; }
+    ngOnDestroy()              { this.socket.disconnect(); }
 }
 ```
 
@@ -214,14 +212,30 @@ location /socket.io/ {
 - Tile layer: OSM street map
 - Detection bounds: `L.rectangle([[40.0, -12.0], [59.0, 30.0]])` — dashed blue, 4% fill opacity
 
-**Strike lifecycle**:
-1. Strike arrives (`new-strike` or `initial-list`)
-2. `flashStrike(strike)`:
-   - Compute `remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs)`
-   - If `remainingMs > 0` and `strike.isNew`: add yellow bolt marker + animate thunder ring
-   - If `remainingMs <= 0`: add near-white/black bolt directly (tab-background burst fix)
-3. After `remainingMs`: switch marker to old style via `setStyle` + `setRadius`
-4. Fade interval (every 10s): `setStyle({ fillOpacity, opacity })` age-based — expires at 10min
+**Component lifecycle — `ngAfterViewInit`**:
+1. `initMap()` — creates Leaflet map and canvas renderer
+2. Subscribe to `svc.initialList$` — on each emission: `clearAllStrikes()`, render list, subscribe to `svc.newStrike$` (guarded by `liveSubscribed` flag so only once)
+3. Subscribe to `svc.newStrike$` only happens here, inside the `initialList$` callback — prevents a burst of ring animations during the async Redis query before the first list arrives
+4. If already connected: `svc.requestInitialList()` (handles second-visit case where `connect` won't fire)
+
+**Strike lifecycle — `flashStrike(strike, updateDisplay)`**:
+1. Dedup check via `strikeKeys: Set<string>` (key = `timeMs:lat(4dp):lon(4dp)`) — prevents the same strike from being rendered twice when `newStrike$` and `initialList$` race
+2. Compute `remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs)`
+3. `isLive = strike.isNew && remainingMs > 0` → yellow bolt + ring + `styleTimer`
+4. `isLive = false` → grey bolt immediately (initial-list items, old/background strikes)
+5. `styleTimer` fires at `remainingMs`: flips `entry.isLive = false`, switches to grey, calls `updateCounts()`
+6. Fade interval (every 10s): opacity fade based on age, removes at 10min
+
+**Ring lifecycle**:
+- `startRing(entry)`: creates `L.circle` + `setInterval` stored on `entry.ring`; start radius = correct position for strikes already in progress
+- `stopRing(entry)`: clears interval, removes circle, nulls `entry.ring`
+- `refreshRings()`: called on `zoomend` — zoom ≥10 starts rings for all still-live entries; zoom <10 stops all rings
+- All timers owned by `StrikeEntry` — `clearAllStrikes()` and `ngOnDestroy` cancel everything cleanly
+
+**Counter — `updateCounts()`**:
+- `activeCount` = `this.strikes.filter(s => s.isLive).length` — exactly matches yellow markers, updates immediately when `styleTimer` fires (no polling lag)
+- `viewportCount` = active strikes inside current map bounds (updates on `moveend`/`zoomend`)
+- `totalCount` = all strikes in the 10-minute window
 
 **Strike markers** — canvas-rendered bolt shape (`boltMarker()` factory):
 
@@ -238,16 +252,15 @@ All markers share a single `L.canvas()` renderer — drawn on one `<canvas>` ele
 - Store timers in `rippleTimers[]`, cleared in `ngOnDestroy`
 
 **Counter chip** in page header:
-- `activeCount` — strikes within ring duration (last ~60s)
-- `viewportCount` — same, inside current map bounds
+- `activeCount` — yellow (live) strikes only; `entry.isLive` is the source of truth
+- `viewportCount` — yellow strikes inside current map bounds
+- `totalCount` — all strikes in the 10-minute window
 - Displayed as `⚡ viewportCount / activeCount`
-- Update on every new strike + on map `moveend`
 
 **Cleanup in `ngOnDestroy`**:
-- Clear fade interval
-- Clear all `rippleTimers`
-- Disconnect Socket.IO socket (via `LightningService.disconnect()`)
-- Remove Leaflet map
+- `clearAllStrikes()` — cancels all `styleTimer`s, stops all rings, removes all markers
+- Clears fade `setInterval`
+- Removes Leaflet map
 
 ---
 
@@ -314,6 +327,19 @@ The backend does NOT auto-send `initial-list` on connect. `LightningService` (ro
 
 ### Redis auto-detection
 `blitzortung.js` checks `fs.existsSync('./config.local.ini')` at startup — same pattern as `mysqlpool-knmi.helper.js`. Local dev → `127.0.0.1:6379`, Docker → `redis:6379`.
+
+### Double backend in local dev
+If Docker `bbqweer-nodejs` is running alongside local `node app.js`, both connect to Blitzortung and write to the same Redis with separate in-memory dedup caches — resulting in 2× strikes in Redis and 2× in the initial list. Always stop the Docker container when running locally:
+```powershell
+docker stop bbqweer-nodejs
+docker exec bbqweer-redis redis-cli DEL strikes:time strikes:geo strikes:data
+```
+The frontend also guards against duplicates via `strikeKeys: Set<string>`, but the root cause is the double backend.
+
+### newStrike$ / initialList$ race condition (dedup)
+A strike can arrive via `newStrike$` AND appear in the next `initialList$` response if it was written to Redis before the query ran. The frontend deduplicates using a `Set<string>` keyed by `timeMs:lat(4dp):lon(4dp)`. `clearAllStrikes()` clears the set; `fade()` removes individual keys as strikes expire.
+
+---
 
 ## Out of scope
 
