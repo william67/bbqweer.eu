@@ -217,16 +217,18 @@ location /socket.io/ {
 2. `flashStrike(strike)`:
    - Compute `remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs)`
    - If `remainingMs > 0` and `strike.isNew`: add yellow bolt marker + animate thunder ring
-   - If `remainingMs <= 0`: add grey bolt directly (tab-background burst fix)
-3. After `remainingMs`: switch marker to grey
-4. Fade interval (every 10s): `marker.setOpacity(age-based)` — expires at 10min
+   - If `remainingMs <= 0`: add near-white/black bolt directly (tab-background burst fix)
+3. After `remainingMs`: switch marker to old style via `setStyle` + `setRadius`
+4. Fade interval (every 10s): `setStyle({ fillOpacity, opacity })` age-based — expires at 10min
 
-**Strike icons** (SVG bolt via inline `BOLT_SVG()` helper):
+**Strike markers** — canvas-rendered bolt shape (`boltMarker()` factory):
 
-| Icon | Fill | Border | Size | zIndexOffset |
-|---|---|---|---|---|
-| Active | `#facc15` yellow | `#ef4444` red | 18×28px | 1000 |
-| Old | `#e5e7eb` grey | `#000000` black | 14×22px | 0 |
+All markers share a single `L.canvas()` renderer — drawn on one `<canvas>` element instead of one DOM node per strike. The `boltMarker` factory creates an `L.circleMarker` but overrides `_updatePath` to draw the ⚡ bolt path, then delegates fill/stroke to `renderer._fillStroke` so all Leaflet style options work normally.
+
+| Style | Fill | Stroke | Radius |
+|---|---|---|---|
+| `STYLE_ACTIVE` | `#facc15` yellow | `#ef4444` red | 10px |
+| `STYLE_OLD` | `#e5e7eb` near-white | `#000000` black | 7px |
 
 **Thunder ring** (only when `map.getZoom() >= 10`):
 - Speed: 343 m/s, max radius: 10km, step interval: 200ms

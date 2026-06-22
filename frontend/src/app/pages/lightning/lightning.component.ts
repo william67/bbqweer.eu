@@ -12,21 +12,35 @@ const MAX_AGE_MS       = 10 * 60 * 1000;
 
 const BOUNDS = { latMin: 40.0, latMax: 59.0, lonMin: -12.0, lonMax: 30.0 };
 
-function boltIcon(fill: string, stroke: string, w: number, h: number): L.DivIcon {
-    return L.divIcon({
-        html: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 10 16">
-                 <path d="M6 0L0 9h4l-1 7 7-9H6Z" fill="${fill}" stroke="${stroke}" stroke-width="0.8"/>
-               </svg>`,
-        iconSize:   [w, h],
-        iconAnchor: [w / 2, h],
-        className:  ''
-    });
+const STYLE_ACTIVE = { radius: 10, color: '#ef4444', fillColor: '#facc15', fillOpacity: 1, weight: 1.5, fill: true };
+const STYLE_OLD    = { radius:  7, color: '#000000', fillColor: '#e5e7eb', fillOpacity: 1, weight: 1,   fill: true };
+
+// Canvas-rendered bolt marker — draws the ⚡ shape on a shared canvas instead of a DOM element.
+// Overrides _updatePath (Leaflet internal) to draw the bolt path, then delegates fill/stroke
+// to the renderer's _fillStroke so all Leaflet style options (color, opacity, weight) work normally.
+function boltMarker(latlng: L.LatLngExpression, options: L.CircleMarkerOptions, renderer: L.Canvas): L.CircleMarker {
+    const m = L.circleMarker(latlng, { ...options, renderer });
+    (m as any)._updatePath = function(this: any): void {
+        const r = this._renderer;
+        if (!r || !r._ctx || !this._point) return;
+        const ctx: CanvasRenderingContext2D = r._ctx;
+        const p   = this._point;
+        const sz  = Math.max(this._radius, 1);
+        // Bolt path (same topology as SVG "M6 0L0 9h4l-1 7 7-9H6Z" scaled to ±sz)
+        ctx.beginPath();
+        ctx.moveTo(p.x + 0.20 * sz, p.y - 1.00 * sz);  // top
+        ctx.lineTo(p.x - 0.60 * sz, p.y + 0.10 * sz);  // middle-left
+        ctx.lineTo(p.x - 0.10 * sz, p.y + 0.10 * sz);  // indent right
+        ctx.lineTo(p.x - 0.20 * sz, p.y + 1.00 * sz);  // bottom tip
+        ctx.lineTo(p.x + 0.60 * sz, p.y - 0.10 * sz);  // upper-right
+        ctx.lineTo(p.x + 0.10 * sz, p.y - 0.10 * sz);  // inner corner
+        ctx.closePath();
+        r._fillStroke(ctx, this);
+    };
+    return m;
 }
 
-const ICON_ACTIVE = boltIcon('#facc15', '#ef4444', 18, 28);
-const ICON_OLD    = boltIcon('#e5e7eb', '#000000', 14, 22);
-
-interface StrikeEntry { timeMs: number; lat: number; lon: number; marker: L.Marker; }
+interface StrikeEntry { timeMs: number; lat: number; lon: number; marker: L.CircleMarker; }
 
 @Component({
     selector: 'app-lightning',
@@ -47,6 +61,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     private delayHistory: number[] = [];
 
     private map:          L.Map | null = null;
+    private renderer!:    L.Canvas;
     private strikes:      StrikeEntry[] = [];
     private subs:         Subscription[] = [];
     private fadeTimer:    any;
@@ -66,13 +81,14 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     private initMap(): void {
-        this.map = L.map(this.mapEl.nativeElement, { center: [49.5, 9.0], zoom: 5 });
+        this.renderer = L.canvas({ padding: 0.5 });
+
+        this.map = L.map(this.mapEl.nativeElement, { center: [49.5, 9.0], zoom: 5, preferCanvas: true });
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(this.map);
 
-        // Detection bounds rectangle
         L.rectangle(
             [[BOUNDS.latMin, BOUNDS.lonMin], [BOUNDS.latMax, BOUNDS.lonMax]],
             { color: '#3b82f6', weight: 1.5, dashArray: '6 4', fill: true, fillOpacity: 0.04 }
@@ -103,18 +119,19 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         const remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs);
         const isLive      = !!strike.isNew && remainingMs > 0;
 
-        const marker = L.marker([strike.lat, strike.lon], {
-            icon:         isLive ? ICON_ACTIVE : ICON_OLD,
-            zIndexOffset: isLive ? 1000 : 0
-        }).addTo(this.map);
+        const marker = boltMarker(
+            [strike.lat, strike.lon],
+            isLive ? STYLE_ACTIVE : STYLE_OLD,
+            this.renderer
+        ).addTo(this.map);
 
         this.strikes.push({ timeMs: strike.timeMs, lat: strike.lat, lon: strike.lon, marker });
 
         if (isLive) {
             this.drawRing(strike.lat, strike.lon, remainingMs);
             setTimeout(() => {
-                marker.setIcon(ICON_OLD);
-                marker.setZIndexOffset(0);
+                marker.setStyle(STYLE_OLD);
+                marker.setRadius(STYLE_OLD.radius);
                 this.updateCounts();
             }, remainingMs);
         }
@@ -154,8 +171,13 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         const dead: StrikeEntry[] = [];
         for (const s of this.strikes) {
             const age = now - s.timeMs;
-            if (age > MAX_AGE_MS) { s.marker.remove(); dead.push(s); }
-            else s.marker.setOpacity(1 - age / MAX_AGE_MS);
+            if (age > MAX_AGE_MS) {
+                s.marker.remove();
+                dead.push(s);
+            } else {
+                const opacity = 1 - age / MAX_AGE_MS;
+                s.marker.setStyle({ fillOpacity: opacity, opacity });
+            }
         }
         if (dead.length) this.strikes = this.strikes.filter(s => !dead.includes(s));
         this.updateCounts();
