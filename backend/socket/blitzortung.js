@@ -160,9 +160,13 @@ function initBlitzortung(socketIo) {
 }
 
 function initSocketBlitzortung(socket) {
-    getAllCurrent()
-        .then(strikes => socket.emit('initial-list', strikes))
-        .catch(() => socket.emit('initial-list', []));
+    const sendInitialList = () =>
+        getAllCurrent()
+            .then(strikes => socket.emit('initial-list', strikes))
+            .catch(() => socket.emit('initial-list', []));
+
+    sendInitialList();                          // on first connect
+    socket.on('get-initial-list', sendInitialList); // on explicit re-request (second visit)
 
     socket.on('get-window', ({ lon, lat, widthKm, heightKm }) => {
         getInWindow(lon, lat, widthKm, heightKm)

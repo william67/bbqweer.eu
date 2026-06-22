@@ -24,6 +24,10 @@ export class LightningService implements OnDestroy {
         return new Observable(obs => {
             const fn = (data: Strike[]) => obs.next(data);
             this.socket.on('initial-list', fn);
+            // Socket already connected (e.g. second visit) — backend won't auto-send again
+            if (this.socket.connected) {
+                this.socket.emit('get-initial-list');
+            }
             return () => this.socket.off('initial-list', fn);
         });
     }
