@@ -63,7 +63,14 @@ export class ForecastComponent implements OnInit, OnDestroy {
 
     hours: any[] = [];
     days:  any[] = [];
-    selectedDay: string | null = null;
+    filteredHours: any[] = [];
+
+    private _selectedDay: string | null = null;
+    get selectedDay(): string | null { return this._selectedDay; }
+    set selectedDay(value: string | null) {
+        this._selectedDay = value;
+        this.filteredHours = value ? this.hours.filter(h => h.date === value) : [...this.hours];
+    }
 
     mapDialogVisible = false;
     pendingLocation  = { ...LOCATIONS[0] };
@@ -203,10 +210,6 @@ export class ForecastComponent implements OnInit, OnDestroy {
         }));
 
         this.selectedDay = this.days[0]?.date ?? null;
-    }
-
-    get filteredHours(): any[] {
-        return this.selectedDay ? this.hours.filter(h => h.date === this.selectedDay) : this.hours;
     }
 
     windDirLabel(deg: number): string {
