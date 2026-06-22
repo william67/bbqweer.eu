@@ -75,12 +75,15 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         setTimeout(() => {
             this.initMap();
             this.subs.push(
-                this.svc.initialList().subscribe(list => {
+                this.svc.initialList$.subscribe(list => {
+                    this.clearAllStrikes();
                     list.forEach(s => this.flashStrike(s, false));
                     this.updateCounts();
                 }),
-                this.svc.newStrike().subscribe(s => this.flashStrike(s))
+                this.svc.newStrike$.subscribe(s => this.flashStrike(s))
             );
+            // Socket already connected on second visit — connect event won't fire again
+            if (this.svc.connected) this.svc.requestInitialList();
         });
     }
 
@@ -104,6 +107,13 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         });
 
         this.fadeTimer = setInterval(() => this.fade(), 10_000);
+    }
+
+    private clearAllStrikes(): void {
+        this.strikes.forEach(s => s.marker.remove());
+        this.strikes = [];
+        this.rippleTimers.forEach(t => clearInterval(t));
+        this.rippleTimers = [];
     }
 
     private flashStrike(strike: Strike, updateDisplay = true): void {

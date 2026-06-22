@@ -1,5 +1,5 @@
 import { Injectable, OnDestroy } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Subject } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
 import { environment } from 'src/environments/environment';
 
@@ -16,28 +16,24 @@ export class LightningService implements OnDestroy {
 
     private socket: Socket;
 
+    readonly initialList$ = new Subject<Strike[]>();
+    readonly newStrike$   = new Subject<Strike>();
+
     constructor() {
         this.socket = io(environment.wsUrl, { transports: ['websocket'] });
+
+        // Set up all listeners once in the constructor — service owns the connection
+        this.socket.on('connect',      () => this.requestInitialList());
+        this.socket.on('initial-list', (list: Strike[]) => this.initialList$.next(list));
+        this.socket.on('new-strike',   (s: Strike)      => this.newStrike$.next(s));
     }
 
-    initialList(): Observable<Strike[]> {
-        return new Observable(obs => {
-            const fn = (data: Strike[]) => obs.next(data);
-            this.socket.on('initial-list', fn);
-            this.socket.emit('get-initial-list'); // queued if not yet connected
-            return () => this.socket.off('initial-list', fn);
-        });
+    // Called by the component when it mounts and socket is already connected
+    requestInitialList(): void {
+        this.socket.emit('get-initial-list');
     }
 
-    newStrike(): Observable<Strike> {
-        return new Observable(obs => {
-            const fn = (data: Strike) => obs.next(data);
-            this.socket.on('new-strike', fn);
-            return () => this.socket.off('new-strike', fn);
-        });
-    }
+    get connected(): boolean { return this.socket.connected; }
 
-    ngOnDestroy() {
-        this.socket.disconnect();
-    }
+    ngOnDestroy() { this.socket.disconnect(); }
 }

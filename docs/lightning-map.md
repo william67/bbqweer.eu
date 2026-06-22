@@ -307,7 +307,7 @@ When the browser tab is in the background, Socket.IO queues messages. On focus, 
 The backend emits `{ ...strike, isNew: true }` for live strikes only. The Redis `initial-list` reply has no `isNew` flag — so historical strikes on connect become grey bolts without rings.
 
 ### Initial list is client-driven, not auto-pushed
-The backend does NOT auto-send `initial-list` on connect. The frontend emits `get-initial-list` inside `ngAfterViewInit` after `initMap()` completes, guaranteeing the map exists before strikes arrive. `LightningService` is root-scoped (socket survives navigation), so the explicit request also handles the second-visit case where the socket is already connected and no connect event fires.
+The backend does NOT auto-send `initial-list` on connect. `LightningService` (root-scoped, socket survives navigation) sets up all socket listeners once in its constructor and auto-requests `get-initial-list` on every `connect` event. The component subscribes to `svc.initialList$` / `svc.newStrike$` in `ngAfterViewInit` after `initMap()`, then explicitly calls `svc.requestInitialList()` if the socket is already connected (second-visit case). The component clears all existing markers before rendering a new `initial-list` so reconnects don't double-render.
 
 ### Local dev connection
 `ng serve` → `environment.wsUrl = 'http://localhost:3000'` → Socket.IO connects directly to the backend, bypassing nginx entirely. Nginx only handles Socket.IO in Docker/production via the `/socket.io/` proxy block.
