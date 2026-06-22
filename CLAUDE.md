@@ -297,6 +297,21 @@ angular.json: add `node_modules/leaflet/dist/leaflet.css` to styles array and `"
 - **Leaflet default marker icon breaks in production** — Angular's bundler cannot resolve the default icon image paths from node_modules. Fix: `delete (L.Icon.Default.prototype as any)._getIconUrl` + `L.Icon.Default.mergeOptions()` at module level (top of component file). See the Leaflet Map section above.
 - **Topbar logo** — `frontend/src/assets/logo.png` (44px height, `border-radius: 8px`); source file in `logo/` folder (not served, just version-controlled).
 - **MySQL binary logs**: configured to expire after 7 days via `database/mysql-binlog-expire.cnf` (mounted into bbqweer-mysql). Without this, binlogs accumulate indefinitely and can fill the disk (17GB observed before fix).
+- **mysql2 returns DATE columns as ISO strings**: e.g. `"2026-04-23T00:00:00.000Z"` — always `.slice(0, 10)` before comparing or displaying date-only values.
+
+## Skills
+Shared coding standards live at `C:\Apps\skills\commands\`. Check the relevant skill before starting any task — `dev-workflow`, `location-picker`, `task-monitoring`, `handle-live-data`, `general-app-setup`.
+
+### Deviations from skills (documented here per dev-workflow skill)
+
+**No map bounds saving** (`location-picker` skill)
+The skill stores SW+NE bounds separately from the station location. bbqweer location pickers store only `{lat, lng, label}`. Reason: the pickers are point-selection modals (p-dialog), not persistent map navigation tools — the app's main view is data charts. Saving bounds adds no value here.
+
+**HTTP REST instead of Socket.IO** (`handle-live-data` skill)
+The skill uses Socket.IO for live data. bbqweer fetches on demand via HTTP REST. Reason: weather data is batch-oriented, not real-time push — there is no server-side push event to react to.
+
+**`toggleMap()` instead of `set` accessor for @ViewChild** (`location-picker` skill)
+The skill uses the `set` accessor form on `@ViewChild` to auto-detect when `@if` shows/hides the map element. bbqweer uses an explicit `toggleMap()` + `setTimeout(() => this.initMap())`. Functionally equivalent — all map opens are explicitly triggered, so the set accessor provides no extra benefit. The approach is documented in the Leaflet Map section above.
 
 ## First Steps for New Chat
 1. Read `docs/system-architecture.md` for full stack overview
