@@ -177,6 +177,7 @@ function startWss() {
 
     ws.on('close', () => {
         console.log('[blitzortung] WSS disconnected, reconnecting in 5s...');
+        wssNextPort = 443;
         setTimeout(startWss, 5000);
     });
 

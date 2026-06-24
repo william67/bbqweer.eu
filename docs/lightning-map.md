@@ -98,7 +98,7 @@ Responsibilities:
 - Server `reload` message: `ws.removeAllListeners('close')` before `ws.close()` — prevents race where both the reload handler and the close event schedule a reconnect simultaneously
 - Filter to BOUNDS
 - Store in Redis via `addStrike()`, emit `new-strike` to all Socket.IO clients
-- Auto-reconnect after 5s on close; `isNew: true` only on live strikes, not reconnect replay
+- Auto-reconnect after 5s on close; `wssNextPort` resets to 443 on every disconnect — prevents getting stuck on a stale port if the server changes (lightningmaps.org changed 8085 → 8086); `isNew: true` only on live strikes, not reconnect replay
 - Every 500ms: `redis.zcount('strikes:time', now-30s, '+inf')` → emit `lightning-index` to all clients
 - ntfy.sh optional alerts: Haversine distance check per strike; POST to topic when within `radius_km` of home and cooldown elapsed; reads `[ntfy]` section from `config.ini` — skipped silently if absent
 
