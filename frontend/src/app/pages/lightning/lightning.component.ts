@@ -1,5 +1,7 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { Router, NavigationEnd } from '@angular/router';
 import { Subscription } from 'rxjs';
+import { filter, skip } from 'rxjs/operators';
 import * as L from 'leaflet';
 import { LightningService, Strike } from 'src/app/services/lightning.service';
 
@@ -84,7 +86,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     private fadeTimer:       any;
     private liveSubscribed   = false;
 
-    constructor(private svc: LightningService) {}
+    constructor(private svc: LightningService, private router: Router) {}
 
     ngOnInit(): void {}
 
@@ -104,6 +106,20 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
             );
             this.subs.push(
                 this.svc.lightningDelay$.subscribe(s => { this.delayStats = s; })
+            );
+            this.subs.push(
+                this.svc.socketReconnect$.subscribe(() => this.svc.requestInitialList())
+            );
+            this.subs.push(
+                this.router.events.pipe(
+                    filter(e => e instanceof NavigationEnd && e.urlAfterRedirects.includes('lightning')),
+                    skip(1)
+                ).subscribe(() => {
+                    setTimeout(() => {
+                        this.map?.invalidateSize();
+                        this.svc.requestInitialList();
+                    }, 50);
+                })
             );
             if (this.svc.connected) this.svc.requestInitialList();
         });
@@ -233,10 +249,13 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
             if (strike.isNew) {
                 marker.setStyle(STYLE_FLASH);
                 marker.setRadius(STYLE_FLASH.radius);
-                setTimeout(() => {
-                    marker.setStyle(STYLE_ACTIVE);
-                    marker.setRadius(STYLE_ACTIVE.radius);
-                }, 300);
+                for (const [delay, style] of [
+                    [150, STYLE_ACTIVE], [200, STYLE_FLASH],
+                    [350, STYLE_ACTIVE], [400, STYLE_FLASH],
+                    [550, STYLE_ACTIVE],
+                ] as [number, typeof STYLE_ACTIVE][]) {
+                    setTimeout(() => { marker.setStyle(style); marker.setRadius(style.radius); }, delay);
+                }
             }
 
             entry.styleTimer = setTimeout(() => {

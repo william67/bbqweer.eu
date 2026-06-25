@@ -25,6 +25,9 @@ Data source: [lightningmaps.org](https://lightningmaps.org) WebSocket (Blitzortu
 - [x] `viewportTotalCount` — all strikes (not just active) visible in current map viewport
 - [x] Satellite layer toggle — Esri World Imagery (`/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`), no API key
 - [x] SVG renderer for detection bounds rectangle — prevents flash/repaint on pan
+- [x] Triple flash on new strike — white→yellow×3 over 550ms (5 chained `setTimeout` calls)
+- [x] Navigate-back fix — `Router` + `NavigationEnd` (skip first) → `map.invalidateSize()` + `requestInitialList()` after 50ms
+- [x] Reconnect fix — `socketReconnect$ Subject<void>` in service, fired by `socket.io.on('reconnect')`, component calls `requestInitialList()` on each reconnect
 
 ---
 
@@ -192,10 +195,11 @@ Service owns the socket lifecycle. All listeners are set up once in the construc
 @Injectable({ providedIn: 'root' })
 export class LightningService implements OnDestroy {
     private socket: Socket;
-    readonly initialList$    = new Subject<Strike[]>();
-    readonly newStrike$      = new Subject<Strike>();
-    readonly lightningIndex$ = new BehaviorSubject<number>(0);
-    readonly lightningDelay$ = new BehaviorSubject<{ avg: number; min: number; max: number; samples: number } | null>(null);
+    readonly initialList$     = new Subject<Strike[]>();
+    readonly newStrike$       = new Subject<Strike>();
+    readonly lightningIndex$  = new BehaviorSubject<number>(0);
+    readonly lightningDelay$  = new BehaviorSubject<{ avg: number; min: number; max: number; samples: number } | null>(null);
+    readonly socketReconnect$ = new Subject<void>();
 
     constructor() {
         this.socket = io(environment.wsUrl, { transports: ['websocket'] });
@@ -204,6 +208,7 @@ export class LightningService implements OnDestroy {
         this.socket.on('new-strike',      (s: Strike)      => this.newStrike$.next(s));
         this.socket.on('lightning-index', (n: number)      => this.lightningIndex$.next(n));
         this.socket.on('lightning-delay', (s: any)         => this.lightningDelay$.next(s));
+        this.socket.io.on('reconnect',    ()               => this.socketReconnect$.next());
     }
 
     requestInitialList(): void { this.socket.emit('get-initial-list'); }
@@ -246,12 +251,14 @@ location /socket.io/ {
 1. `initMap()` — creates Leaflet map, canvas renderer, SVG renderer, both tile layers, detection rectangle
 2. Subscribe to `svc.initialList$` — on each emission: `clearAllStrikes()`, render list, subscribe to `svc.newStrike$` (guarded by `liveSubscribed` flag so only once)
 3. Subscribe to `svc.lightningDelay$` — stores full `{ avg, min, max, samples }` in `delayStats`
-4. If already connected: `svc.requestInitialList()` (handles second-visit case where `connect` won't fire)
+4. Subscribe to `svc.socketReconnect$` — calls `requestInitialList()` on each Manager-level reconnect
+5. Subscribe to `router.events` filtered to `NavigationEnd` on `'lightning'` URL, `skip(1)` — after 50ms calls `map.invalidateSize()` + `requestInitialList()` (navigate-back fix)
+6. If already connected: `svc.requestInitialList()` (handles second-visit case where `connect` won't fire)
 
 **Strike lifecycle — `flashStrike(strike, updateDisplay)`**:
 1. Dedup check via `strikeKeys: Set<string>` (key = `timeMs:lat(4dp):lon(4dp)`)
 2. Compute `remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs)`
-3. `isLive = remainingMs > 0` → yellow bolt (`STYLE_ACTIVE`) + `styleTimer`; if also `strike.isNew`: white flash (`STYLE_FLASH`, 300ms) first
+3. `isLive = remainingMs > 0` → yellow bolt (`STYLE_ACTIVE`) + `styleTimer`; if also `strike.isNew`: triple flash — white(0ms) → yellow(150ms) → white(200ms) → yellow(350ms) → white(400ms) → yellow(550ms, stays) via 5 chained `setTimeout` calls
 4. `isLive = false` → grey bolt immediately (strikes older than `RING_DURATION_MS = 30s`)
 5. `styleTimer` fires at `remainingMs`: flips `entry.isLive = false`, switches to grey, calls `updateCounts()`
 6. Fade interval (every 10s): opacity fade based on age, removes at 10min
@@ -270,7 +277,7 @@ location /socket.io/ {
 
 | Style | Fill | Stroke | Radius | Duration |
 |---|---|---|---|---|
-| `STYLE_FLASH`  | `#ffffff` white  | `#ffffff` white | 13px | 300ms on arrival |
+| `STYLE_FLASH`  | `#ffffff` white  | `#ffffff` white | 13px | triple flash on arrival (at 0/200/400ms white; 150/350/550ms yellow) |
 | `STYLE_ACTIVE` | `#facc15` yellow | `#ef4444` red   | 10px | until `styleTimer` fires (30s)  |
 | `STYLE_OLD`    | `#e5e7eb` grey   | `#000000` black |  7px | until fade-out at 10min |
 
@@ -350,6 +357,15 @@ radius_km    = 30
 cooldown_min = 5
 ```
 Install the ntfy iOS/Android app and subscribe to the same topic. If the section is absent, alerts are silently disabled — no crash.
+
+### Triple flash on new strike
+New live strikes flash white → yellow three times over 550ms. The marker starts as `STYLE_FLASH` (white, r=13) at t=0, then 5 `setTimeout` calls alternate between `STYLE_ACTIVE` (yellow) and `STYLE_FLASH` (white) at 150/200/350/400/550ms. The last call at 550ms sets `STYLE_ACTIVE` and the marker stays yellow. The `styleTimer` that transitions to grey runs independently at `remainingMs` — these flash timers finish long before that.
+
+### Navigate-back fix
+When the user navigates away from `/lightning` and returns, `ngAfterViewInit` does not re-run (the component is reused or re-created but the `setTimeout` init runs once). However, the Leaflet map container can have incorrect size after being hidden and re-shown. The `Router` + `NavigationEnd` subscription (with `skip(1)` to ignore the initial navigation) detects each return and calls `map.invalidateSize()` + `requestInitialList()` after a 50ms delay — enough time for the container to be laid out.
+
+### Reconnect fix — Manager vs socket `reconnect`
+`socket.on('connect', ...)` fires on every successful socket-level connect (initial + reconnect). However, there can be edge cases where the socket reconnects but the `connect` event timing means the component doesn't trigger a fresh `initialList$` subscription. The `socket.io.on('reconnect', ...)` listener (Manager level, not socket level) fires after successful transport-layer reconnection — `socketReconnect$ Subject<void>` in the service propagates it to the component, which calls `requestInitialList()`. Both paths (`connect` and `reconnect`) call `requestInitialList()`, providing redundancy.
 
 ### LightningService instantiated at app startup (not just on lightning page)
 `LightningService` is `providedIn: 'root'`. The topbar injects it to show the lightning index badge — the Socket.IO connection opens on app load, not just when navigating to `/lightning`.

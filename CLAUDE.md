@@ -1,5 +1,9 @@
 # bbqweer.eu
 
+## How this documentation is structured
+- **CLAUDE.md** (this file) is an index — it holds short summaries and key patterns. Detailed implementation notes live in `docs/` files (e.g. `docs/lightning-map.md`). When a feature has a dedicated doc file, CLAUDE.md links or points to it rather than duplicating the detail.
+- **MEMORY.md** (`C:\Users\William\.claude\projects\c--Apps-bbqweer-eu\memory\MEMORY.md`) is an index of one-line pointers to individual memory files — no content lives in MEMORY.md itself. The memory files (e.g. `project_lightning_index.md`) hold project state, decisions, and planned work that isn't discoverable from the code (e.g. a KPI that's still planned). Documentation of how things work goes in CLAUDE.md and `docs/`; memory files track why and what's next.
+
 ## What is this?
 Public KNMI weather data platform — a standalone website spun out of wo-ict.nl.
 Goal: expose KNMI weather data, forecasts, and charts publicly at bbqweer.eu.
@@ -227,6 +231,9 @@ docker compose exec nodejs node createUser.js
 - Energieprijzen (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart; always shows today + tomorrow (fixed, no date nav); summary cards (Nu/Gemiddeld/Laagste/Hoogste) for today, summary cards (Gemiddeld/Laagste/Hoogste) for tomorrow; historical section with date picker below; UTC→local time conversion (Dutch UTC+1/+2 offsets); backend fetches CURDATE-1 through CURDATE+1 so local 00:00–01:00 hours are included; manual backfill: `node callSyncEnergiePrices.js [YYYY-MM-DD]`
 - Zonne-energie (`/solar`) — solar panel output forecast (3-day) via Open-Meteo GTI + historical backtest via KNMI uurgeg radiation data; backtest at bottom of page (collapsible); selected station saved in `localStorage` key `solar_backtest_stn`
 - Bliksem (`/lightning`) — real-time lightning strike map via Blitzortung/lightningmaps.org WebSocket; strikes stored in Redis (10min TTL); Socket.IO pushes live updates; yellow bolt = active (<60s), grey = older; thunder ring animates at zoom ≥ 10; counter shows viewport/active counts
+  - **Flash sequence**: new strike → white(0ms) → yellow(150ms) → white(200ms) → yellow(350ms) → white(400ms) → yellow(550ms, stays) — triple white/yellow flash via 5 chained `setTimeout` calls
+  - **Navigate-back fix**: `Router` + `NavigationEnd` (skip first) → after 50ms calls `map.invalidateSize()` + `requestInitialList()` — fixes blank map on back-navigation
+  - **Reconnect fix**: `socketReconnect$ = new Subject<void>()` in service, fired by `socket.io.on('reconnect')`; component subscribes and calls `requestInitialList()` — recovers strike list after connection drops
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
 
 ## Solar Page — Key Details
