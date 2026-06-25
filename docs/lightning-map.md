@@ -18,8 +18,13 @@ Data source: [lightningmaps.org](https://lightningmaps.org) WebSocket (Blitzortu
 - [x] **Bliksem** added to topbar nav
 - [x] Lightning index badge in topbar — strikes/30s via Socket.IO, yellow pill, 500ms refresh
 - [x] ntfy.sh push alerts — geo-distance check per strike, optional `[ntfy]` config section
-
----
+- [x] `live2.lightningmaps.org` — deduplicates server-side (switched from `live` which sends each bolt twice)
+- [x] `receivedAt` stored in Redis — clock-skew-proof delay calculation (`receivedAt - timeMs`, both from backend clock)
+- [x] `lightning-delay` Socket.IO event — backend queries Redis every 1s, emits `{ avg, min, max, samples }` for last 60s
+- [x] Delay chip with tooltip — shows avg/min/max/samples on hover; `TooltipModule` in `LightningModule`
+- [x] `viewportTotalCount` — all strikes (not just active) visible in current map viewport
+- [x] Satellite layer toggle — Esri World Imagery (`/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`), no API key
+- [x] SVG renderer for detection bounds rectangle — prevents flash/repaint on pan
 
 ---
 
@@ -29,14 +34,14 @@ Data source: [lightningmaps.org](https://lightningmaps.org) WebSocket (Blitzortu
 lightningmaps.org (WSS)
         │
         ▼
-  Node.js backend ──► Redis (time + geo + data)
+  Node.js backend ──► Redis (time + geo + data, includes receivedAt)
         │                     │
-        │  pruneOld() 30s     │ ZRANGEBYSCORE / GEOSEARCH
+        │  pruneOld() 30s     │ ZRANGEBYSCORE / GEOSEARCH / HMGET
         ▼                     ▼
   Socket.IO ──────────► Frontend (Angular)
      'new-strike'         'get-initial-list' → 'initial-list' (client-driven, after map init)
-                          'new-strike'        live updates
-                          'get-window'        on-demand viewport query
+     'lightning-index'    'new-strike'        live updates
+     'lightning-delay'    'get-window'        on-demand viewport query
 ```
 
 This is the one page in bbqweer.eu that uses **Socket.IO** — lightning strikes are real-time push events, not batch data. This follows the `handle-live-data` skill. The existing HTTP REST deviation in CLAUDE.md applies only to the weather/forecast pages.
@@ -64,7 +69,7 @@ const BOUNDS = { latMin: 40.0, latMax: 59.0, lonMin: -12.0, lonMax: 30.0 };
 
 Covers Western + Central Europe: Ireland/UK in the west, Finland/Baltics in the north, Ukraine/Romania in the east, Mediterranean in the south.
 Backend filters incoming WSS strikes to this bounding box before storing.
-Frontend draws this as a dashed rectangle on the map.
+Frontend draws this as a dashed rectangle on the map using an SVG renderer (`L.svg({ padding: 5 })`) — the SVG renderer keeps the rectangle crisp without repainting on every pan.
 
 ---
 
@@ -84,36 +89,48 @@ Three structures, always written/pruned in a single `MULTI` transaction:
 |---|---|---|
 | `strikes:time` | Sorted Set (score = timestamp ms) | TTL window / pruning |
 | `strikes:geo` | Geo Set (lon/lat) | Viewport queries via GEOSEARCH |
-| `strikes:data` | Hash (id → JSON) | Full strike payload |
+| `strikes:data` | Hash (id → JSON) | Full strike payload including `receivedAt` |
 
 TTL: 10 minutes. `pruneOld()` runs every 30s via `setInterval`.
 
 ### New file: `backend/socket/blitzortung.js`
 
 Responsibilities:
-- Open WSS to `wss://live.lightningmaps.org/` (single server — no random selection)
+- Open WSS to `wss://live2.lightningmaps.org/` — `live2` deduplicates server-side; `live` sends each bolt twice with different IDs; both have identical geographic coverage
 - Handle auth challenge-response: server sends `k` → client sends `(k*3604)%7081 * Date.now()/100`; requires `Origin: https://www.lightningmaps.org` header
-- On first message: read `port` field; use it for subsequent reconnects (typically `8085`)
-- Dedup incoming strikes by `${time}:${lat.toFixed(4)}:${lon.toFixed(4)}` (Map, 150s TTL, cleaned every 30s) — same key as frontend; guards against reconnect replays and cross-connection duplicates
+- On first message: read `port` field; use it for subsequent reconnects (currently `8086`)
+- `wssNextPort` resets to 443 on every disconnect — prevents getting stuck on a stale port if the server changes (lightningmaps.org changed 8085 → 8086)
+- Dedup incoming strikes by `${time}:${lat.toFixed(4)}:${lon.toFixed(4)}` (Map, 150s TTL, cleaned every 30s) — same key as frontend; guards against reconnect replays
 - Server `reload` message: `ws.removeAllListeners('close')` before `ws.close()` — prevents race where both the reload handler and the close event schedule a reconnect simultaneously
-- Filter to BOUNDS
-- Store in Redis via `addStrike()`, emit `new-strike` to all Socket.IO clients
-- Auto-reconnect after 5s on close; `wssNextPort` resets to 443 on every disconnect — prevents getting stuck on a stale port if the server changes (lightningmaps.org changed 8085 → 8086); `isNew: true` only on live strikes, not reconnect replay
+- Filter to BOUNDS; capture `receivedAt = Date.now()` at WSS message time
+- Store in Redis via `addStrike({ lat, lon, timeMs, pol, receivedAt })`, emit `new-strike` to all Socket.IO clients
+- Auto-reconnect after 5s on close; `isNew: true` only on live strikes, not reconnect replay
 - Every 500ms: `redis.zcount('strikes:time', now-30s, '+inf')` → emit `lightning-index` to all clients
-- ntfy.sh optional alerts: Haversine distance check per strike; POST to topic when within `radius_km` of home and cooldown elapsed; reads `[ntfy]` section from `config.ini` — skipped silently if absent
+- Every 1s: `getDelayStats()` → emit `lightning-delay: { avg, min, max, samples }` to all clients
+- ntfy.sh optional alerts: Haversine distance check per strike; POST to topic when within `radius_km` of home and cooldown elapsed
 
-Exported functions:
+### Delay stats — `getDelayStats()`
+
+Queries Redis for strikes in the last 60s (by `timeMs` score), loads their JSON, computes `receivedAt - timeMs` for each. Both timestamps come from the backend clock, so there is no NTP dependency on blitzortung.org servers.
+
 ```js
-function initBlitzortung(io) { ... }       // call once on app start
-function initSocketBlitzortung(socket) {   // called for each new socket connection
-  const sendInitialList = () =>
-    getAllCurrent().then(strikes => socket.emit('initial-list', strikes));
-  socket.on('get-initial-list', sendInitialList); // client requests after map is ready
-  socket.on('get-window', async ({ lon, lat, widthKm, heightKm }) => {
-    socket.emit('window-result', await getInGpsWindow(...));
-  });
+async function getDelayStats() {
+    const ids = await redis.zrangebyscore('strikes:time', Date.now() - 60_000, '+inf');
+    if (!ids.length) return null;
+    const raw  = await redis.hmget('strikes:data', ...ids);
+    const vals = raw.filter(Boolean).map(JSON.parse).filter(s => s.receivedAt)
+                    .map(s => s.receivedAt - s.timeMs);
+    if (!vals.length) return null;
+    return {
+        avg:     Math.round(vals.reduce((a, b) => a + b, 0) / vals.length),
+        min:     Math.min(...vals),
+        max:     Math.max(...vals),
+        samples: vals.length,
+    };
 }
 ```
+
+Typical values: avg ~2000ms (lightningmaps.org consolidation delay + network).
 
 ### Wire into `backend/app.js`
 
@@ -160,7 +177,7 @@ Redis is internal-only — no port published to host.
 
 ```
 frontend/src/app/pages/lightning/
-├── lightning.module.ts
+├── lightning.module.ts         — imports CommonModule, TooltipModule
 ├── lightning-routing.module.ts
 └── lightning.component.ts / .html / .css
 ```
@@ -169,20 +186,24 @@ Route: `/#/lightning`, topbar label: **Bliksem**, icon: `pi-bolt` (or `⚡`).
 
 ### New service: `LightningService`
 
-Service owns the socket lifecycle. All listeners are set up once in the constructor. On every `connect` (first connect + reconnects) it auto-requests the initial list. Exposes plain Subjects for the component to subscribe to.
+Service owns the socket lifecycle. All listeners are set up once in the constructor. On every `connect` (first connect + reconnects) it auto-requests the initial list. Exposes plain Subjects / BehaviorSubjects for the component to subscribe to.
 
 ```typescript
 @Injectable({ providedIn: 'root' })
 export class LightningService implements OnDestroy {
     private socket: Socket;
-    readonly initialList$ = new Subject<Strike[]>();
-    readonly newStrike$   = new Subject<Strike>();
+    readonly initialList$    = new Subject<Strike[]>();
+    readonly newStrike$      = new Subject<Strike>();
+    readonly lightningIndex$ = new BehaviorSubject<number>(0);
+    readonly lightningDelay$ = new BehaviorSubject<{ avg: number; min: number; max: number; samples: number } | null>(null);
 
     constructor() {
         this.socket = io(environment.wsUrl, { transports: ['websocket'] });
-        this.socket.on('connect',      () => this.requestInitialList());
-        this.socket.on('initial-list', (list: Strike[]) => this.initialList$.next(list));
-        this.socket.on('new-strike',   (s: Strike)      => this.newStrike$.next(s));
+        this.socket.on('connect',         () => this.requestInitialList());
+        this.socket.on('initial-list',    (list: Strike[]) => this.initialList$.next(list));
+        this.socket.on('new-strike',      (s: Strike)      => this.newStrike$.next(s));
+        this.socket.on('lightning-index', (n: number)      => this.lightningIndex$.next(n));
+        this.socket.on('lightning-delay', (s: any)         => this.lightningDelay$.next(s));
     }
 
     requestInitialList(): void { this.socket.emit('get-initial-list'); }
@@ -213,17 +234,22 @@ location /socket.io/ {
 
 **Map setup** (follows bbqweer Leaflet pattern — `@ViewChild` + `setTimeout` via `ngAfterViewInit`):
 - Center: `[49.5, 9.0]`, zoom 5 (geometric center of detection bounds)
-- Tile layer: OSM street map
-- Detection bounds: `L.rectangle([[40.0, -12.0], [59.0, 30.0]])` — dashed blue, 4% fill opacity
+- Tile layers: OSM street map + Esri World Imagery satellite (toggled via "Satelliet" button in the zoom pill)
+- Detection bounds: `L.rectangle([[40.0, -12.0], [59.0, 30.0]])` — dashed blue, 4% fill; rendered via `L.svg({ padding: 5 })` to prevent flash on pan
+- Canvas renderer (`L.canvas({ padding: 0.5 })`) for bolt markers — all bolts share a single canvas element
+
+**Satellite toggle**:
+- `toggleSatellite()` removes the active tile layer and adds the other; `showSatellite: boolean` drives the button active state
+- Esri World Imagery URL: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}` — free, no API key
 
 **Component lifecycle — `ngAfterViewInit`**:
-1. `initMap()` — creates Leaflet map and canvas renderer
+1. `initMap()` — creates Leaflet map, canvas renderer, SVG renderer, both tile layers, detection rectangle
 2. Subscribe to `svc.initialList$` — on each emission: `clearAllStrikes()`, render list, subscribe to `svc.newStrike$` (guarded by `liveSubscribed` flag so only once)
-3. Subscribe to `svc.newStrike$` only happens here, inside the `initialList$` callback — prevents a burst of ring animations during the async Redis query before the first list arrives
+3. Subscribe to `svc.lightningDelay$` — stores full `{ avg, min, max, samples }` in `delayStats`
 4. If already connected: `svc.requestInitialList()` (handles second-visit case where `connect` won't fire)
 
 **Strike lifecycle — `flashStrike(strike, updateDisplay)`**:
-1. Dedup check via `strikeKeys: Set<string>` (key = `timeMs:lat(4dp):lon(4dp)`) — prevents the same strike from being rendered twice when `newStrike$` and `initialList$` race
+1. Dedup check via `strikeKeys: Set<string>` (key = `timeMs:lat(4dp):lon(4dp)`)
 2. Compute `remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs)`
 3. `isLive = remainingMs > 0` → yellow bolt (`STYLE_ACTIVE`) + `styleTimer`; if also `strike.isNew`: white flash (`STYLE_FLASH`, 300ms) first
 4. `isLive = false` → grey bolt immediately (strikes older than `RING_DURATION_MS = 30s`)
@@ -234,16 +260,13 @@ location /socket.io/ {
 - `startRing(entry)`: creates `L.circle` + `setInterval` stored on `entry.ring`; start radius = correct position for strikes already in progress
 - `stopRing(entry)`: clears interval, removes circle, nulls `entry.ring`
 - `refreshRings()`: called on `zoomend` — zoom ≥10 starts rings for all still-live entries; zoom <10 stops all rings
-- All timers owned by `StrikeEntry` — `clearAllStrikes()` and `ngOnDestroy` cancel everything cleanly
 
-**Counter — `updateCounts()`**:
-- `activeCount` = `this.strikes.filter(s => s.isLive).length` — exactly matches yellow markers, updates immediately when `styleTimer` fires (no polling lag)
-- `viewportCount` = active strikes inside current map bounds (updates on `moveend`/`zoomend`)
-- `totalCount` = all strikes in the 10-minute window
+**Counter chips** (in the floating pill, top-left):
+- `totalCount / viewportTotalCount` — all strikes in 10min window, total and visible in viewport
+- `activeCount / viewportCount` — yellow (live, within 30s) strikes, total and in viewport
+- `avgDelayMs` — getter over `delayStats?.avg`; delay chip has `pTooltip` showing `gem: Xms | min: Xms | max: Xms (N)`
 
 **Strike markers** — canvas-rendered bolt shape (`boltMarker()` factory):
-
-All markers share a single `L.canvas()` renderer — drawn on one `<canvas>` element instead of one DOM node per strike. The `boltMarker` factory creates an `L.circleMarker` but overrides `_updatePath` to draw the ⚡ bolt path, then delegates fill/stroke to `renderer._fillStroke` so all Leaflet style options work normally.
 
 | Style | Fill | Stroke | Radius | Duration |
 |---|---|---|---|---|
@@ -254,18 +277,6 @@ All markers share a single `L.canvas()` renderer — drawn on one `<canvas>` ele
 **Thunder ring** (only when `map.getZoom() >= 10`):
 - Speed: 343 m/s, max radius: 10km, step interval: 200ms
 - `L.circle`, yellow `#ffff00`, weight 3, opacity fading from 1.0 → 0
-- Store timers in `rippleTimers[]`, cleared in `ngOnDestroy`
-
-**Counter chip** in page header:
-- `activeCount` — yellow (live) strikes only; `entry.isLive` is the source of truth
-- `viewportCount` — yellow strikes inside current map bounds
-- `totalCount` — all strikes in the 10-minute window
-- Displayed as `⚡ viewportCount / activeCount`
-
-**Cleanup in `ngOnDestroy`**:
-- `clearAllStrikes()` — cancels all `styleTimer`s, stops all rings, removes all markers
-- Clears fade `setInterval`
-- Removes Leaflet map
 
 ---
 
@@ -291,61 +302,42 @@ wsUrl: ''   // same origin
 
 ---
 
-## Implementation Order
-
-1. **Redis** — add service to `docker-compose.yml`, test locally (`docker compose up redis`)
-2. **Backend** — `backend/socket/blitzortung.js` (WSS → Redis → Socket.IO); wire into `app.js`
-3. **Backend test** — connect a browser WebSocket client or `wscat` to verify strike flow
-4. **Nginx** — add Socket.IO proxy block; test with local Docker stack
-5. **Frontend service** — `LightningService` (Socket.IO client)
-6. **Frontend component** — map, markers, thunder ring, counter chip
-7. **Nav** — add Bliksem entry to topbar
-8. **End-to-end test** — wait for a real thunderstorm, or inject a test strike from the backend
-9. **Deploy** — `.\deploy-hetzner.ps1`
-
----
-
-## Known Issues / Gotchas (from PoC)
+## Known Issues / Gotchas
 
 - **Auth challenge-response is mandatory** — without spoofing `Origin: https://www.lightningmaps.org`, the WSS handshake is rejected.
-- **Port redirect** — server sends a `port` field on first message; subsequent reconnects must use it (typically `8085`, not `443`).
-- **Reconnect replay** — on WSS reconnect, the server replays recent strikes. Set `isNew: false` on these (check the `isNew` field from the server or use the `remainingMs` guard on the frontend) to avoid spurious thunder rings.
-- **Tab-background burst** — Socket.IO queues messages while the tab is hidden. On tab-focus, many strikes arrive at once. The `remainingMs` check before drawing a ring prevents all of them animating; stale ones become grey bolts directly.
-- **`app.listen` → `server.listen`** — required for Socket.IO to share the HTTP server. Miss this and Socket.IO connections silently fail.
-- **Redis not needed for local dev** — during development, the backend can fall back to the JS-array approach (like the PoC) if Redis is not running, or just start the Redis container (`docker compose up -d redis`).
+- **Port redirect** — server sends a `port` field on first message; subsequent reconnects use it (`wssNextPort`). Reset to 443 on every disconnect — lightningmaps.org changed 8085 → 8086 once already.
+- **Reconnect replay** — on WSS reconnect, server replays recent strikes. `isNew: false` for these; dedup cache catches them.
+- **Tab-background burst** — Socket.IO queues messages while tab is hidden. `remainingMs` check before drawing ring or setting active bolt prevents stale strikes from animating.
+- **`app.listen` → `server.listen`** — required for Socket.IO to share the HTTP server.
+- **Double backend in local dev** — Docker `bbqweer-nodejs` + local `node app.js` both write to Redis. Stop the Docker container when running locally.
+- **NTP sync on local dev** — delay calculation uses `receivedAt - timeMs` (both from backend clock). If the host clock is unsynchronized, delay values will be wrong. Run `w32tm /resync` on Windows if seeing anomalous values.
 
 ---
 
 ## Key implementation notes
 
+### Delay calculation — why `receivedAt - timeMs`
+`receivedAt = Date.now()` is captured at WSS message time in the backend. `timeMs` is the actual strike timestamp (from blitzortung.org, in milliseconds). Both values come from our own backend clock — there is no cross-machine NTP dependency. Typical delay is ~2000ms (lightningmaps.org consolidation + network). Replay strikes on reconnect are filtered by the 60s Redis window in `getDelayStats()`.
+
+### SVG renderer for detection bounds
+The detection bounds rectangle uses `renderer: L.svg({ padding: 5 })` (not the default canvas). SVG vector layers are not re-rasterized on pan — they transform with the map's CSS transform layer, so no flash or artifact on move.
+
+### Satellite layer toggle
+Two `L.tileLayer` instances created in `initMap()`. `toggleSatellite()` removes the active one and adds the other. Both layers persist in memory; only one is added to the map at a time. The Leaflet attribution updates automatically.
+
 ### Thunder ring start radius (tab-background fix)
-When the browser tab is in the background, Socket.IO queues messages. On focus, multiple strikes arrive at once — some potentially 20s old. `remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs)` is computed before drawing; if ≤ 0, the strike becomes a grey bolt immediately. If > 0, the ring starts at the correct radius (`startRadius = elapsed_s * 343`) so it doesn't jump back to zero.
+When the tab is in the background, Socket.IO queues messages. On focus, multiple strikes arrive at once — some potentially 20s old. `remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs)` is computed before drawing; if ≤ 0, the strike becomes a grey bolt immediately. If > 0, the ring starts at the correct radius (`startRadius = elapsed_s * 343`) so it does not jump back to zero.
 
 ### isNew flag
-The backend emits `{ ...strike, isNew: true }` for live strikes only. The Redis `initial-list` reply has no `isNew` flag — so historical strikes on connect become grey bolts without rings.
+The backend emits `{ ...strike, isNew: true }` for live strikes only. The Redis `initial-list` reply has no `isNew` flag — historical strikes on connect become grey bolts without rings.
 
 ### Initial list is client-driven, not auto-pushed
-The backend does NOT auto-send `initial-list` on connect. `LightningService` (root-scoped, socket survives navigation) sets up all socket listeners once in its constructor and auto-requests `get-initial-list` on every `connect` event. The component subscribes to `svc.initialList$` / `svc.newStrike$` in `ngAfterViewInit` after `initMap()`, then explicitly calls `svc.requestInitialList()` if the socket is already connected (second-visit case). The component clears all existing markers before rendering a new `initial-list` so reconnects don't double-render.
+`LightningService` (root-scoped, socket survives navigation) sets up all listeners once in its constructor and auto-requests `get-initial-list` on every `connect`. The component subscribes in `ngAfterViewInit` after `initMap()`, then calls `svc.requestInitialList()` if already connected (second-visit case). Existing markers are cleared before rendering a new `initial-list`.
 
-### Local dev connection
-`ng serve` → `environment.wsUrl = 'http://localhost:3000'` → Socket.IO connects directly to the backend, bypassing nginx entirely. Nginx only handles Socket.IO in Docker/production via the `/socket.io/` proxy block.
+### Lightning index badge ≈ activeCount
+`RING_DURATION_MS = 30_000ms`. The backend uses a 30s Redis window (`zcount now-30s`). Propagation delay is ~2s, so both Redis and the frontend count the same 30s window — badge ≈ activeCount in steady state.
 
-### Redis auto-detection
-`blitzortung.js` checks `fs.existsSync('./config.local.ini')` at startup — same pattern as `mysqlpool-knmi.helper.js`. Local dev → `127.0.0.1:6379`, Docker → `redis:6379`.
-
-### Double backend in local dev
-If Docker `bbqweer-nodejs` is running alongside local `node app.js`, both connect to Blitzortung and write to the same Redis with separate in-memory dedup caches — resulting in 2× strikes in Redis and 2× in the initial list. Always stop the Docker container when running locally:
-```powershell
-docker stop bbqweer-nodejs
-docker exec bbqweer-redis redis-cli DEL strikes:time strikes:geo strikes:data
-```
-The frontend also guards against duplicates via `strikeKeys: Set<string>`, but the root cause is the double backend.
-
-### newStrike$ / initialList$ race condition (dedup)
-A strike can arrive via `newStrike$` AND appear in the next `initialList$` response if it was written to Redis before the query ran. The frontend deduplicates using a `Set<string>` keyed by `timeMs:lat(4dp):lon(4dp)`. `clearAllStrikes()` clears the set; `fade()` removes individual keys as strikes expire.
-
-### LightningService instantiated at app startup (not just on lightning page)
-`LightningService` is `providedIn: 'root'`. The topbar component injects it to show the lightning index badge — so the Socket.IO connection opens as soon as the app loads, not just when the user navigates to `/lightning`. This is intentional: the badge needs live data on every page.
+Historical 2× mismatch root cause: `live.lightningmaps.org` sends each physical bolt **twice** with consecutive IDs (return-stroke duplicates). `live2.lightningmaps.org` deduplicates server-side; both have identical geographic coverage. Switched to `live2` only. Backend dedup (by `time:lat:lon`, 150s TTL) remains as a safety net for reconnect replays.
 
 ### ntfy.sh push alerts — config
 Add to `backend/config.ini` (and `config.local.ini` for local testing):
@@ -359,10 +351,8 @@ cooldown_min = 5
 ```
 Install the ntfy iOS/Android app and subscribe to the same topic. If the section is absent, alerts are silently disabled — no crash.
 
-### Lightning index badge — why badge ≈ activeCount
-`RING_DURATION_MS = 30_000ms`. `isLive = remainingMs > 0` applies to both initial-list strikes and live arrivals. The backend uses a 30s Redis window (`zcount now-30s`). Propagation delay is ~2s, so both Redis and the frontend effectively count the same 30s window — badge ≈ activeCount in steady state.
-
-Root cause of the historical 2× mismatch: `live.lightningmaps.org` and `live2.lightningmaps.org` assign different stroke IDs to the same physical lightning bolt. When both servers were connected simultaneously (random selection + reload race condition), each bolt was stored twice in Redis. The frontend deduped by `timeMs:lat:lon` (seeing 1 per bolt); Redis had 2 per bolt → badge = 2× activeCount. Fixed by: single server + dedup key matching the frontend + reload race fix.
+### LightningService instantiated at app startup (not just on lightning page)
+`LightningService` is `providedIn: 'root'`. The topbar injects it to show the lightning index badge — the Socket.IO connection opens on app load, not just when navigating to `/lightning`.
 
 ---
 

@@ -9,7 +9,7 @@ const axios     = require('axios');
 const BOUNDS = { latMin: 40.0, latMax: 59.0, lonMin: -12.0, lonMax: 30.0 };
 const TTL_MS = 10 * 60 * 1000;
 
-const WSS_SERVER  = 'live.lightningmaps.org';
+const WSS_SERVER  = 'live2.lightningmaps.org'; // live sends each bolt twice; live2 dedupes server-side
 let   wssNextPort = 443;
 
 // Initial subscription message — tells server which geographic area we want
@@ -21,9 +21,27 @@ const WSS_INIT_MSG = JSON.stringify({
     r: 'A',
 });
 
-// Dedup by stroke.id — prevents double-processing reconnect replays
+// Dedup by time+lat+lon — guards against reconnect replays resending recent strikes
 const dedupeCache = new Map();
 const DEDUPE_TTL  = 150_000;
+
+async function getDelayStats() {
+    const ids = await redis.zrangebyscore('strikes:time', Date.now() - 60_000, '+inf');
+    if (!ids.length) return null;
+    const raw  = await redis.hmget('strikes:data', ...ids);
+    const vals = raw
+        .filter(Boolean)
+        .map(JSON.parse)
+        .filter(s => s.receivedAt)
+        .map(s => s.receivedAt - s.timeMs);
+    if (!vals.length) return null;
+    return {
+        avg:     Math.round(vals.reduce((a, b) => a + b, 0) / vals.length),
+        min:     Math.min(...vals),
+        max:     Math.max(...vals),
+        samples: vals.length,
+    };
+}
 
 setInterval(() => {
     const cutoff = Date.now() - DEDUPE_TTL;
@@ -165,10 +183,11 @@ function startWss() {
 
             // Strike batch
             if (msg.strokes && Array.isArray(msg.strokes)) {
+                const receivedAt = Date.now();
                 for (const stroke of msg.strokes) {
                     if (!inBounds(stroke.lat, stroke.lon)) continue;
                     if (isDupe(`${stroke.time}:${stroke.lat.toFixed(4)}:${stroke.lon.toFixed(4)}`)) continue;
-                    addStrike({ lat: stroke.lat, lon: stroke.lon, timeMs: stroke.time, pol: 0 })
+                    addStrike({ lat: stroke.lat, lon: stroke.lon, timeMs: stroke.time, pol: 0, receivedAt })
                         .catch(() => {});
                 }
             }
@@ -197,6 +216,13 @@ function initBlitzortung(socketIo) {
                 if (io) io.emit('lightning-index', count);
             } catch {}
         }, 500);
+
+        setInterval(async () => {
+            try {
+                const stats = await getDelayStats();
+                if (io && stats) io.emit('lightning-delay', stats);
+            } catch {}
+        }, 1_000);
     }).catch(err => {
         console.error('[blitzortung] Redis connect failed:', err.message);
     });

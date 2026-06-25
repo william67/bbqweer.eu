@@ -16,9 +16,10 @@ export class LightningService implements OnDestroy {
 
     private socket: Socket;
 
-    readonly initialList$    = new Subject<Strike[]>();
-    readonly newStrike$      = new Subject<Strike>();
-    readonly lightningIndex$ = new BehaviorSubject<number>(0);
+    readonly initialList$     = new Subject<Strike[]>();
+    readonly newStrike$       = new Subject<Strike>();
+    readonly lightningIndex$  = new BehaviorSubject<number>(0);
+    readonly lightningDelay$  = new BehaviorSubject<{ avg: number; min: number; max: number; samples: number } | null>(null);
 
     constructor() {
         this.socket = io(environment.wsUrl, { transports: ['websocket'] });
@@ -28,6 +29,7 @@ export class LightningService implements OnDestroy {
         this.socket.on('initial-list',    (list: Strike[]) => this.initialList$.next(list));
         this.socket.on('new-strike',      (s: Strike)      => this.newStrike$.next(s));
         this.socket.on('lightning-index', (n: number)      => this.lightningIndex$.next(n));
+        this.socket.on('lightning-delay', (s: any)         => this.lightningDelay$.next(s));
     }
 
     // Called by the component when it mounts and socket is already connected

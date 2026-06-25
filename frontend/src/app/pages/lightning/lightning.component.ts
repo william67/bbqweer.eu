@@ -58,20 +58,31 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
 
     @ViewChild('mapEl') mapEl!: ElementRef;
 
-    activeCount   = 0;
-    viewportCount = 0;
-    totalCount    = 0;
-    avgDelayMs    = 0;
-    mapZoom       = 5;
+    activeCount        = 0;
+    viewportCount      = 0;
+    totalCount         = 0;
+    viewportTotalCount = 0;
+    showSatellite      = false;
+    mapZoom            = 5;
+    delayStats: { avg: number; min: number; max: number; samples: number } | null = null;
 
-    private delayHistory:  number[] = [];
-    private map:           L.Map | null = null;
-    private renderer!:     L.Canvas;
-    private strikes:       StrikeEntry[] = [];
-    private strikeKeys   = new Set<string>();
-    private subs:          Subscription[] = [];
-    private fadeTimer:     any;
-    private liveSubscribed = false;
+    get avgDelayMs(): number { return this.delayStats?.avg ?? 0; }
+    get delayTooltip(): string {
+        if (!this.delayStats) return '';
+        const { avg, min, max, samples } = this.delayStats;
+        return `gem: ${avg}ms | min: ${min}ms | max: ${max}ms (${samples})`;
+    }
+
+    private map:             L.Map | null = null;
+    private renderer!:       L.Canvas;
+    private svgRenderer!:    L.SVG;
+    private streetLayer!:    L.TileLayer;
+    private satelliteLayer!: L.TileLayer;
+    private strikes:         StrikeEntry[] = [];
+    private strikeKeys     = new Set<string>();
+    private subs:            Subscription[] = [];
+    private fadeTimer:       any;
+    private liveSubscribed   = false;
 
     constructor(private svc: LightningService) {}
 
@@ -91,22 +102,30 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
                     }
                 })
             );
+            this.subs.push(
+                this.svc.lightningDelay$.subscribe(s => { this.delayStats = s; })
+            );
             if (this.svc.connected) this.svc.requestInitialList();
         });
     }
 
     private initMap(): void {
-        this.renderer = L.canvas({ padding: 0.5 });
+        this.renderer    = L.canvas({ padding: 0.5 });
+        this.svgRenderer = L.svg({ padding: 5 });
 
         this.map = L.map(this.mapEl.nativeElement, { center: [49.5, 9.0], zoom: 5, preferCanvas: true });
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        this.streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
-        }).addTo(this.map);
+        });
+        this.satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        });
+        this.streetLayer.addTo(this.map);
 
         L.rectangle(
             [[BOUNDS.latMin, BOUNDS.lonMin], [BOUNDS.latMax, BOUNDS.lonMax]],
-            { color: '#3b82f6', weight: 1.5, dashArray: '6 4', fill: true, fillOpacity: 0.04 }
+            { color: '#3b82f6', weight: 1.5, dashArray: '6 4', fill: true, fillOpacity: 0.04, renderer: this.svgRenderer }
         ).addTo(this.map);
 
         this.map.on('zoomend', () => {
@@ -118,6 +137,18 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         this.map.on('moveend', () => this.updateCounts());
 
         this.fadeTimer = setInterval(() => this.fade(), 10_000);
+    }
+
+    toggleSatellite(): void {
+        if (!this.map) return;
+        if (this.showSatellite) {
+            this.satelliteLayer.remove();
+            this.streetLayer.addTo(this.map);
+        } else {
+            this.streetLayer.remove();
+            this.satelliteLayer.addTo(this.map);
+        }
+        this.showSatellite = !this.showSatellite;
     }
 
     // ── Ring lifecycle ────────────────────────────────────────────────────────
@@ -186,17 +217,6 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         if (this.strikeKeys.has(key)) return;
         this.strikeKeys.add(key);
 
-        if (strike.isNew) {
-            const delay = Date.now() - strike.timeMs;
-            if (delay >= 0 && delay < 300_000) {
-                this.delayHistory.push(delay);
-                if (this.delayHistory.length > 50) this.delayHistory.shift();
-                this.avgDelayMs = Math.round(
-                    this.delayHistory.reduce((a, b) => a + b, 0) / this.delayHistory.length
-                );
-            }
-        }
-
         const remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs);
         const isLive      = remainingMs > 0;
 
@@ -256,9 +276,10 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     private updateCounts(): void {
         const bounds = this.map?.getBounds();
         const active = this.strikes.filter(s => s.isLive);
-        this.activeCount   = active.length;
-        this.viewportCount = bounds ? active.filter(s => bounds.contains([s.lat, s.lon])).length : 0;
-        this.totalCount    = this.strikes.length;
+        this.activeCount        = active.length;
+        this.viewportCount      = bounds ? active.filter(s => bounds.contains([s.lat, s.lon])).length : 0;
+        this.totalCount         = this.strikes.length;
+        this.viewportTotalCount = bounds ? this.strikes.filter(s => bounds.contains([s.lat, s.lon])).length : 0;
     }
 
     ngOnDestroy(): void {
