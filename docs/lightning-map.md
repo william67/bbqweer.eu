@@ -313,6 +313,7 @@ location /socket.io/ {
 - **Grey canvas** (bottom): draws `isLive=false` strikes. Redrawn only on pan/zoom end (`_reset()`) and `fade()`. `addToGrey(key, entry)` paints a single bolt additively without clearing — called on each live→grey transition so strikes appear on grey canvas immediately.
 - **Live canvas** (top): drawn every RAF frame — strikes with `age < RING_DURATION_MS` + canvas ring arcs for entries with `hasRing=true`. Cost <1ms at realistic active strike counts.
 - Layer coordinates + 300px padding (`CANVAS_PAD`): pan is a CSS transform, no mid-drag redraws.
+- **`zoomAnimation: false`** on the Leaflet map: disables CSS zoom animation so the overlayPane is never CSS-scaled while our canvas holds old coordinates. `zoomend` fires instantly, `_reset()` redraws the canvas at the new zoom level with no visible blank or distortion.
 
 | Canvas | Strikes drawn | Fill | Stroke | Size | Redraw trigger |
 |---|---|---|---|---|---|

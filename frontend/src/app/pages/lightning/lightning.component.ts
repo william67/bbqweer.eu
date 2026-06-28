@@ -39,15 +39,9 @@ class StrikeOverlay {
         this.liveCtx    = this.liveCanvas.getContext('2d')!;
         map.getPanes().overlayPane!.appendChild(this.liveCanvas);
 
-        map.on('zoomstart', () => {
-            this.liveCanvas.style.visibility = 'hidden';
-            this.greyCanvas.style.visibility = 'hidden';
-        });
         map.on('zoomend', () => {
             this._pointCache.clear();
             this._reset();
-            this.liveCanvas.style.visibility = '';
-            this.greyCanvas.style.visibility = '';
         });
         map.on('moveend', () => { this._reset(); });
         this._reset();
@@ -357,7 +351,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
 
     private initMap(): void {
         this.svgRenderer = L.svg({ padding: 5 });
-        this.map = L.map(this.mapEl.nativeElement, { center: [49.5, 9.0], zoom: 5, preferCanvas: false });
+        this.map = L.map(this.mapEl.nativeElement, { center: [49.5, 9.0], zoom: 5, preferCanvas: false, zoomAnimation: false });
 
         this.streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
