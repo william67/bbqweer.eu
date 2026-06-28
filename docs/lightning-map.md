@@ -300,7 +300,7 @@ location /socket.io/ {
 **Strike lifecycle — `flashStrike(strike)`**:
 1. Dedup check via `strikeMap.has(key)` (key = `timeMs:lat(4dp):lon(4dp)`)
 2. Entry added to `strikeMap` with `wasNew`, `flashStartMs`; no `isLive` field — phase computed from age each frame
-3. If `strike.isNew` and zoom ≥ 9: `startRing(entry)`
+3. If `strike.isNew` and zoom ≥ 11: `startRing(entry)` — sets `entry.hasRing = true`
 4. No per-strike timers — the RAF loop handles all phase transitions
 
 **Age-as-pure-function (RAF loop)**:
@@ -311,20 +311,23 @@ location /socket.io/ {
 
 **StrikeOverlay — two-canvas rendering**:
 - **Grey canvas** (bottom): draws `isLive=false` strikes. Redrawn only on pan/zoom end (`_reset()`) and `fade()`. `addToGrey(key, entry)` paints a single bolt additively without clearing — called on each live→grey transition so strikes appear on grey canvas immediately.
-- **Live canvas** (top): drawn every `tick()` (100ms) — only `isLive=true` strikes. Cost <1ms at realistic active strike counts.
+- **Live canvas** (top): drawn every RAF frame — strikes with `age < RING_DURATION_MS` + canvas ring arcs for entries with `hasRing=true`. Cost <1ms at realistic active strike counts.
 - Layer coordinates + 300px padding (`CANVAS_PAD`): pan is a CSS transform, no mid-drag redraws.
 
 | Canvas | Strikes drawn | Fill | Stroke | Size | Redraw trigger |
 |---|---|---|---|---|---|
-| Live (top) | `isLive=true` | `#facc15` yellow (or white during flash) | `#ef4444` red | 10px (13px flash) | every tick 100ms |
-| Grey (bottom) | `isLive=false` | `#e5e7eb` grey | `#000000` black | 7px | pan/zoom end, fade, transition |
+| Live (top) | age < 30s | `#facc15` yellow (or white during flash) | `#ef4444` red | 10px (13px flash) | every RAF frame |
+| Live (top) | `hasRing=true`, zoom ≥ 11 | — | `#ffff00` yellow arc | 2–3px, fades | every RAF frame |
+| Grey (bottom) | age ≥ 30s | `#e5e7eb` grey | `#000000` black | 7px | pan/zoom end, fade, transition |
 
 **Flash sequence** (driven by `flashStartMs` in `tick()`): white at t<150ms, yellow 150–200ms, white 200–350ms, yellow 350–400ms, white 400–550ms, yellow 550ms+ (stays yellow).
 
-**Ring lifecycle** (only when `map.getZoom() >= 9`):
-- `startRing(entry)`: creates `L.circle` + `hitCircle` (invisible, wide, for tooltip); start radius = elapsed × 343 m/s
-- `tick()` updates radius + opacity for all active rings; `stopRing()` when radius ≥ 10km
-- `refreshRings()` on `zoomend`: stops all rings when zoom drops below 9
+**Ring lifecycle** (only when `map.getZoom() >= 11`):
+- `startRing(entry)`: sets `entry.hasRing = true` — no Leaflet layers created
+- Radius, opacity, line width computed each RAF frame as pure functions of age: `radiusM = (now - timeMs) / 1000 * 343`, converted to canvas pixels via Web Mercator scale (`40075016 × cos(lat) / 2^(zoom+8)`)
+- Ring stops rendering when `radiusM >= RING_MAX_M` (10km) — no explicit stop needed
+- Hover: `map.on('mousemove')` hit-tests mouse distance vs each ring arc (threshold 8px); shows a floating `position:absolute` div with distance in km; `pointer-events:none`
+- Zoom < 11: rings simply not drawn (canvas check each frame); no `refreshRings()` needed
 
 **Counter chips** (in the floating pill, top-left):
 - `totalCount / viewportTotalCount` — all strikes in 10min window, total and visible in viewport

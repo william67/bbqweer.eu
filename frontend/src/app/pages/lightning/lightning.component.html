@@ -27,6 +27,11 @@
     }
   </div>
 
+  <!-- Ring distance tooltip -->
+  @if (ringTooltip) {
+    <div class="ring-tooltip" [style.left.px]="ringTooltip.x" [style.top.px]="ringTooltip.y">{{ ringTooltip.text }}</div>
+  }
+
   <!-- Zoom + satellite pill — top-right -->
   <div class="map-pill zoom-pill">
     <span class="pill-label">Zoom</span>&nbsp;<strong>{{ mapZoom }}</strong>

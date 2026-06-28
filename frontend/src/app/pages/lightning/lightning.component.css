@@ -125,3 +125,15 @@
     background: #eff6ff;
     border-color: #93c5fd;
 }
+
+.ring-tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.72);
+    color: #ffff00;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    pointer-events: none;
+    z-index: 1001;
+    white-space: nowrap;
+}

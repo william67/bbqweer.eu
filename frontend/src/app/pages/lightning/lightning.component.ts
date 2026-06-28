@@ -170,6 +170,34 @@ class StrikeOverlay {
                 if (!this.strikes!.has(k)) this._pointCache.delete(k);
             }
         }
+
+        // Rings — canvas arcs, drawn only when zoom >= 11
+        const zoom = this.map.getZoom();
+        if (zoom >= 11) {
+            for (const [key, entry] of this.strikes) {
+                if (!entry.hasRing) continue;
+                const radiusM = (now - entry.timeMs) / 1000 * RING_SPEED;
+                if (radiusM <= 0 || radiusM >= RING_MAX_M) continue;
+
+                let lp = this._pointCache.get(key);
+                if (!lp) { lp = this.map.latLngToLayerPoint([entry.lat, entry.lon]); this._pointCache.set(key, lp); }
+                const cx = lp.x - this._origin.x;
+                const cy = lp.y - this._origin.y;
+
+                // Web Mercator: metres per layer pixel at this lat/zoom
+                const mpp = (40075016.686 * Math.abs(Math.cos(entry.lat * Math.PI / 180))) / Math.pow(2, zoom + 8);
+                const progress  = radiusM / RING_MAX_M;
+
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, Math.pow(1 - progress, 0.5));
+                ctx.beginPath();
+                ctx.arc(cx, cy, radiusM / mpp, 0, Math.PI * 2);
+                ctx.strokeStyle = '#ffff00';
+                ctx.lineWidth   = Math.max(2, 3 * (1 - progress));
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
     }
 
     private _drawGrey(now: number): void {
@@ -212,15 +240,13 @@ class StrikeOverlay {
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
-interface RingHandle { circle: L.Circle; hitCircle: L.Circle; startMs: number; }
-
 interface StrikeEntry {
     timeMs:        number;
     lat:           number;
     lon:           number;
     wasNew:        boolean;
     flashStartMs?: number;
-    ring?:         RingHandle;
+    hasRing?:      boolean;
 }
 
 @Component({
@@ -239,6 +265,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     viewportTotalCount = 0;
     showSatellite      = false;
     mapZoom            = 5;
+    ringTooltip:       { x: number; y: number; text: string } | null = null;
     delayStats:    { avg: number; min: number; max: number; samples: number } | null = null;
     lastStrikeMs:  number | null = null;
 
@@ -349,11 +376,39 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
 
         this.map.on('zoomend', () => {
             this.mapZoom = this.map!.getZoom();
-            this.refreshRings();
             this.updateViewportCounts();
         });
 
         this.map.on('moveend', () => this.updateViewportCounts());
+
+        this.map.on('mousemove', (e: L.LeafletMouseEvent) => {
+            if ((this.map?.getZoom() ?? 0) < 11) return;
+            const lp  = this.map!.containerPointToLayerPoint(e.containerPoint);
+            const now = Date.now();
+            const zoom = this.map!.getZoom();
+            let found: { x: number; y: number; text: string } | null = null;
+
+            for (const entry of this.strikeMap.values()) {
+                if (!entry.hasRing) continue;
+                const radiusM = (now - entry.timeMs) / 1000 * RING_SPEED;
+                if (radiusM <= 0 || radiusM >= RING_MAX_M) continue;
+                const center = this.map!.latLngToLayerPoint([entry.lat, entry.lon]);
+                const mpp    = (40075016.686 * Math.abs(Math.cos(entry.lat * Math.PI / 180))) / Math.pow(2, zoom + 8);
+                const dist   = Math.hypot(lp.x - center.x, lp.y - center.y);
+                if (Math.abs(dist - radiusM / mpp) < 8) {
+                    found = { x: e.containerPoint.x + 12, y: e.containerPoint.y - 10, text: `${Math.round(radiusM / 1000)} km` };
+                    break;
+                }
+            }
+
+            const entering = found !== null;
+            const leaving  = this.ringTooltip !== null;
+            if (entering || leaving) this.ngZone.run(() => { this.ringTooltip = found; });
+        });
+
+        this.map.on('mouseout', () => {
+            if (this.ringTooltip) this.ngZone.run(() => { this.ringTooltip = null; });
+        });
 
         this.ngZone.runOutsideAngular(() => {
             this.fadeTimer = setInterval(() => this.fade(), 10_000);
@@ -380,56 +435,15 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     // ── Ring lifecycle ────────────────────────────────────────────────────────
 
     private startRing(entry: StrikeEntry): void {
-        if (entry.ring || !this.map) return;
+        if (entry.hasRing) return;
         if (Date.now() - entry.timeMs >= RING_DURATION_MS) return;
-
-        const radiusM = (Date.now() - entry.timeMs) / 1000 * RING_SPEED;
-        const circle = L.circle([entry.lat, entry.lon], {
-            radius: Math.max(1, radiusM), color: '#ffff00',
-            weight: 3, fill: false, opacity: 1, renderer: this.svgRenderer
-        }).addTo(this.map);
-
-        const hitCircle = L.circle([entry.lat, entry.lon], {
-            radius: Math.max(1, radiusM), color: '#ffff00',
-            weight: 20, fill: false, opacity: 0.001, interactive: true,
-            renderer: this.svgRenderer
-        }).addTo(this.map);
-        hitCircle.bindTooltip(`${Math.round(radiusM / 1000)} km`, { sticky: true });
-
-        entry.ring = { circle, hitCircle, startMs: entry.timeMs };
-    }
-
-    private stopRing(entry: StrikeEntry): void {
-        if (!entry.ring) return;
-        entry.ring.circle.remove();
-        entry.ring.hitCircle.remove();
-        entry.ring = undefined;
-    }
-
-    private refreshRings(): void {
-        if ((this.map?.getZoom() ?? 0) < 9) {
-            this.strikeMap.forEach(e => this.stopRing(e));
-        }
+        entry.hasRing = true;
     }
 
     // ── Tick: rings + redraw + count display ──────────────────────────────────
 
     private tick(): void {
         const now = Date.now();
-
-        for (const entry of this.strikeMap.values()) {
-            if (!entry.ring) continue;
-            const radiusM = (now - entry.ring.startMs) / 1000 * RING_SPEED;
-            if (radiusM >= RING_MAX_M) {
-                this.stopRing(entry);
-                continue;
-            }
-            const progress = radiusM / RING_MAX_M;
-            entry.ring.circle.setRadius(radiusM);
-            entry.ring.circle.setStyle({ opacity: Math.max(0, Math.pow(1 - progress, 0.5)), weight: Math.max(2, 3 * (1 - progress)) });
-            entry.ring.hitCircle.setRadius(radiusM);
-            entry.ring.hitCircle.setTooltipContent(`${Math.round(radiusM / 1000)} km`);
-        }
 
         this.overlay.drawLive(this.strikeMap, now);
 
@@ -451,9 +465,6 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     // ── Strike lifecycle ──────────────────────────────────────────────────────
 
     private clearAllStrikes(): void {
-        for (const entry of this.strikeMap.values()) {
-            this.stopRing(entry);
-        }
         this.strikeMap.clear();
     }
 
@@ -471,7 +482,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         this.strikeMap.set(key, entry);
 
         const isLive = Date.now() - strike.timeMs < RING_DURATION_MS;
-        if (isLive && strike.isNew && this.map && this.map.getZoom() >= 9) {
+        if (isLive && strike.isNew && this.map && this.map.getZoom() >= 11) {
             this.startRing(entry);
         }
     }
@@ -481,7 +492,6 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         let anyExpired = false;
         for (const [id, entry] of this.strikeMap) {
             if (now - entry.timeMs > MAX_AGE_MS) {
-                this.stopRing(entry);
                 this.strikeMap.delete(id);
                 anyExpired = true;
             }
