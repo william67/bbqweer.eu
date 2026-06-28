@@ -482,7 +482,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         this.strikeMap.set(key, entry);
 
         const isLive = Date.now() - strike.timeMs < RING_DURATION_MS;
-        if (isLive && strike.isNew && this.map && this.map.getZoom() >= 11) {
+        if (isLive && strike.isNew) {
             this.startRing(entry);
         }
     }

@@ -300,7 +300,7 @@ location /socket.io/ {
 **Strike lifecycle — `flashStrike(strike)`**:
 1. Dedup check via `strikeMap.has(key)` (key = `timeMs:lat(4dp):lon(4dp)`)
 2. Entry added to `strikeMap` with `wasNew`, `flashStartMs`; no `isLive` field — phase computed from age each frame
-3. If `strike.isNew` and zoom ≥ 11: `startRing(entry)` — sets `entry.hasRing = true`
+3. If `strike.isNew`: `startRing(entry)` — sets `entry.hasRing = true` (zoom-independent; draw loop skips rings below zoom 11)
 4. No per-strike timers — the RAF loop handles all phase transitions
 
 **Age-as-pure-function (RAF loop)**:
@@ -322,8 +322,8 @@ location /socket.io/ {
 
 **Flash sequence** (driven by `flashStartMs` in `tick()`): white at t<150ms, yellow 150–200ms, white 200–350ms, yellow 350–400ms, white 400–550ms, yellow 550ms+ (stays yellow).
 
-**Ring lifecycle** (only when `map.getZoom() >= 11`):
-- `startRing(entry)`: sets `entry.hasRing = true` — no Leaflet layers created
+**Ring lifecycle**:
+- `startRing(entry)`: sets `entry.hasRing = true` for all new live strikes — no Leaflet layers created; zoom check is in the draw loop only so zooming in always shows rings for recently arrived strikes
 - Radius, opacity, line width computed each RAF frame as pure functions of age: `radiusM = (now - timeMs) / 1000 * 343`, converted to canvas pixels via Web Mercator scale (`40075016 × cos(lat) / 2^(zoom+8)`)
 - Ring stops rendering when `radiusM >= RING_MAX_M` (10km) — no explicit stop needed
 - Hover: `map.on('mousemove')` hit-tests mouse distance vs each ring arc (threshold 8px); shows a floating `position:absolute` div with distance in km; `pointer-events:none`
