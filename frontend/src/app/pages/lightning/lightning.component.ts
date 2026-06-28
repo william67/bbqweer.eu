@@ -12,9 +12,10 @@ const MAX_AGE_MS       = 10 * 60 * 1000;
 const BOUNDS = { latMin: 40.0, latMax: 59.0, lonMin: -12.0, lonMax: 30.0 };
 
 // ── Two-canvas overlay: grey (bottom) + live (top) ────────────────────────────────────────────
-// Live canvas: redrawn every tick (~100ms) — only isLive strikes (~200-400). Draw cost: <1ms.
-// Grey canvas: redrawn only on pan/zoom end and fade — potentially thousands of strikes, but rarely.
-// Incoming strikes are O(1): just a Map.set + dirty flag. tick() handles all drawing.
+// Live canvas: redrawn every RAF frame — only strikes with age < RING_DURATION_MS. Cost: <1ms.
+// Grey canvas: redrawn only on pan/zoom end and fade. addToGrey() paints one bolt additively
+//   when a strike transitions live→grey (detected via _liveKeys diff in drawLive).
+// No per-strike timers — phase is a pure function of age = now - entry.timeMs.
 
 const CANVAS_PAD = 300;
 
@@ -27,6 +28,7 @@ class StrikeOverlay {
     private _origin:     L.Point = L.point(0, 0);
     private _pointCache = new Map<string, L.Point>();
     private _liveCount  = 0;
+    private _liveKeys   = new Set<string>();
 
     constructor(private map: L.Map) {
         this.greyCanvas = L.DomUtil.create('canvas', 'strike-overlay') as HTMLCanvasElement;
@@ -65,23 +67,39 @@ class StrikeOverlay {
 
     private _reset(): void {
         this._resize();
-        if (this.strikes) { this._drawGrey(); this._drawLive(); }
+        const now = Date.now();
+        if (this.strikes) { this._drawGrey(now); this._syncLiveKeys(now); this._drawLive(now); }
     }
 
-    // Called from tick() — live canvas only, O(live strikes) per tick
-    drawLive(strikes: Map<string, StrikeEntry>): void {
+    // Called after every full grey redraw so drawLive() doesn't double-paint on next frame
+    private _syncLiveKeys(now: number): void {
+        this._liveKeys.clear();
+        if (!this.strikes) return;
+        for (const [key, entry] of this.strikes) {
+            if (now - entry.timeMs < RING_DURATION_MS) this._liveKeys.add(key);
+        }
+    }
+
+    // Called every RAF frame — detects live→grey transitions, paints grey additively, draws live
+    drawLive(strikes: Map<string, StrikeEntry>, now: number): void {
         this.strikes = strikes;
-        this._drawLive();
+        for (const key of this._liveKeys) {
+            const entry = strikes.get(key);
+            if (!entry) continue;
+            if (now - entry.timeMs >= RING_DURATION_MS) this._addToGrey(key, entry, now);
+        }
+        this._syncLiveKeys(now);
+        this._drawLive(now);
     }
 
-    // Full grey redraw — only on initial list load, fade(), and pan/zoom (_reset internal)
-    redrawGrey(strikes: Map<string, StrikeEntry>): void {
+    // Full grey redraw — on initial list, fade(), pan/zoom
+    redrawGrey(strikes: Map<string, StrikeEntry>, now: number): void {
         this.strikes = strikes;
-        this._drawGrey();
+        this._drawGrey(now);
+        this._syncLiveKeys(now);
     }
 
-    // Paint one bolt onto the grey canvas without clearing — called when a strike turns grey
-    addToGrey(key: string, entry: StrikeEntry): void {
+    private _addToGrey(key: string, entry: StrikeEntry, now: number): void {
         const w = this.greyCanvas.width;
         const h = this.greyCanvas.height;
         if (!w || !h) return;
@@ -91,8 +109,7 @@ class StrikeOverlay {
         const y = lp.y - this._origin.y;
         if (x < -20 || x > w + 20 || y < -20 || y > h + 20) return;
         const ctx = this.greyCtx;
-        const age = Date.now() - entry.timeMs;
-        ctx.globalAlpha = Math.max(0, 1 - age / MAX_AGE_MS);
+        ctx.globalAlpha = Math.max(0, 1 - (now - entry.timeMs) / MAX_AGE_MS);
         ctx.beginPath();
         ctx.moveTo(x + 0.20 * 7, y - 1.00 * 7);
         ctx.lineTo(x - 0.60 * 7, y + 0.10 * 7);
@@ -106,16 +123,15 @@ class StrikeOverlay {
         ctx.globalAlpha = 1;
     }
 
-    private _drawLive(): void {
+    private _drawLive(now: number): void {
         if (!this.strikes) return;
         const ctx = this.liveCtx;
         const w   = this.liveCanvas.width;
         const h   = this.liveCanvas.height;
-        const now = Date.now();
         ctx.clearRect(0, 0, w, h);
 
         for (const [key, entry] of this.strikes) {
-            if (!entry.isLive) continue;
+            if (now - entry.timeMs >= RING_DURATION_MS) continue;
 
             let lp = this._pointCache.get(key);
             if (!lp) { lp = this.map.latLngToLayerPoint([entry.lat, entry.lon]); this._pointCache.set(key, lp); }
@@ -149,7 +165,6 @@ class StrikeOverlay {
             ctx.fill(); ctx.stroke();
         }
 
-        // Evict stale cache entries every 60 live draws (~6s)
         if (++this._liveCount % 60 === 0) {
             for (const k of this._pointCache.keys()) {
                 if (!this.strikes!.has(k)) this._pointCache.delete(k);
@@ -157,16 +172,15 @@ class StrikeOverlay {
         }
     }
 
-    private _drawGrey(): void {
+    private _drawGrey(now: number): void {
         if (!this.strikes) return;
         const ctx = this.greyCtx;
         const w   = this.greyCanvas.width;
         const h   = this.greyCanvas.height;
-        const now = Date.now();
         ctx.clearRect(0, 0, w, h);
 
         for (const [key, entry] of this.strikes) {
-            if (entry.isLive) continue;
+            if (now - entry.timeMs < RING_DURATION_MS) continue;
 
             let lp = this._pointCache.get(key);
             if (!lp) { lp = this.map.latLngToLayerPoint([entry.lat, entry.lon]); this._pointCache.set(key, lp); }
@@ -174,8 +188,7 @@ class StrikeOverlay {
             const y = lp.y - this._origin.y;
             if (x < -20 || x > w + 20 || y < -20 || y > h + 20) continue;
 
-            const age = now - entry.timeMs;
-            ctx.globalAlpha = Math.max(0, 1 - age / MAX_AGE_MS);
+            ctx.globalAlpha = Math.max(0, 1 - (now - entry.timeMs) / MAX_AGE_MS);
             ctx.beginPath();
             ctx.moveTo(x + 0.20 * 7, y - 1.00 * 7);
             ctx.lineTo(x - 0.60 * 7, y + 0.10 * 7);
@@ -205,10 +218,8 @@ interface StrikeEntry {
     timeMs:        number;
     lat:           number;
     lon:           number;
-    isLive:        boolean;
     wasNew:        boolean;
     flashStartMs?: number;
-    styleTimer?:   ReturnType<typeof setTimeout>;
     ring?:         RingHandle;
 }
 
@@ -254,10 +265,9 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     private streetLayer!:    L.TileLayer;
     private satelliteLayer!: L.TileLayer;
     private strikeMap      = new Map<string, StrikeEntry>();
-    private _activeCount   = 0;
     private subs:            Subscription[] = [];
     private fadeTimer:       any;
-    private drawTimer:       any;
+    private _rafId           = 0;
     private liveSubscribed   = false;
 
     constructor(private svc: LightningService, private router: Router, private ngZone: NgZone) {}
@@ -270,9 +280,10 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
 
             this.subs.push(
                 this.svc.initialList$.subscribe(list => {
+                    const now = Date.now();
                     this.clearAllStrikes();
                     list.forEach(s => this.flashStrike(s));
-                    this.overlay.redrawGrey(this.strikeMap);
+                    this.overlay.redrawGrey(this.strikeMap, now);
                     this.updateViewportCounts();
                     if (!this.liveSubscribed) {
                         this.liveSubscribed = true;
@@ -346,7 +357,11 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
 
         this.ngZone.runOutsideAngular(() => {
             this.fadeTimer = setInterval(() => this.fade(), 10_000);
-            this.drawTimer = setInterval(() => this.tick(), 100);
+            const loop = (): void => {
+                this.tick();
+                this._rafId = requestAnimationFrame(loop);
+            };
+            this._rafId = requestAnimationFrame(loop);
         });
     }
 
@@ -395,7 +410,6 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         if ((this.map?.getZoom() ?? 0) < 9) {
             this.strikeMap.forEach(e => this.stopRing(e));
         }
-        // No retroactive ring-starting on zoom-in — only new live strikes get rings
     }
 
     // ── Tick: rings + redraw + count display ──────────────────────────────────
@@ -417,10 +431,15 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
             entry.ring.hitCircle.setTooltipContent(`${Math.round(radiusM / 1000)} km`);
         }
 
-        this.overlay.drawLive(this.strikeMap);
+        this.overlay.drawLive(this.strikeMap, now);
 
-        const newTotal  = this.strikeMap.size;
-        const newActive = this._activeCount;
+        // Recompute active count from age rather than maintaining state
+        let newActive = 0;
+        for (const entry of this.strikeMap.values()) {
+            if (now - entry.timeMs < RING_DURATION_MS) newActive++;
+        }
+
+        const newTotal = this.strikeMap.size;
         if (newTotal !== this.totalCount || newActive !== this.activeCount) {
             this.ngZone.run(() => {
                 this.totalCount  = newTotal;
@@ -433,46 +452,28 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
 
     private clearAllStrikes(): void {
         for (const entry of this.strikeMap.values()) {
-            clearTimeout(entry.styleTimer);
             this.stopRing(entry);
         }
         this.strikeMap.clear();
-        this._activeCount = 0;
     }
 
     private flashStrike(strike: Strike): void {
         const key = this.strikeId(strike);
         if (this.strikeMap.has(key)) return;
 
-        const remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs);
-        const isLive      = remainingMs > 0;
-
         const entry: StrikeEntry = {
             timeMs:       strike.timeMs,
             lat:          strike.lat,
             lon:          strike.lon,
-            isLive,
             wasNew:       !!strike.isNew,
             flashStartMs: strike.isNew ? Date.now() : undefined,
         };
         this.strikeMap.set(key, entry);
 
-        if (isLive) {
-            this._activeCount++;
-            this.ngZone.runOutsideAngular(() => {
-                entry.styleTimer = setTimeout(() => {
-                    entry.isLive     = false;
-                    entry.styleTimer = undefined;
-                    this._activeCount--;
-                    this.overlay.addToGrey(key, entry);
-                }, remainingMs);
-            });
-
-            if (strike.isNew && this.map && this.map.getZoom() >= 9) {
-                this.startRing(entry);
-            }
+        const isLive = Date.now() - strike.timeMs < RING_DURATION_MS;
+        if (isLive && strike.isNew && this.map && this.map.getZoom() >= 9) {
+            this.startRing(entry);
         }
-        // No overlay.draw() here — tick() redraws at 10fps regardless of incoming rate
     }
 
     private fade(): void {
@@ -480,23 +481,25 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         let anyExpired = false;
         for (const [id, entry] of this.strikeMap) {
             if (now - entry.timeMs > MAX_AGE_MS) {
-                clearTimeout(entry.styleTimer);
                 this.stopRing(entry);
-                if (entry.isLive) this._activeCount--;
                 this.strikeMap.delete(id);
                 anyExpired = true;
             }
         }
-        if (anyExpired) this.overlay.redrawGrey(this.strikeMap);
+        if (anyExpired) this.overlay.redrawGrey(this.strikeMap, now);
         this.ngZone.run(() => this.updateViewportCounts());
     }
 
     private updateViewportCounts(): void {
         const bounds = this.map?.getBounds();
         if (!bounds) return;
+        const now = Date.now();
         let vc = 0, vtc = 0;
         for (const s of this.strikeMap.values()) {
-            if (bounds.contains([s.lat, s.lon])) { vtc++; if (s.isLive) vc++; }
+            if (bounds.contains([s.lat, s.lon])) {
+                vtc++;
+                if (now - s.timeMs < RING_DURATION_MS) vc++;
+            }
         }
         this.viewportCount      = vc;
         this.viewportTotalCount = vtc;
@@ -505,7 +508,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     ngOnDestroy(): void {
         this.subs.forEach(s => s.unsubscribe());
         clearInterval(this.fadeTimer);
-        clearInterval(this.drawTimer);
+        cancelAnimationFrame(this._rafId);
         this.clearAllStrikes();
         this.overlay?.remove();
         if (this.map) { this.map.remove(); this.map = null; }

@@ -29,6 +29,8 @@ Data source: [lightningmaps.org](https://lightningmaps.org) WebSocket (Blitzortu
 - [x] Navigate-back fix — `Router` + `NavigationEnd` (skip first) → `map.invalidateSize()` + `requestInitialList()` after 50ms
 - [x] Reconnect fix — `socketReconnect$ Subject<void>` in service, fired by `socket.io.on('reconnect')`, component calls `requestInitialList()` on each reconnect
 - [x] `StrikeOverlay` — two-canvas overlay (grey + live) replaces per-strike Leaflet markers; `NgZone.runOutsideAngular` for all timers; `addToGrey()` incremental paint on live→grey transition
+- [x] Age-as-pure-function — no per-strike `styleTimer` setTimeouts; phase computed from `now - entry.timeMs` each frame; `_liveKeys` set detects transitions; active count recomputed from map each frame
+- [x] RAF loop — live canvas driven by `requestAnimationFrame` instead of `setInterval(100ms)`
 - [x] Playback timestamp chip — `lastMs` in `lightning-index`, shown in counter pill as `HH:MM:SS` / `DD-MM HH:MM:SS` with "laatste" label
 - [x] `tests/playbackWss.js --from` — seek into recording + prefill Redis with 10-min window; `prefill-done` signal triggers frontend `initial-list` reload
 
@@ -290,17 +292,22 @@ location /socket.io/ {
 2. Subscribe to `svc.initialList$` — on each emission: `clearAllStrikes()`, render list, `overlay.redrawGrey()`, subscribe to `svc.newStrike$` (guarded by `liveSubscribed` flag so only once)
 3. Subscribe to `svc.lightningDelay$` — stores full `{ avg, min, max, samples }` in `delayStats`
 4. Subscribe to `svc.socketReconnect$` — calls `requestInitialList()` on each Manager-level reconnect
-5. Subscribe to `router.events` filtered to `NavigationEnd` on `'lightning'` URL, `skip(1)` — after 50ms calls `map.invalidateSize()` + `requestInitialList()` (navigate-back fix)
-6. If already connected: `svc.requestInitialList()` (handles second-visit case where `connect` won't fire)
-7. `tick` setInterval (100ms) and `fade` setInterval (10s) started via `ngZone.runOutsideAngular()`
+5. Subscribe to `svc.prefillDone$` — calls `requestInitialList()` when playback prefill completes
+6. Subscribe to `router.events` filtered to `NavigationEnd` on `'lightning'` URL, `skip(1)` — after 50ms calls `map.invalidateSize()` + `requestInitialList()` (navigate-back fix)
+7. If already connected: `svc.requestInitialList()` (handles second-visit case where `connect` won't fire)
+8. `requestAnimationFrame` loop and `fade` setInterval (10s) started via `ngZone.runOutsideAngular()`
 
 **Strike lifecycle — `flashStrike(strike)`**:
 1. Dedup check via `strikeMap.has(key)` (key = `timeMs:lat(4dp):lon(4dp)`)
-2. Compute `remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs)`
-3. `isLive = remainingMs > 0` → entry added to `strikeMap`; `styleTimer` scheduled via `ngZone.runOutsideAngular()`; if also `strike.isNew`: triple flash driven by `flashStartMs` timestamp in `tick()`
-4. `isLive = false` → entry added as grey immediately (strikes older than 30s)
-5. `styleTimer` fires at `remainingMs`: `entry.isLive = false`, `_activeCount--`, `overlay.addToGrey(key, entry)` (paints one bolt additively)
-6. `fade()` every 10s: removes entries older than 10min, calls `overlay.redrawGrey()` if any removed
+2. Entry added to `strikeMap` with `wasNew`, `flashStartMs`; no `isLive` field — phase computed from age each frame
+3. If `strike.isNew` and zoom ≥ 9: `startRing(entry)`
+4. No per-strike timers — the RAF loop handles all phase transitions
+
+**Age-as-pure-function (RAF loop)**:
+- Live/grey boundary: `now - entry.timeMs < RING_DURATION_MS`
+- `StrikeOverlay._liveKeys` — Set of keys that were live on the previous frame. Each `drawLive(strikes, now)` call: keys in `_liveKeys` no longer live → `_addToGrey()` (additive paint on grey canvas); then `_syncLiveKeys()` updates the set for next frame
+- Active count: recomputed each frame by iterating `strikeMap` — no `_activeCount` field to maintain
+- `fade()` every 10s: removes entries older than 10min, calls `overlay.redrawGrey()` if any removed
 
 **StrikeOverlay — two-canvas rendering**:
 - **Grey canvas** (bottom): draws `isLive=false` strikes. Redrawn only on pan/zoom end (`_reset()`) and `fade()`. `addToGrey(key, entry)` paints a single bolt additively without clearing — called on each live→grey transition so strikes appear on grey canvas immediately.
