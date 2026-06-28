@@ -20,6 +20,11 @@
           [pTooltip]="delayTooltip"
           tooltipPosition="bottom">~{{ avgDelayMs }}ms</span>
     <span class="pill-label">vertraging</span>
+    @if (lastStrikeMs) {
+      <span class="divider"></span>
+      <span class="time-chip">{{ lastStrikeTime }}</span>
+      <span class="pill-label">laatste</span>
+    }
   </div>
 
   <!-- Zoom + satellite pill — top-right -->

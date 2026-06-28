@@ -239,6 +239,8 @@ docker compose exec nodejs node createUser.js
   - **Canvas overlay** (`StrikeOverlay`): single `<canvas>` per layer (grey + live) in `overlayPane`; layer coordinates + 300px padding so pan is a CSS transform with no per-frame redraws. See `docs/lightning-map.md`.
   - **NgZone**: tick/fade `setInterval` and all `styleTimer` `setTimeout` calls run via `ngZone.runOutsideAngular()`; CD triggered only when counts change — eliminates zone.js overhead at high strike counts
   - **Two-canvas split**: `drawLive()` in tick draws only active strikes (<1ms); `addToGrey()` paints one bolt additively on transition; full grey redraw only on pan/zoom end and `fade()` — map stays smooth at 7000+ total strikes
+  - **Playback timestamp chip**: `lightning-index` includes `lastMs` (origTimeMs of last strike); shown in counter pill as formatted `HH:MM:SS` or `DD-MM HH:MM:SS` with "laatste" label
+  - **Playback tooling** (`tests/playbackWss.js`): `--from HH:MM:SS` or `--from YYYY-MM-DDTHH:MM:SS` (UTC) seeks into recording; prefills Redis with the 10-min window before `--from` (strikes appear correctly aged), then emits `prefill-done` → frontend reloads initial list so old strikes appear as grey before playback starts. See `docs/lightning-map.md`.
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
 
 ## Solar Page — Key Details

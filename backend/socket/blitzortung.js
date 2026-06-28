@@ -63,6 +63,8 @@ const HOME_LON    = ntfyEnabled ? parseFloat(ntfyCfg.home_lon)      : 0;
 const RADIUS_KM   = ntfyEnabled ? parseFloat(ntfyCfg.radius_km)  || 30 : 0;
 const COOLDOWN_MS = ntfyEnabled ? (parseFloat(ntfyCfg.cooldown_min) || 5) * 60_000 : 0;
 let   lastNotifiedAt = 0;
+let   lastStrikeMs   = 0;
+let   firstStrikeMs  = 0;
 
 if (ntfyEnabled) console.log(`[blitzortung] ntfy alerts enabled — home ${HOME_LAT},${HOME_LON} radius ${RADIUS_KM}km cooldown ${COOLDOWN_MS / 60_000}min`);
 
@@ -96,6 +98,8 @@ function isDupe(key) {
 // ── Redis ops ─────────────────────────────────────────────────────────────────
 
 async function addStrike(strike) {
+    lastStrikeMs = strike.origTimeMs ?? strike.timeMs;
+    if (!firstStrikeMs) firstStrikeMs = lastStrikeMs;
     const id = String(strike.srcId);
     await redis.multi()
         .zadd('strikes:time', strike.timeMs, id)
@@ -214,7 +218,16 @@ function initBlitzortung(socketIo) {
         const redisSub = new Redis({ host: redisHost, port: 6379 });
         redisSub.subscribe('strikes:live').catch(() => {});
         redisSub.on('message', (channel, msg) => {
-            try { if (io) io.emit('new-strike', JSON.parse(msg)); } catch {}
+            try {
+                const strike = JSON.parse(msg);
+                if (strike.type === 'prefill-done') {
+                    if (io) io.emit('prefill-done');
+                    return;
+                }
+                lastStrikeMs = strike.origTimeMs ?? strike.timeMs ?? lastStrikeMs;
+                if (!firstStrikeMs) firstStrikeMs = lastStrikeMs;
+                if (io) io.emit('new-strike', strike);
+            } catch {}
         });
 
         const pauseWss = String(appConfig.blitzortung?.pause_wss) === 'true' || process.env.PAUSE_WSS === '1';
@@ -228,7 +241,8 @@ function initBlitzortung(socketIo) {
                 const now    = Date.now();
                 const active = await redis.zcount('strikes:time', now - 30_000, '+inf');
                 const total  = await redis.zcount('strikes:time', now - TTL_MS, '+inf');
-                if (io) io.emit('lightning-index', { active, total });
+                if (total === 0) { firstStrikeMs = 0; lastStrikeMs = 0; }
+                if (io) io.emit('lightning-index', { active, total, lastMs: lastStrikeMs || null, fromMs: firstStrikeMs || null });
             } catch {}
         }, 500);
 

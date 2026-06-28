@@ -228,7 +228,8 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     viewportTotalCount = 0;
     showSatellite      = false;
     mapZoom            = 5;
-    delayStats: { avg: number; min: number; max: number; samples: number } | null = null;
+    delayStats:    { avg: number; min: number; max: number; samples: number } | null = null;
+    lastStrikeMs:  number | null = null;
 
     get avgDelayMs(): number { return this.delayStats?.avg ?? 0; }
     get delayTooltip(): string {
@@ -236,6 +237,16 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
         const { avg, min, max, samples } = this.delayStats;
         return `gem: ${avg}ms | min: ${min}ms | max: ${max}ms (${samples})`;
     }
+    private _formatMs(ms: number): string {
+        const d     = new Date(ms);
+        const today = new Date();
+        const time  = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const sameDay = d.getDate()     === today.getDate()     &&
+                        d.getMonth()    === today.getMonth()    &&
+                        d.getFullYear() === today.getFullYear();
+        return sameDay ? time : d.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' }) + ' ' + time;
+    }
+    get lastStrikeTime(): string { return this.lastStrikeMs ? this._formatMs(this.lastStrikeMs) : ''; }
 
     private map:             L.Map | null = null;
     private overlay!:        StrikeOverlay;
@@ -275,7 +286,15 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
             );
 
             this.subs.push(
+                this.svc.lightningIndex$.subscribe(d => { this.lastStrikeMs = d?.lastMs ?? null; })
+            );
+
+            this.subs.push(
                 this.svc.socketReconnect$.subscribe(() => this.svc.requestInitialList())
+            );
+
+            this.subs.push(
+                this.svc.prefillDone$.subscribe(() => this.svc.requestInitialList())
             );
 
             this.subs.push(

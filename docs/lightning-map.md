@@ -29,6 +29,8 @@ Data source: [lightningmaps.org](https://lightningmaps.org) WebSocket (Blitzortu
 - [x] Navigate-back fix — `Router` + `NavigationEnd` (skip first) → `map.invalidateSize()` + `requestInitialList()` after 50ms
 - [x] Reconnect fix — `socketReconnect$ Subject<void>` in service, fired by `socket.io.on('reconnect')`, component calls `requestInitialList()` on each reconnect
 - [x] `StrikeOverlay` — two-canvas overlay (grey + live) replaces per-strike Leaflet markers; `NgZone.runOutsideAngular` for all timers; `addToGrey()` incremental paint on live→grey transition
+- [x] Playback timestamp chip — `lastMs` in `lightning-index`, shown in counter pill as `HH:MM:SS` / `DD-MM HH:MM:SS` with "laatste" label
+- [x] `tests/playbackWss.js --from` — seek into recording + prefill Redis with 10-min window; `prefill-done` signal triggers frontend `initial-list` reload
 
 ---
 
@@ -231,17 +233,19 @@ export class LightningService implements OnDestroy {
     private socket: Socket;
     readonly initialList$     = new Subject<Strike[]>();
     readonly newStrike$       = new Subject<Strike>();
-    readonly lightningIndex$  = new BehaviorSubject<{ active: number; total: number } | null>(null);
+    readonly lightningIndex$  = new BehaviorSubject<{ active: number; total: number; lastMs: number | null; fromMs: number | null } | null>(null);
     readonly lightningDelay$  = new BehaviorSubject<{ avg: number; min: number; max: number; samples: number } | null>(null);
     readonly socketReconnect$ = new Subject<void>();
+    readonly prefillDone$     = new Subject<void>();
 
     constructor() {
         this.socket = io(environment.wsUrl, { transports: ['websocket'] });
         this.socket.on('connect',         () => this.requestInitialList());
         this.socket.on('initial-list',    (list: Strike[]) => this.initialList$.next(list));
         this.socket.on('new-strike',      (s: Strike)      => this.newStrike$.next(s));
-        this.socket.on('lightning-index', (d: { active: number; total: number }) => this.lightningIndex$.next(d));
+        this.socket.on('lightning-index', (d: any)         => this.lightningIndex$.next(d));
         this.socket.on('lightning-delay', (s: any)         => this.lightningDelay$.next(s));
+        this.socket.on('prefill-done',    ()               => this.prefillDone$.next());
         this.socket.io.on('reconnect',    ()               => this.socketReconnect$.next());
     }
 
@@ -319,6 +323,7 @@ location /socket.io/ {
 - `totalCount / viewportTotalCount` — all strikes in 10min window, total and visible in viewport
 - `activeCount / viewportCount` — yellow (live, within 30s) strikes, total and in viewport
 - `avgDelayMs` — getter over `delayStats?.avg`; delay chip has `pTooltip` showing `gem: Xms | min: Xms | max: Xms (N)`
+- `lastStrikeTime` — formatted timestamp of `lightning-index.lastMs` (origTimeMs of last strike, or live timeMs); shows `HH:MM:SS` if same day, `DD-MM HH:MM:SS` otherwise; hidden when null
 
 ---
 
@@ -404,6 +409,30 @@ When the user navigates away from `/lightning` and returns, `ngAfterViewInit` do
 
 ### LightningService instantiated at app startup (not just on lightning page)
 `LightningService` is `providedIn: 'root'`. The topbar injects it to show the lightning index badge — the Socket.IO connection opens on app load, not just when navigating to `/lightning`.
+
+---
+
+## Playback tooling
+
+`tests/captureWss.js` — captures the raw WSS stream to an `.ndjson` file (one JSON message per line). Run from `backend/` dir.
+
+`tests/playbackWss.js` — replays a captured `.ndjson` file through Redis + pub/sub so the full frontend stack receives it as live strikes.
+
+```
+node tests/playbackWss.js <file.ndjson> [speed] [--clear] [--from <timestamp>]
+
+  speed    : 1 = real-time (default), 5 = 5× faster, 0 = instant dump
+  --clear  : flush all strikes from Redis before starting
+  --from   : seek into the recording (UTC)
+             HH:MM:SS             time only — uses date of first stroke
+             YYYY-MM-DDTHH:MM:SS  full date+time, safe across midnight
+```
+
+**`--from` prefill behaviour**: when `--from` is set, the script first dumps all strokes from the 10-minute window before `--from` straight into Redis (no pub/sub, correctly aged by `timeMs = now - (fromMs - stroke.time)`). After the dump it publishes a `prefill-done` message on the `strikes:live` Redis channel. The backend detects this (`type === 'prefill-done'`) and emits a `prefill-done` Socket.IO event to all clients. The frontend's `prefillDone$` subscription calls `requestInitialList()` so the prefilled strikes appear as grey bolts on the map before playback begins.
+
+**`lastMs` / `firstStrikeMs` in backend**: `blitzortung.js` tracks the `origTimeMs` of each strike (set by playback from `stroke.time`, falls back to `timeMs` for live). `lastStrikeMs` and `firstStrikeMs` are emitted with every `lightning-index` event as `lastMs` / `fromMs`. The frontend shows `lastMs` in the counter pill as `lastStrikeTime`. Both reset to 0 when Redis empties (`total === 0`).
+
+**`PAUSE_WSS`**: set `pause_wss = true` under `[blitzortung]` in `config.local.ini` to stop the live WSS connection, leaving Redis free for isolated playback.
 
 ---
 

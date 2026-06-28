@@ -18,9 +18,10 @@ export class LightningService implements OnDestroy {
 
     readonly initialList$      = new Subject<Strike[]>();
     readonly newStrike$        = new Subject<Strike>();
-    readonly lightningIndex$   = new BehaviorSubject<{ active: number; total: number } | null>(null);
+    readonly lightningIndex$   = new BehaviorSubject<{ active: number; total: number; lastMs: number | null; fromMs: number | null } | null>(null);
     readonly lightningDelay$   = new BehaviorSubject<{ avg: number; min: number; max: number; samples: number } | null>(null);
     readonly socketReconnect$  = new Subject<void>();
+    readonly prefillDone$      = new Subject<void>();
 
     constructor() {
         this.socket = io(environment.wsUrl, { transports: ['websocket'] });
@@ -29,9 +30,10 @@ export class LightningService implements OnDestroy {
         this.socket.on('connect',         () => this.requestInitialList());
         this.socket.on('initial-list',    (list: Strike[]) => this.initialList$.next(list));
         this.socket.on('new-strike',      (s: Strike)      => this.newStrike$.next(s));
-        this.socket.on('lightning-index', (d: { active: number; total: number }) => this.lightningIndex$.next(d));
+        this.socket.on('lightning-index', (d: { active: number; total: number; lastMs: number | null; fromMs: number | null }) => this.lightningIndex$.next(d));
         this.socket.on('lightning-delay', (s: any)         => this.lightningDelay$.next(s));
         this.socket.io.on('reconnect',    ()               => this.socketReconnect$.next());
+        this.socket.on('prefill-done',    ()               => this.prefillDone$.next());
     }
 
     // Called by the component when it mounts and socket is already connected
