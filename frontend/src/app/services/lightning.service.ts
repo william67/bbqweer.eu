@@ -18,7 +18,7 @@ export class LightningService implements OnDestroy {
 
     readonly initialList$      = new Subject<Strike[]>();
     readonly newStrike$        = new Subject<Strike>();
-    readonly lightningIndex$   = new BehaviorSubject<number>(0);
+    readonly lightningIndex$   = new BehaviorSubject<{ active: number; total: number } | null>(null);
     readonly lightningDelay$   = new BehaviorSubject<{ avg: number; min: number; max: number; samples: number } | null>(null);
     readonly socketReconnect$  = new Subject<void>();
 
@@ -29,7 +29,7 @@ export class LightningService implements OnDestroy {
         this.socket.on('connect',         () => this.requestInitialList());
         this.socket.on('initial-list',    (list: Strike[]) => this.initialList$.next(list));
         this.socket.on('new-strike',      (s: Strike)      => this.newStrike$.next(s));
-        this.socket.on('lightning-index', (n: number)      => this.lightningIndex$.next(n));
+        this.socket.on('lightning-index', (d: { active: number; total: number }) => this.lightningIndex$.next(d));
         this.socket.on('lightning-delay', (s: any)         => this.lightningDelay$.next(s));
         this.socket.io.on('reconnect',    ()               => this.socketReconnect$.next());
     }

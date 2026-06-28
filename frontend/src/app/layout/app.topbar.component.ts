@@ -9,13 +9,17 @@ import { LightningService } from '../services/lightning.service';
 })
 export class AppTopbarComponent implements OnInit, OnDestroy {
 
-    lightningIndex = 0;
+    lightningActive = 0;
+    lightningTotal  = 0;
     private sub?: Subscription;
 
     constructor(private lightningSvc: LightningService) {}
 
     ngOnInit(): void {
-        this.sub = this.lightningSvc.lightningIndex$.subscribe(n => this.lightningIndex = n);
+        this.sub = this.lightningSvc.lightningIndex$.subscribe(data => {
+            this.lightningActive = data?.active ?? 0;
+            this.lightningTotal  = data?.total  ?? 0;
+        });
     }
 
     ngOnDestroy(): void { this.sub?.unsubscribe(); }

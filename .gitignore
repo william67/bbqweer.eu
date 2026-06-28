@@ -13,5 +13,8 @@ frontend/dist/
 # Logs
 *.log
 
+# Test captures
+tests/*.ndjson
+
 # Claude Code workspace
 .claude/

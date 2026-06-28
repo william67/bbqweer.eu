@@ -96,7 +96,7 @@ function isDupe(key) {
 // ── Redis ops ─────────────────────────────────────────────────────────────────
 
 async function addStrike(strike) {
-    const id = `${strike.timeMs}:${Math.random().toString(36).slice(2, 7)}`;
+    const id = String(strike.srcId);
     await redis.multi()
         .zadd('strikes:time', strike.timeMs, id)
         .geoadd('strikes:geo', strike.lon, strike.lat, id)
@@ -186,8 +186,8 @@ function startWss() {
                 const receivedAt = Date.now();
                 for (const stroke of msg.strokes) {
                     if (!inBounds(stroke.lat, stroke.lon)) continue;
-                    if (isDupe(`${stroke.time}:${stroke.lat.toFixed(4)}:${stroke.lon.toFixed(4)}`)) continue;
-                    addStrike({ lat: stroke.lat, lon: stroke.lon, timeMs: stroke.time, pol: 0, receivedAt })
+                    if (isDupe(String(stroke.id))) continue;
+                    addStrike({ lat: stroke.lat, lon: stroke.lon, timeMs: stroke.time, pol: 0, receivedAt, srcId: stroke.id })
                         .catch(() => {});
                 }
             }
@@ -209,11 +209,26 @@ function initBlitzortung(socketIo) {
     io = socketIo;
     redis.connect().then(() => {
         console.log(`[blitzortung] Redis connected (${redisHost}:6379)`);
-        startWss();
+
+        // Playback bridge — replayed strikes arrive via Redis pub/sub
+        const redisSub = new Redis({ host: redisHost, port: 6379 });
+        redisSub.subscribe('strikes:live').catch(() => {});
+        redisSub.on('message', (channel, msg) => {
+            try { if (io) io.emit('new-strike', JSON.parse(msg)); } catch {}
+        });
+
+        const pauseWss = String(appConfig.blitzortung?.pause_wss) === 'true' || process.env.PAUSE_WSS === '1';
+        if (pauseWss) {
+            console.log('[blitzortung] WSS paused (pause_wss=true) — playback-only mode');
+        } else {
+            startWss();
+        }
         setInterval(async () => {
             try {
-                const count = await redis.zcount('strikes:time', Date.now() - 30_000, '+inf');
-                if (io) io.emit('lightning-index', count);
+                const now    = Date.now();
+                const active = await redis.zcount('strikes:time', now - 30_000, '+inf');
+                const total  = await redis.zcount('strikes:time', now - TTL_MS, '+inf');
+                if (io) io.emit('lightning-index', { active, total });
             } catch {}
         }, 500);
 
@@ -236,8 +251,17 @@ function initSocketBlitzortung(socket) {
 
     socket.on('get-initial-list', sendInitialList);
 
-    socket.on('get-window', ({ lon, lat, widthKm, heightKm }) => {
-        getInWindow(lon, lat, widthKm, heightKm)
+    socket.on('get-window', ({ minLat, maxLat, minLon, maxLon }) => {
+        // Clamp to detection area before haversine — prevents near-zero width when lon hits ±180
+        const lat1 = Math.max(minLat, BOUNDS.latMin);
+        const lat2 = Math.min(maxLat, BOUNDS.latMax);
+        const lon1 = Math.max(minLon, BOUNDS.lonMin);
+        const lon2 = Math.min(maxLon, BOUNDS.lonMax);
+        const centerLat = (lat1 + lat2) / 2;
+        const centerLon = (lon1 + lon2) / 2;
+        const widthKm   = haversineKm(centerLat, lon1, centerLat, lon2);
+        const heightKm  = haversineKm(lat1, centerLon, lat2, centerLon);
+        getInWindow(centerLon, centerLat, widthKm, heightKm)
             .then(strikes => socket.emit('window-result', strikes))
             .catch(() => socket.emit('window-result', []));
     });

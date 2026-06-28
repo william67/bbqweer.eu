@@ -3,6 +3,7 @@
 ## How this documentation is structured
 - **CLAUDE.md** (this file) is an index — it holds short summaries and key patterns. Detailed implementation notes live in `docs/` files (e.g. `docs/lightning-map.md`). When a feature has a dedicated doc file, CLAUDE.md links or points to it rather than duplicating the detail.
 - **MEMORY.md** (`C:\Users\William\.claude\projects\c--Apps-bbqweer-eu\memory\MEMORY.md`) is an index of one-line pointers to individual memory files — no content lives in MEMORY.md itself. The memory files (e.g. `project_lightning_index.md`) hold project state, decisions, and planned work that isn't discoverable from the code (e.g. a KPI that's still planned). Documentation of how things work goes in CLAUDE.md and `docs/`; memory files track why and what's next.
+- **Memory files must be one-line pointers only.** Never write multi-line body content in a memory file. Put the content in CLAUDE.md or a `docs/` file first, then write one line in the memory file pointing there (e.g. "Canvas perf work complete. See CLAUDE.md Bliksem section."). This rule overrides the memory system's body template (`Why: / How to apply:`) — do not use that template for this project.
 
 ## What is this?
 Public KNMI weather data platform — a standalone website spun out of wo-ict.nl.
@@ -84,8 +85,9 @@ C:\Apps\bbqweer.eu\
 ### Local dev (Stage 1)
 Leave Docker running (MySQL always available). Cron tasks auto-disabled when `config.local.ini` exists.
 ```powershell
-# Terminal 1
-cd backend && node app.js         # uses config.local.ini, cron tasks disabled
+# Terminal 1 — backend with nodemon (auto-restarts on file changes)
+# VS Code: Ctrl+Shift+B runs the nodemon task — no manual restart needed after editing backend files
+cd backend && nodemon app.js      # uses config.local.ini, cron tasks disabled
 
 # Terminal 2
 cd frontend && ng serve --open    # proxies /api/* to localhost:3000, live reload via poll
@@ -234,6 +236,9 @@ docker compose exec nodejs node createUser.js
   - **Flash sequence**: new strike → white(0ms) → yellow(150ms) → white(200ms) → yellow(350ms) → white(400ms) → yellow(550ms, stays) — triple white/yellow flash via 5 chained `setTimeout` calls
   - **Navigate-back fix**: `Router` + `NavigationEnd` (skip first) → after 50ms calls `map.invalidateSize()` + `requestInitialList()` — fixes blank map on back-navigation
   - **Reconnect fix**: `socketReconnect$ = new Subject<void>()` in service, fired by `socket.io.on('reconnect')`; component subscribes and calls `requestInitialList()` — recovers strike list after connection drops
+  - **Canvas overlay** (`StrikeOverlay`): single `<canvas>` per layer (grey + live) in `overlayPane`; layer coordinates + 300px padding so pan is a CSS transform with no per-frame redraws. See `docs/lightning-map.md`.
+  - **NgZone**: tick/fade `setInterval` and all `styleTimer` `setTimeout` calls run via `ngZone.runOutsideAngular()`; CD triggered only when counts change — eliminates zone.js overhead at high strike counts
+  - **Two-canvas split**: `drawLive()` in tick draws only active strikes (<1ms); `addToGrey()` paints one bolt additively on transition; full grey redraw only on pan/zoom end and `fade()` — map stays smooth at 7000+ total strikes
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
 
 ## Solar Page — Key Details
@@ -310,6 +315,9 @@ angular.json: add `node_modules/leaflet/dist/leaflet.css` to styles array and `"
 - **Topbar logo** — `frontend/src/assets/logo.png` (44px height, `border-radius: 8px`); source file in `logo/` folder (not served, just version-controlled).
 - **MySQL binary logs**: configured to expire after 7 days via `database/mysql-binlog-expire.cnf` (mounted into bbqweer-mysql). Without this, binlogs accumulate indefinitely and can fill the disk (17GB observed before fix).
 - **mysql2 returns DATE columns as ISO strings**: e.g. `"2026-04-23T00:00:00.000Z"` — always `.slice(0, 10)` before comparing or displaying date-only values.
+
+## Collaboration Rules
+**Only change what the task asks for.** Do not add unrelated improvements, refactors, or "while I'm here" fixes silently — the user reviews diffs and loses track of what changed. If something outside the stated task needs to change, propose it as a named step first and wait for approval before touching it.
 
 ## Skills
 Shared coding standards live at `C:\Apps\skills\commands\`. Check the relevant skill before starting any task — `dev-workflow`, `location-picker`, `task-monitoring`, `handle-live-data`, `general-app-setup`.

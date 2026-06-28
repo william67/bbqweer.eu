@@ -28,6 +28,7 @@ Data source: [lightningmaps.org](https://lightningmaps.org) WebSocket (Blitzortu
 - [x] Triple flash on new strike — white→yellow×3 over 550ms (5 chained `setTimeout` calls)
 - [x] Navigate-back fix — `Router` + `NavigationEnd` (skip first) → `map.invalidateSize()` + `requestInitialList()` after 50ms
 - [x] Reconnect fix — `socketReconnect$ Subject<void>` in service, fired by `socket.io.on('reconnect')`, component calls `requestInitialList()` on each reconnect
+- [x] `StrikeOverlay` — two-canvas overlay (grey + live) replaces per-strike Leaflet markers; `NgZone.runOutsideAngular` for all timers; `addToGrey()` incremental paint on live→grey transition
 
 ---
 
@@ -111,6 +112,39 @@ Responsibilities:
 - Every 500ms: `redis.zcount('strikes:time', now-30s, '+inf')` → emit `lightning-index` to all clients
 - Every 1s: `getDelayStats()` → emit `lightning-delay: { avg, min, max, samples }` to all clients
 - ntfy.sh optional alerts: Haversine distance check per strike; POST to topic when within `radius_km` of home and cooldown elapsed
+
+### Blitzortung WSS message format
+
+Each WebSocket message is a JSON object. Only messages with a `strokes` array contain strike data — one message = one batch:
+
+```json
+{
+  "time": 1782596346,
+  "strokes": [
+    { "time": 1782596335629, "lat": 49.88, "lon": 3.15, "id": 20402660, "del": 1867, "dev": 3081, "src": 2, "srv": 1 },
+    { "time": 1782596335621, "lat": 52.69, "lon": 5.09, "id": 20402661, "del": 1875, "dev": 12444, ... },
+    ...
+  ]
+}
+```
+
+- `batch.time` — seconds (Unix epoch), when the server assembled the batch. **Low resolution — multiple batches can share the same second.**
+- `stroke.time` — milliseconds (Unix epoch), when the lightning actually occurred. Use this for precise relative timing.
+- `stroke.del` — Blitzortung's own delivery delay in ms from strike to their server (typically ~1800ms). Not used by bbqweer — we compute our own end-to-end delay.
+- `stroke.id` — globally unique numeric ID per stroke. Used as Redis key (`strikes:time`, `strikes:geo`, `strikes:data`).
+
+### Delivery characteristics (measured from 8h recording, 233,935 strokes)
+
+| Metric | Value |
+|---|---|
+| Typical batch size | 1–5 strokes |
+| Max batch size | ≤20 strokes (normal), up to 100+ on initial connect |
+| Delivery delay avg | ~2100ms |
+| Delivery delay p99 | ~2750ms |
+| Delivery delay max | ~57s (catch-up burst after reconnect) |
+
+**Initial connect catch-up**: on first WSS connection the server flushes a backlog — the first 1–2 messages can contain 70–100 strokes covering the last several seconds. After that, all batches are ≤20 strokes for the duration of the session.
+
 
 ### Delay stats — `getDelayStats()`
 
@@ -197,7 +231,7 @@ export class LightningService implements OnDestroy {
     private socket: Socket;
     readonly initialList$     = new Subject<Strike[]>();
     readonly newStrike$       = new Subject<Strike>();
-    readonly lightningIndex$  = new BehaviorSubject<number>(0);
+    readonly lightningIndex$  = new BehaviorSubject<{ active: number; total: number } | null>(null);
     readonly lightningDelay$  = new BehaviorSubject<{ avg: number; min: number; max: number; samples: number } | null>(null);
     readonly socketReconnect$ = new Subject<void>();
 
@@ -206,7 +240,7 @@ export class LightningService implements OnDestroy {
         this.socket.on('connect',         () => this.requestInitialList());
         this.socket.on('initial-list',    (list: Strike[]) => this.initialList$.next(list));
         this.socket.on('new-strike',      (s: Strike)      => this.newStrike$.next(s));
-        this.socket.on('lightning-index', (n: number)      => this.lightningIndex$.next(n));
+        this.socket.on('lightning-index', (d: { active: number; total: number }) => this.lightningIndex$.next(d));
         this.socket.on('lightning-delay', (s: any)         => this.lightningDelay$.next(s));
         this.socket.io.on('reconnect',    ()               => this.socketReconnect$.next());
     }
@@ -241,49 +275,50 @@ location /socket.io/ {
 - Center: `[49.5, 9.0]`, zoom 5 (geometric center of detection bounds)
 - Tile layers: OSM street map + Esri World Imagery satellite (toggled via "Satelliet" button in the zoom pill)
 - Detection bounds: `L.rectangle([[40.0, -12.0], [59.0, 30.0]])` — dashed blue, 4% fill; rendered via `L.svg({ padding: 5 })` to prevent flash on pan
-- Canvas renderer (`L.canvas({ padding: 0.5 })`) for bolt markers — all bolts share a single canvas element
+- `StrikeOverlay` — two `<canvas>` elements in `overlayPane` (grey bottom, live top); see StrikeOverlay section below
 
 **Satellite toggle**:
 - `toggleSatellite()` removes the active tile layer and adds the other; `showSatellite: boolean` drives the button active state
 - Esri World Imagery URL: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}` — free, no API key
 
 **Component lifecycle — `ngAfterViewInit`**:
-1. `initMap()` — creates Leaflet map, canvas renderer, SVG renderer, both tile layers, detection rectangle
-2. Subscribe to `svc.initialList$` — on each emission: `clearAllStrikes()`, render list, subscribe to `svc.newStrike$` (guarded by `liveSubscribed` flag so only once)
+1. `initMap()` — creates Leaflet map, SVG renderer, both tile layers, detection rectangle, `StrikeOverlay`
+2. Subscribe to `svc.initialList$` — on each emission: `clearAllStrikes()`, render list, `overlay.redrawGrey()`, subscribe to `svc.newStrike$` (guarded by `liveSubscribed` flag so only once)
 3. Subscribe to `svc.lightningDelay$` — stores full `{ avg, min, max, samples }` in `delayStats`
 4. Subscribe to `svc.socketReconnect$` — calls `requestInitialList()` on each Manager-level reconnect
 5. Subscribe to `router.events` filtered to `NavigationEnd` on `'lightning'` URL, `skip(1)` — after 50ms calls `map.invalidateSize()` + `requestInitialList()` (navigate-back fix)
 6. If already connected: `svc.requestInitialList()` (handles second-visit case where `connect` won't fire)
+7. `tick` setInterval (100ms) and `fade` setInterval (10s) started via `ngZone.runOutsideAngular()`
 
-**Strike lifecycle — `flashStrike(strike, updateDisplay)`**:
-1. Dedup check via `strikeKeys: Set<string>` (key = `timeMs:lat(4dp):lon(4dp)`)
+**Strike lifecycle — `flashStrike(strike)`**:
+1. Dedup check via `strikeMap.has(key)` (key = `timeMs:lat(4dp):lon(4dp)`)
 2. Compute `remainingMs = RING_DURATION_MS - (Date.now() - strike.timeMs)`
-3. `isLive = remainingMs > 0` → yellow bolt (`STYLE_ACTIVE`) + `styleTimer`; if also `strike.isNew`: triple flash — white(0ms) → yellow(150ms) → white(200ms) → yellow(350ms) → white(400ms) → yellow(550ms, stays) via 5 chained `setTimeout` calls
-4. `isLive = false` → grey bolt immediately (strikes older than `RING_DURATION_MS = 30s`)
-5. `styleTimer` fires at `remainingMs`: flips `entry.isLive = false`, switches to grey, calls `updateCounts()`
-6. Fade interval (every 10s): opacity fade based on age, removes at 10min
+3. `isLive = remainingMs > 0` → entry added to `strikeMap`; `styleTimer` scheduled via `ngZone.runOutsideAngular()`; if also `strike.isNew`: triple flash driven by `flashStartMs` timestamp in `tick()`
+4. `isLive = false` → entry added as grey immediately (strikes older than 30s)
+5. `styleTimer` fires at `remainingMs`: `entry.isLive = false`, `_activeCount--`, `overlay.addToGrey(key, entry)` (paints one bolt additively)
+6. `fade()` every 10s: removes entries older than 10min, calls `overlay.redrawGrey()` if any removed
 
-**Ring lifecycle**:
-- `startRing(entry)`: creates `L.circle` + `setInterval` stored on `entry.ring`; start radius = correct position for strikes already in progress
-- `stopRing(entry)`: clears interval, removes circle, nulls `entry.ring`
-- `refreshRings()`: called on `zoomend` — zoom ≥10 starts rings for all still-live entries; zoom <10 stops all rings
+**StrikeOverlay — two-canvas rendering**:
+- **Grey canvas** (bottom): draws `isLive=false` strikes. Redrawn only on pan/zoom end (`_reset()`) and `fade()`. `addToGrey(key, entry)` paints a single bolt additively without clearing — called on each live→grey transition so strikes appear on grey canvas immediately.
+- **Live canvas** (top): drawn every `tick()` (100ms) — only `isLive=true` strikes. Cost <1ms at realistic active strike counts.
+- Layer coordinates + 300px padding (`CANVAS_PAD`): pan is a CSS transform, no mid-drag redraws.
+
+| Canvas | Strikes drawn | Fill | Stroke | Size | Redraw trigger |
+|---|---|---|---|---|---|
+| Live (top) | `isLive=true` | `#facc15` yellow (or white during flash) | `#ef4444` red | 10px (13px flash) | every tick 100ms |
+| Grey (bottom) | `isLive=false` | `#e5e7eb` grey | `#000000` black | 7px | pan/zoom end, fade, transition |
+
+**Flash sequence** (driven by `flashStartMs` in `tick()`): white at t<150ms, yellow 150–200ms, white 200–350ms, yellow 350–400ms, white 400–550ms, yellow 550ms+ (stays yellow).
+
+**Ring lifecycle** (only when `map.getZoom() >= 9`):
+- `startRing(entry)`: creates `L.circle` + `hitCircle` (invisible, wide, for tooltip); start radius = elapsed × 343 m/s
+- `tick()` updates radius + opacity for all active rings; `stopRing()` when radius ≥ 10km
+- `refreshRings()` on `zoomend`: stops all rings when zoom drops below 9
 
 **Counter chips** (in the floating pill, top-left):
 - `totalCount / viewportTotalCount` — all strikes in 10min window, total and visible in viewport
 - `activeCount / viewportCount` — yellow (live, within 30s) strikes, total and in viewport
 - `avgDelayMs` — getter over `delayStats?.avg`; delay chip has `pTooltip` showing `gem: Xms | min: Xms | max: Xms (N)`
-
-**Strike markers** — canvas-rendered bolt shape (`boltMarker()` factory):
-
-| Style | Fill | Stroke | Radius | Duration |
-|---|---|---|---|---|
-| `STYLE_FLASH`  | `#ffffff` white  | `#ffffff` white | 13px | triple flash on arrival (at 0/200/400ms white; 150/350/550ms yellow) |
-| `STYLE_ACTIVE` | `#facc15` yellow | `#ef4444` red   | 10px | until `styleTimer` fires (30s)  |
-| `STYLE_OLD`    | `#e5e7eb` grey   | `#000000` black |  7px | until fade-out at 10min |
-
-**Thunder ring** (only when `map.getZoom() >= 10`):
-- Speed: 343 m/s, max radius: 10km, step interval: 200ms
-- `L.circle`, yellow `#ffff00`, weight 3, opacity fading from 1.0 → 0
 
 ---
 
