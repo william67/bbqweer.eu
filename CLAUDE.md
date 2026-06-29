@@ -1,10 +1,5 @@
 # bbqweer.eu
 
-## How this documentation is structured
-- **CLAUDE.md** (this file) is an index — it holds short summaries and key patterns. Detailed implementation notes live in `docs/` files (e.g. `docs/lightning-map.md`). When a feature has a dedicated doc file, CLAUDE.md links or points to it rather than duplicating the detail.
-- **MEMORY.md** (`C:\Users\William\.claude\projects\c--Apps-bbqweer-eu\memory\MEMORY.md`) is an index of one-line pointers to individual memory files — no content lives in MEMORY.md itself. The memory files (e.g. `project_lightning_index.md`) hold project state, decisions, and planned work that isn't discoverable from the code (e.g. a KPI that's still planned). Documentation of how things work goes in CLAUDE.md and `docs/`; memory files track why and what's next.
-- **Memory files must be one-line pointers only.** Never write multi-line body content in a memory file. Put the content in CLAUDE.md or a `docs/` file first, then write one line in the memory file pointing there (e.g. "Canvas perf work complete. See CLAUDE.md Bliksem section."). This rule overrides the memory system's body template (`Why: / How to apply:`) — do not use that template for this project.
-
 ## What is this?
 Public KNMI weather data platform — a standalone website spun out of wo-ict.nl.
 Goal: expose KNMI weather data, forecasts, and charts publicly at bbqweer.eu.
@@ -320,22 +315,25 @@ angular.json: add `node_modules/leaflet/dist/leaflet.css` to styles array and `"
 - **MySQL binary logs**: configured to expire after 7 days via `database/mysql-binlog-expire.cnf` (mounted into bbqweer-mysql). Without this, binlogs accumulate indefinitely and can fill the disk (17GB observed before fix).
 - **mysql2 returns DATE columns as ISO strings**: e.g. `"2026-04-23T00:00:00.000Z"` — always `.slice(0, 10)` before comparing or displaying date-only values.
 
-## Collaboration Rules
-**Only change what the task asks for.** Do not add unrelated improvements, refactors, or "while I'm here" fixes silently — the user reviews diffs and loses track of what changed. If something outside the stated task needs to change, propose it as a named step first and wait for approval before touching it.
+## Central standards
+Read the relevant file before writing code in that domain:
+- Workflow:             c:\Apps\dev-standards\workflow\dev-workflow.md
+- Angular:             c:\Apps\dev-standards\frontend\angular-conventions.md
+- Location picker:     c:\Apps\dev-standards\frontend\location-picker.md
+- Socket.IO / live data: c:\Apps\dev-standards\frontend\live-data-socketio.md
+- Task monitoring:     c:\Apps\dev-standards\backend\task-monitoring.md
 
-## Skills
-Shared coding standards live at `C:\Apps\skills\commands\`. Check the relevant skill before starting any task — `dev-workflow`, `location-picker`, `task-monitoring`, `handle-live-data`, `general-app-setup`.
+### Deviations from central standard
 
-### Deviations from skills (documented here per dev-workflow skill)
-
-**No map bounds saving** (`location-picker` skill)
+**No map bounds saving** (location-picker.md)
 The skill stores SW+NE bounds separately from the station location. bbqweer location pickers store only `{lat, lng, label}`. Reason: the pickers are point-selection modals (p-dialog), not persistent map navigation tools — the app's main view is data charts. Saving bounds adds no value here.
 
-**HTTP REST instead of Socket.IO** (`handle-live-data` skill)
+**HTTP REST instead of Socket.IO** (live-data-socketio.md)
 The skill uses Socket.IO for live data. bbqweer fetches on demand via HTTP REST. Reason: weather data is batch-oriented, not real-time push — there is no server-side push event to react to.
 
-**`toggleMap()` instead of `set` accessor for @ViewChild** (`location-picker` skill)
+**`toggleMap()` instead of `set` accessor for @ViewChild** (location-picker.md)
 The skill uses the `set` accessor form on `@ViewChild` to auto-detect when `@if` shows/hides the map element. bbqweer uses an explicit `toggleMap()` + `setTimeout(() => this.initMap())`. Functionally equivalent — all map opens are explicitly triggered, so the set accessor provides no extra benefit. The approach is documented in the Leaflet Map section above.
+
 
 ## First Steps for New Chat
 1. Read `docs/system-architecture.md` for full stack overview
