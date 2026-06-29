@@ -17,8 +17,8 @@ export class AppTopbarComponent implements OnInit, OnDestroy {
 
     ngOnInit(): void {
         this.sub = this.lightningSvc.lightningIndex$.subscribe(data => {
-            this.lightningActive = data?.active ?? 0;
-            this.lightningTotal  = data?.total  ?? 0;
+            this.lightningActive = data?.ceActive ?? 0;
+            this.lightningTotal  = data?.ceTotal  ?? 0;
         });
     }
 

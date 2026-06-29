@@ -305,7 +305,6 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
                     this.clearAllStrikes();
                     list.forEach(s => this.flashStrike(s));
                     this.overlay.redrawGrey(this.strikeMap, now);
-                    this.updateViewportCounts();
                     if (!this.liveSubscribed) {
                         this.liveSubscribed = true;
                         this.subs.push(this.svc.newStrike$.subscribe(s => this.flashStrike(s)));
@@ -368,12 +367,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
 
         this.overlay = new StrikeOverlay(this.map);
 
-        this.map.on('zoomend', () => {
-            this.mapZoom = this.map!.getZoom();
-            this.updateViewportCounts();
-        });
-
-        this.map.on('moveend', () => this.updateViewportCounts());
+        this.map.on('zoomend', () => { this.mapZoom = this.map!.getZoom(); });
 
         this.map.on('mousemove', (e: L.LeafletMouseEvent) => {
             if ((this.map?.getZoom() ?? 0) < 11) return;
@@ -437,21 +431,27 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     // ── Tick: rings + redraw + count display ──────────────────────────────────
 
     private tick(): void {
-        const now = Date.now();
-
+        const now    = Date.now();
+        const bounds = this.map?.getBounds();
         this.overlay.drawLive(this.strikeMap, now);
 
-        // Recompute active count from age rather than maintaining state
-        let newActive = 0;
-        for (const entry of this.strikeMap.values()) {
-            if (now - entry.timeMs < RING_DURATION_MS) newActive++;
+        let active = 0, total = 0, vc = 0, vtc = 0;
+        for (const s of this.strikeMap.values()) {
+            total++;
+            const isActive = now - s.timeMs < RING_DURATION_MS;
+            if (isActive) active++;
+            if (bounds?.contains([s.lat, s.lon])) {
+                vtc++;
+                if (isActive) vc++;
+            }
         }
-
-        const newTotal = this.strikeMap.size;
-        if (newTotal !== this.totalCount || newActive !== this.activeCount) {
+        if (active !== this.activeCount || total !== this.totalCount ||
+            vc !== this.viewportCount   || vtc !== this.viewportTotalCount) {
             this.ngZone.run(() => {
-                this.totalCount  = newTotal;
-                this.activeCount = newActive;
+                this.activeCount        = active;
+                this.totalCount         = total;
+                this.viewportCount      = vc;
+                this.viewportTotalCount = vtc;
             });
         }
     }
@@ -491,22 +491,6 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
             }
         }
         if (anyExpired) this.overlay.redrawGrey(this.strikeMap, now);
-        this.ngZone.run(() => this.updateViewportCounts());
-    }
-
-    private updateViewportCounts(): void {
-        const bounds = this.map?.getBounds();
-        if (!bounds) return;
-        const now = Date.now();
-        let vc = 0, vtc = 0;
-        for (const s of this.strikeMap.values()) {
-            if (bounds.contains([s.lat, s.lon])) {
-                vtc++;
-                if (now - s.timeMs < RING_DURATION_MS) vc++;
-            }
-        }
-        this.viewportCount      = vc;
-        this.viewportTotalCount = vtc;
     }
 
     ngOnDestroy(): void {

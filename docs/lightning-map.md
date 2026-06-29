@@ -33,6 +33,9 @@ Data source: [lightningmaps.org](https://lightningmaps.org) WebSocket (Blitzortu
 - [x] RAF loop — live canvas driven by `requestAnimationFrame` instead of `setInterval(100ms)`
 - [x] Playback timestamp chip — `lastMs` in `lightning-index`, shown in counter pill as `HH:MM:SS` / `DD-MM HH:MM:SS` with "laatste" label
 - [x] `tests/playbackWss.js --from` — seek into recording + prefill Redis with 10-min window; `prefill-done` signal triggers frontend `initial-list` reload
+- [x] Worldwide strike coverage — WSS subscription uses global bounds `[90, 180, -90, -180]`; no geographic ingestion filter; all strikes stored
+- [x] CE KPI — `strikes:ce:time` sorted set tracks BOUNDS-filtered strikes; `lightning-index` emits `ceActive`/`ceTotal`; topbar badge shows CE counts (worldwide counts go to map counter)
+- [x] All 4 map counter values computed client-side from `strikeMap` in a single RAF pass — consistent at all zoom levels
 
 ---
 
@@ -69,15 +72,19 @@ During heavy thunderstorms the Netherlands can see hundreds of strikes per minut
 
 ---
 
-## Detection Bounds
+## Detection Bounds (CE region)
 
 ```js
 const BOUNDS = { latMin: 40.0, latMax: 59.0, lonMin: -12.0, lonMax: 30.0 };
 ```
 
 Covers Western + Central Europe: Ireland/UK in the west, Finland/Baltics in the north, Ukraine/Romania in the east, Mediterranean in the south.
-Backend filters incoming WSS strikes to this bounding box before storing.
-Frontend draws this as a dashed rectangle on the map using an SVG renderer (`L.svg({ padding: 5 })`) — the SVG renderer keeps the rectangle crisp without repainting on every pan.
+
+`BOUNDS` is used for two purposes only — **not** as an ingestion filter:
+1. **CE KPI**: strikes within BOUNDS are also written to `strikes:ce:time`; `ceActive`/`ceTotal` in `lightning-index` feed the topbar badge
+2. **Map rectangle**: drawn as a dashed blue overlay via `L.svg({ padding: 5 })` — SVG renderer keeps it crisp without repainting on pan
+
+All worldwide strikes are stored in Redis. The WSS subscription uses global bounds `[90, 180, -90, -180]`.
 
 ---
 
@@ -91,15 +98,16 @@ npm install ioredis socket.io
 
 ### Redis data model
 
-Three structures, always written/pruned in a single `MULTI` transaction:
+Four structures. The first three are always written/pruned in a single `MULTI` transaction. `strikes:ce:time` is written conditionally (CE strikes only) and pruned in the same `MULTI`.
 
 | Key | Redis type | Purpose |
 |---|---|---|
-| `strikes:time` | Sorted Set (score = timestamp ms) | TTL window / pruning |
+| `strikes:time` | Sorted Set (score = timestamp ms) | Global TTL window / pruning |
 | `strikes:geo` | Geo Set (lon/lat) | Viewport queries via GEOSEARCH |
 | `strikes:data` | Hash (id → JSON) | Full strike payload including `receivedAt` |
+| `strikes:ce:time` | Sorted Set (score = timestamp ms) | CE KPI: BOUNDS-filtered strikes only; feeds `ceActive`/`ceTotal` |
 
-TTL: 10 minutes. `pruneOld()` runs every 30s via `setInterval`.
+TTL: 10 minutes. `pruneOld()` runs every 30s via `setInterval`; cleans all four structures.
 
 ### New file: `backend/socket/blitzortung.js`
 
@@ -110,10 +118,11 @@ Responsibilities:
 - `wssNextPort` resets to 443 on every disconnect — prevents getting stuck on a stale port if the server changes (lightningmaps.org changed 8085 → 8086)
 - Dedup incoming strikes by `${time}:${lat.toFixed(4)}:${lon.toFixed(4)}` (Map, 150s TTL, cleaned every 30s) — same key as frontend; guards against reconnect replays
 - Server `reload` message: `ws.removeAllListeners('close')` before `ws.close()` — prevents race where both the reload handler and the close event schedule a reconnect simultaneously
-- Filter to BOUNDS; capture `receivedAt = Date.now()` at WSS message time
-- Store in Redis via `addStrike({ lat, lon, timeMs, pol, receivedAt })`, emit `new-strike` to all Socket.IO clients
+- Store all worldwide strikes — no geographic filter; capture `receivedAt = Date.now()` at WSS message time
+- `addStrike()`: write to `strikes:time` + `strikes:geo` + `strikes:data` in one `MULTI`; if `inBounds`, also write to `strikes:ce:time`
+- Emit `new-strike` to all Socket.IO clients
 - Auto-reconnect after 5s on close; `isNew: true` only on live strikes, not reconnect replay
-- Every 500ms: `redis.zcount('strikes:time', now-30s, '+inf')` → emit `lightning-index` to all clients
+- Every 500ms: 4 parallel `ZCOUNT` calls → emit `lightning-index: { active, total, ceActive, ceTotal, lastMs, fromMs }` to all clients
 - Every 1s: `getDelayStats()` → emit `lightning-delay: { avg, min, max, samples }` to all clients
 - ntfy.sh optional alerts: Haversine distance check per strike; POST to topic when within `radius_km` of home and cooldown elapsed
 
@@ -235,7 +244,7 @@ export class LightningService implements OnDestroy {
     private socket: Socket;
     readonly initialList$     = new Subject<Strike[]>();
     readonly newStrike$       = new Subject<Strike>();
-    readonly lightningIndex$  = new BehaviorSubject<{ active: number; total: number; lastMs: number | null; fromMs: number | null } | null>(null);
+    readonly lightningIndex$  = new BehaviorSubject<{ active: number; total: number; ceActive: number; ceTotal: number; lastMs: number | null; fromMs: number | null } | null>(null);
     readonly lightningDelay$  = new BehaviorSubject<{ avg: number; min: number; max: number; samples: number } | null>(null);
     readonly socketReconnect$ = new Subject<void>();
     readonly prefillDone$     = new Subject<void>();
@@ -331,10 +340,13 @@ location /socket.io/ {
 - Zoom < 11: rings simply not drawn (canvas check each frame); no `refreshRings()` needed
 
 **Counter chips** (in the floating pill, top-left):
+- All 4 values are computed client-side from `strikeMap` in a single pass inside `tick()` (RAF loop, ~60fps). Angular zone is entered only when values change. Backend Redis counts are **not** used for the map counter — only the client-side `strikeMap` ensures consistency at all zoom levels.
 - `totalCount / viewportTotalCount` — all strikes in 10min window, total and visible in viewport
 - `activeCount / viewportCount` — yellow (live, within 30s) strikes, total and in viewport
 - `avgDelayMs` — getter over `delayStats?.avg`; delay chip has `pTooltip` showing `gem: Xms | min: Xms | max: Xms (N)`
 - `lastStrikeTime` — formatted timestamp of `lightning-index.lastMs` (origTimeMs of last strike, or live timeMs); shows `HH:MM:SS` if same day, `DD-MM HH:MM:SS` otherwise; hidden when null
+
+**Topbar badge** (CE KPI): uses `ceActive` / `ceTotal` from the `lightning-index` event — BOUNDS-filtered counts from Redis `strikes:ce:time`. Topbar shows Central Europe activity; map counter shows worldwide activity.
 
 ---
 

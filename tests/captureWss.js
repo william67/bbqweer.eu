@@ -16,7 +16,7 @@ const INIT_MSG = JSON.stringify({
     v: 24, i: {}, s: false, x: 0, w: 0, tx: 0, tw: 1, a: 4,
     z: 6, b: true, h: '', l: 1, t: 1,
     from_lightningmaps_org: true,
-    p: [59.0, 30.0, 40.0, -12.0],
+    p: [90, 180, -90, -180],
     r: 'A',
 });
 

@@ -17,7 +17,7 @@ const WSS_INIT_MSG = JSON.stringify({
     v: 24, i: {}, s: false, x: 0, w: 0, tx: 0, tw: 1, a: 4,
     z: 6, b: true, h: '', l: 1, t: 1,
     from_lightningmaps_org: true,
-    p: [BOUNDS.latMax, BOUNDS.lonMax, BOUNDS.latMin, BOUNDS.lonMin],
+    p: [90, 180, -90, -180],
     r: 'A',
 });
 
@@ -106,6 +106,9 @@ async function addStrike(strike) {
         .geoadd('strikes:geo', strike.lon, strike.lat, id)
         .hset('strikes:data', id, JSON.stringify(strike))
         .exec();
+    if (inBounds(strike.lat, strike.lon)) {
+        await redis.zadd('strikes:ce:time', strike.timeMs, id);
+    }
     if (io) io.emit('new-strike', { ...strike, isNew: true });
 
     if (ntfyEnabled && Date.now() - lastNotifiedAt > COOLDOWN_MS) {
@@ -126,6 +129,7 @@ async function pruneOld() {
         .zrem('strikes:time', ...expired)
         .zrem('strikes:geo', ...expired)
         .hdel('strikes:data', ...expired)
+        .zrem('strikes:ce:time', ...expired)
         .exec();
 }
 setInterval(pruneOld, 30_000);
@@ -189,7 +193,6 @@ function startWss() {
             if (msg.strokes && Array.isArray(msg.strokes)) {
                 const receivedAt = Date.now();
                 for (const stroke of msg.strokes) {
-                    if (!inBounds(stroke.lat, stroke.lon)) continue;
                     if (isDupe(String(stroke.id))) continue;
                     addStrike({ lat: stroke.lat, lon: stroke.lon, timeMs: stroke.time, pol: 0, receivedAt, srcId: stroke.id })
                         .catch(() => {});
@@ -238,11 +241,15 @@ function initBlitzortung(socketIo) {
         }
         setInterval(async () => {
             try {
-                const now    = Date.now();
-                const active = await redis.zcount('strikes:time', now - 30_000, '+inf');
-                const total  = await redis.zcount('strikes:time', now - TTL_MS, '+inf');
+                const now = Date.now();
+                const [active, total, ceActive, ceTotal] = await Promise.all([
+                    redis.zcount('strikes:time',    now - 30_000, '+inf'),
+                    redis.zcount('strikes:time',    now - TTL_MS, '+inf'),
+                    redis.zcount('strikes:ce:time', now - 30_000, '+inf'),
+                    redis.zcount('strikes:ce:time', now - TTL_MS, '+inf'),
+                ]);
                 if (total === 0) { firstStrikeMs = 0; lastStrikeMs = 0; }
-                if (io) io.emit('lightning-index', { active, total, lastMs: lastStrikeMs || null, fromMs: firstStrikeMs || null });
+                if (io) io.emit('lightning-index', { active, total, ceActive, ceTotal, lastMs: lastStrikeMs || null, fromMs: firstStrikeMs || null });
             } catch {}
         }, 500);
 
@@ -266,11 +273,11 @@ function initSocketBlitzortung(socket) {
     socket.on('get-initial-list', sendInitialList);
 
     socket.on('get-window', ({ minLat, maxLat, minLon, maxLon }) => {
-        // Clamp to detection area before haversine — prevents near-zero width when lon hits ±180
-        const lat1 = Math.max(minLat, BOUNDS.latMin);
-        const lat2 = Math.min(maxLat, BOUNDS.latMax);
-        const lon1 = Math.max(minLon, BOUNDS.lonMin);
-        const lon2 = Math.min(maxLon, BOUNDS.lonMax);
+        // Clamp to valid globe bounds before haversine — prevents near-zero width when lon hits ±180
+        const lat1 = Math.max(minLat, -90);
+        const lat2 = Math.min(maxLat,  90);
+        const lon1 = Math.max(minLon, -180);
+        const lon2 = Math.min(maxLon,  180);
         const centerLat = (lat1 + lat2) / 2;
         const centerLon = (lon1 + lon2) / 2;
         const widthKm   = haversineKm(centerLat, lon1, centerLat, lon2);
