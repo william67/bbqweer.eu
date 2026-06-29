@@ -314,6 +314,8 @@ angular.json: add `node_modules/leaflet/dist/leaflet.css` to styles array and `"
 - **Topbar logo** — `frontend/src/assets/logo.png` (44px height, `border-radius: 8px`); source file in `logo/` folder (not served, just version-controlled).
 - **MySQL binary logs**: configured to expire after 7 days via `database/mysql-binlog-expire.cnf` (mounted into bbqweer-mysql). Without this, binlogs accumulate indefinitely and can fill the disk (17GB observed before fix).
 - **mysql2 returns DATE columns as ISO strings**: e.g. `"2026-04-23T00:00:00.000Z"` — always `.slice(0, 10)` before comparing or displaying date-only values.
+- **mysql2 charset — `SET NAMES utf8mb4` required**: without it, the pool defaults to `latin1` and UTF-8 characters stored in `utf8mb4` columns (e.g. `°`) are returned as mojibake (`Â°`). Fixed in `helpers/mysqlpool-knmi.helper.js` via `pool.on('connection', c => c.query('SET NAMES utf8mb4'))`. Also add `SET NAMES utf8mb4;` at the top of any init SQL file that contains non-ASCII characters.
+- **`column_mapping` format values**: `'date'` → `dd-MM-yyyy`; `'timestamp'` → `dd-MM-yyyy HH:mm:ss`; `'number'` → decimal pipe (also triggered when `decimals` is set without format). Add a row per field via the admin edit dialog (pencil icon) or directly in `03-column-mapping.sql`.
 
 ## Central standards
 Read the relevant file before writing code in that domain:

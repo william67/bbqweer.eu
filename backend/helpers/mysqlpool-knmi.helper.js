@@ -20,7 +20,11 @@ const mySqlPoolKnmi = mysql.createPool({
     enableKeepAlive: true,
     keepAliveInitialDelay: 0,
     timezone: 'Z',
-    decimalNumbers: true
+    decimalNumbers: true,
+});
+
+mySqlPoolKnmi.on('connection', connection => {
+    connection.query('SET NAMES utf8mb4');
 });
 
 console.log(`mySqlPoolKnmi initiated (${config.mysql_knmi.host}:${config.mysql_knmi.port || 3306})`);

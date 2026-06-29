@@ -30,8 +30,8 @@
       <tr>
         @for (col of columns; track col.field) {
           <td [style.flex]="col.flexWidth">
-            @switch (getColType(col.field, col.format)) {
-              @case ('datum') {
+            @switch (getColType(col.field, col.format, col.decimals)) {
+              @case ('date') {
                 {{ rowData[col.field] | date: 'dd-MM-yyyy' }}
               }
               @case ('timestamp') {

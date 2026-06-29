@@ -46,8 +46,10 @@ export class MyKnmiTableComponent implements OnChanges {
     editIsNew = false;
 
     formatOptions = [
-        { label: '(none)', value: '' },
-        { label: 'number', value: 'number' },
+        { label: '(none)',     value: '' },
+        { label: 'number',     value: 'number' },
+        { label: 'date',       value: 'date' },
+        { label: 'timestamp',  value: 'timestamp' },
     ];
 
     constructor(private http: HttpClient, public auth: AuthService) {
@@ -144,10 +146,11 @@ export class MyKnmiTableComponent implements OnChanges {
         });
     }
 
-    getColType(field: string, format: string): any {
-        if (field === 'datum') return 'datum';
-        if (field.startsWith('time') || field.endsWith('Time') || field.endsWith('Timestamp')) return 'timestamp';
-        if (format === 'number') return 'number';
+    getColType(field: string, format: string | undefined, decimals: number | undefined): string {
+        if (format === 'date')      return 'date';
+        if (format === 'timestamp') return 'timestamp';
+        if (format === 'number' || decimals !== undefined) return 'number';
+        if (field === 'datum')      return 'date';   // legacy fallback
         return 'default';
     }
 
