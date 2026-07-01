@@ -4,4 +4,5 @@ INSERT INTO `column_mapping` VALUES (1,'station','Station',NULL,'station',NULL,'
 (43,'datum_tijd_van','Datum/tijd van',NULL,NULL,'timestamp','10'),
 (44,'datum_tijd_tot','Datum/tijd tot',NULL,NULL,'timestamp','10'),
 (45,'begin','Begin',NULL,NULL,'date','8'),
-(46,'einde','Einde',NULL,NULL,'date','8');
+(46,'einde','Einde',NULL,NULL,'date','8'),
+(47,'datum_tijd','Datum/tijd',NULL,NULL,'timestamp','10');
