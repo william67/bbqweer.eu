@@ -32,16 +32,24 @@ New service in `docker-compose.yml`, alongside the existing services:
     environment:
       NTFY_BASE_URL: https://ntfy.bbqweer.eu
       NTFY_UPSTREAM_BASE_URL: https://ntfy.sh
+      NTFY_AUTH_FILE: /var/lib/ntfy/auth.db
+      NTFY_AUTH_DEFAULT_ACCESS: deny-all
     volumes:
       - ntfy_cache:/var/cache/ntfy
       - ntfy_data:/var/lib/ntfy
 ```
 
-**Both env vars are required for iOS push to work at all** — see
-"iOS push requires an upstream relay" below. `NTFY_UPSTREAM_BASE_URL` alone
-makes the container refuse to start with `if upstream-base-url is set,
-base-url must also be set`; `NTFY_BASE_URL` must be set to the server's own
-public URL.
+**`NTFY_BASE_URL` + `NTFY_UPSTREAM_BASE_URL` are both required for iOS push
+to work at all** — see "iOS push requires an upstream relay" below.
+`NTFY_UPSTREAM_BASE_URL` alone makes the container refuse to start with
+`if upstream-base-url is set, base-url must also be set`; `NTFY_BASE_URL`
+must be set to the server's own public URL.
+
+**`NTFY_AUTH_FILE` + `NTFY_AUTH_DEFAULT_ACCESS: deny-all`** enable
+authentication (see "Authentication" below) — without an explicit per-topic
+ACL grant, nobody (not even anonymous readers) can access any topic. The
+`auth.db` file lives on the `ntfy_data` volume, so it survives container
+recreation; it is not something to configure via git-tracked files.
 
 And in the `volumes:` section at the bottom of the file:
 
@@ -224,14 +232,48 @@ ssh root@bbqweer.eu "cd /opt/bbqweer && docker compose up -d --build"
 - End-to-end push delivery confirmed working: self-hosted server →
   ntfy.sh upstream relay → APNs → iPhone lock screen.
 
-## Privacy / security
+## Authentication
 
-- A topic name (e.g. `filealerts`) is sufficient protection for now since the
-  server is self-hosted (no public `ntfy.sh` with guessable topic names).
-- Optionally later: set up ntfy auth (users/passwords) and per-topic ACLs if
-  more sensitive content is added — see the
-  [ntfy documentation](https://docs.ntfy.sh/config/#access-control) for
-  configuration options.
+Publishing is protected with a Bearer token; subscribing (reading) stays
+open to anonymous clients, so the iPhone app doesn't need to log in. Set up
+once, after `NTFY_AUTH_FILE` + `NTFY_AUTH_DEFAULT_ACCESS: deny-all` are
+deployed (see the `docker-compose.yml` snippet above):
+
+```bash
+# Create a publish-only user (prompts for a password twice — pipe it non-interactively via SSH)
+docker exec -i bbqweer-ntfy sh -c "printf '%s\n%s\n' '<password>' '<password>' | ntfy user add alertbot"
+
+# Anonymous readers may subscribe; only alertbot may publish
+docker exec bbqweer-ntfy ntfy access everyone filealerts read-only
+docker exec bbqweer-ntfy ntfy access alertbot filealerts write-only
+
+# Generate a long-lived Bearer token for alertbot (this is what the backend / Postman uses)
+docker exec bbqweer-ntfy ntfy token add alertbot
+```
+
+The token (`tk_...`) is the actual secret — the user's password is never
+used directly for publishing once the token exists. **Never commit the
+token or password to git.** Store it in a gitignored location (e.g.
+`backend/config.ini` on the VPS, once the NDW task in
+`plans/ndw-data.md` is built) or a password manager.
+
+**Publishing with the token:**
+
+```bash
+curl -H "Authorization: Bearer <token>" -d "message" -H "Title: ..." https://ntfy.bbqweer.eu/filealerts
+```
+
+In Postman: add header `Authorization: Bearer <token>`, same body/headers as
+any other publish request.
+
+**Verification** (confirmed during rollout on 2026-07-01):
+- Anonymous publish (no `Authorization` header) → `403`
+- Publish with the `alertbot` token → `200`, message delivered to the phone
+- Anonymous read (`GET /filealerts/json?poll=1`) → `200`, unaffected by the
+  `deny-all` default since `everyone` has an explicit `read-only` grant
+
+See the [ntfy access control documentation](https://docs.ntfy.sh/config/#access-control)
+for the full permission model (roles, tiers, more granular ACLs).
 
 ## Cost
 

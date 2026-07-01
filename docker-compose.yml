@@ -66,6 +66,8 @@ services:
     environment:
       NTFY_BASE_URL: https://ntfy.bbqweer.eu
       NTFY_UPSTREAM_BASE_URL: https://ntfy.sh
+      NTFY_AUTH_FILE: /var/lib/ntfy/auth.db
+      NTFY_AUTH_DEFAULT_ACCESS: deny-all
     volumes:
       - ntfy_cache:/var/cache/ntfy
       - ntfy_data:/var/lib/ntfy
