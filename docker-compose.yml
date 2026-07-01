@@ -58,5 +58,19 @@ services:
       sh -c "trap exit TERM;
              while :; do certbot renew --quiet; sleep 12h & wait $${!}; done"
 
+  ntfy:
+    image: binwiederhier/ntfy
+    container_name: bbqweer-ntfy
+    restart: unless-stopped
+    command: serve
+    environment:
+      NTFY_BASE_URL: https://ntfy.bbqweer.eu
+      NTFY_UPSTREAM_BASE_URL: https://ntfy.sh
+    volumes:
+      - ntfy_cache:/var/cache/ntfy
+      - ntfy_data:/var/lib/ntfy
+
 volumes:
   mysql_data:
+  ntfy_cache:
+  ntfy_data:
