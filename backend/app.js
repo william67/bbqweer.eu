@@ -41,6 +41,8 @@ const usersRouter        = require('./routes/users.route');
 const serverTasksRouter  = require('./routes/server-tasks.route');
 const energieRouter      = require('./routes/energy-prices.route');
 const solarRouter        = require('./routes/solar.route');
+const fileAreasRouter    = require('./routes/file-areas.route');
+const tomtomRouter       = require('./routes/tomtom.route');
 
 app.use('/api/knmi-reports',  knmiReportsRouter);
 app.use('/api/stars',         starsRouter);
@@ -50,6 +52,8 @@ app.use('/api/users',         usersRouter);
 app.use('/api/server-tasks',  serverTasksRouter);
 app.use('/api/energie',       energieRouter);
 app.use('/api/solar',         solarRouter);
+app.use('/api/file-areas',    fileAreasRouter);
+app.use('/api/tomtom',        tomtomRouter);
 
 server.listen(port, () => console.log(`bbqweer backend listening on port ${port}`));
 
@@ -80,3 +84,13 @@ if (!fs.existsSync('config.local.ini')) {
 } else {
     console.log('Cron tasks disabled (local dev)');
 }
+
+// file-area-incidents runs in all environments, including local dev — it only reads
+// (DB + the already-cached TomTom incidents), never writes/calls an external API itself,
+// and the frontend needs live counts to test against locally.
+const cron = require('node-cron');
+const fileAreaIncidents = require('./tasks/file-area-incidents');
+fileAreaIncidents().catch(err => console.error('file-area-incidents initial run error:', err));
+cron.schedule('*/15 * * * * *', () => {
+    fileAreaIncidents().catch(err => console.error('file-area-incidents cron error:', err));
+});

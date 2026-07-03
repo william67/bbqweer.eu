@@ -7,6 +7,14 @@ Goal: expose KNMI weather data, forecasts, and charts publicly at bbqweer.eu.
 ## Status: live in production
 Running locally and deployed to Hetzner VPS at https://bbqweer.eu (HTTPS, Let's Encrypt). KNMI data sync completed. Frontend live via nginx.
 
+## Critical Workflow Rules
+
+- **Propose before touching**: describe the change and wait for explicit approval before writing any code — no exceptions, not even for small fixes. Proposal and implementation are always separate responses.
+- **Stop after coding**: tell the user to test in the browser/app. Do not proceed to committing or further changes until the user has tested and explicitly approved. A clean build is not approval.
+- **Commit only after approval**: never suggest or initiate a commit/push unprompted — the user decides when.
+- **MEMORY.md stays minimal**: it must only contain a single reference to this file — never write project rules, feedback, or feature notes into separate memory files. All project-specific information goes here in CLAUDE.md.
+- **Don't touch the user's dev servers**: the user normally runs `nodemon` (port 3000) and `ng serve` (port 4200) themselves. Default to build-check-only verification and let the user test — don't start your own server instances or kill a process on an occupied port without confirming it isn't theirs.
+
 ## Project Structure
 ```
 C:\Apps\bbqweer.eu\
@@ -17,11 +25,12 @@ C:\Apps\bbqweer.eu\
 │   │   ├── pages/energy-prices/ — EnergyPricesComponent (lazy module)
 │   │   ├── pages/solar/    — SolarComponent (lazy module)
 │   │   ├── pages/lightning/ — LightningComponent (lazy module) — real-time strike map
+│   │   ├── pages/file-alerts/ — FileAlertsComponent (lazy module) — traffic jam alert areas; TomTom incidents public, areas login-only
 │   │   ├── components/     — my-knmi-anychart, my-knmi-chartjs, my-knmi-table,
 │   │   │                     my-planetarium, login
 │   │   ├── services/       — knmi-reports, forecast, anychart, local-storage,
 │   │   │                     stars, planetarium-calc, satellites, satellite-js,
-│   │   │                     energy-prices, solar, lightning
+│   │   │                     energy-prices, solar, lightning, file-areas, tomtom
 │   │   └── layout/         — topbar, footer, layout (AppLayoutModule)
 │   └── proxy.conf.json     — deleted; not needed (environment.ts uses full localhost:3000 URL directly)
 ├── backend/                — Node.js/Express, CommonJS
@@ -29,9 +38,9 @@ C:\Apps\bbqweer.eu\
 │   ├── socket/             — blitzortung.js (WSS → Redis → Socket.IO)
 │   ├── config.ini          — Docker settings (host=mysql, port=3306) — NOT in git
 │   ├── config.local.ini    — Local dev settings (host=127.0.0.1, port=3307) — NOT in git
-│   ├── routes/             — knmi-reports, stars, satellites, auth, users, energy-prices, solar
-│   ├── helpers/            — mysqlpool-knmi.helper.js, server-tasks.js
-│   ├── tasks/              — knmidata-v4.js, satellites-sync.js, energy-prices-sync.js
+│   ├── routes/             — knmi-reports, stars, satellites, auth, users, energy-prices, solar, file-areas, tomtom
+│   ├── helpers/            — mysqlpool-knmi.helper.js, server-tasks.js, tomtom.helper.js
+│   ├── tasks/              — knmidata-v4.js, satellites-sync.js, energy-prices-sync.js, file-area-incidents.js
 │   ├── callSyncKnmiData.js        — manual sync trigger (uses knmidata-v4)
 │   ├── callSyncEnergiePrices.js   — manual/historical energy price sync from energyzero.nl
 │   ├── createUser.js       — one-off admin user creation script
@@ -42,11 +51,12 @@ C:\Apps\bbqweer.eu\
 │   │   ├── 02-extras.sql   — column_mapping, users, server-tasks, logfile tables
 │   │   ├── 03-column-mapping.sql — 42 column display config rows
 │   │   ├── 04-datafiles.sql — 1000 KNMI datafile rows
-│   │   ├── 05-server-tasks.sql — seed rows for knmidata-sync, satellites-sync
+│   │   ├── 05-server-tasks.sql — seed rows for knmidata-sync, satellites-sync, file-area-incidents
 │   │   ├── 06-stations.sql — 51 KNMI weather stations
 │   │   ├── 07-neerslagstations.sql — 343 precipitation stations
 │   │   ├── 08-energy-prices.sql — energie_prices table
-│   │   └── 09-datafiles-http-lastmod.sql — http_lastmod column for datafiles
+│   │   ├── 09-datafiles-http-lastmod.sql — http_lastmod column for datafiles
+│   │   └── 10-file-areas.sql — file_areas + file_area_points tables
 │   ├── knmi reports/       — JSON export files per dataset (versioned, import via UI)
 │   ├── fix-procedures.sql  — one-time fix: lowercase table names in stored procedures
 │   ├── migrate-uurgeg-datum-tijd.sql — one-time: rename DATUM_TIJD → DATUM_TIJD_VAN, add DATUM_TIJD_TOT (run on live DB)
@@ -58,7 +68,11 @@ C:\Apps\bbqweer.eu\
 │   ├── docker-guide.md
 │   ├── dev-workflow.md
 │   ├── deploy-to-hetzner.md
-│   └── knmi-config-export-import.md
+│   ├── knmi-config-export-import.md
+│   ├── lightning-map.md
+│   ├── ntfy-server.md      — self-hosted ntfy push notification server
+│   └── tomtom.md           — TomTom Traffic Incident Details integration + file-alerts data pipeline
+├── plans/                  — pre-implementation design docs (see dev-standards workflow)
 ├── nginx/nginx.conf        — serves bbqweer.eu; HTTP→HTTPS redirect + SSL + /api/* proxy to nodejs:3000
 ├── deploy-hetzner.ps1      — automated deploy script (build + upload + VPS git pull + health check)
 ├── .env                    — MySQL root + app passwords — NOT in git
@@ -87,6 +101,8 @@ cd backend && nodemon app.js      # uses config.local.ini, cron tasks disabled
 # Terminal 2
 cd frontend && ng serve --open    # proxies /api/* to localhost:3000, live reload via poll
 ```
+
+**Claude testing convention**: the user normally keeps `nodemon` (backend, port 3000) and `ng serve` (frontend, port 4200) running locally themselves. For frontend/backend changes, default to verifying with `ng build` / a syntax check only, then hand off for the user to test in their already-running dev environment — do not start additional `node app.js` / `ng serve` instances or run Playwright/browser automation unless explicitly asked. If a needed port is already occupied, assume it's the user's own dev server and ask before touching it — never `taskkill` a process on ports 3000/4200 without confirming it's one you started yourself in the current session.
 
 ### Full Docker local (Stage 2 — no HTTPS)
 Uses `docker-compose.local.yml` override — HTTP only, no SSL certs needed.
@@ -172,6 +188,7 @@ Scheduled in `backend/app.js` via `node-cron`:
 | `knmidata-v4` | `0 * * * *` | KNMI weather data sync (two-pointer merge) |
 | `satellites-sync` | `30 * * * *` | TLE sync from Celestrak |
 | `energy-prices-sync` | `0 13-17 * * *` | Hourly electricity prices from energyzero.nl |
+| `file-area-incidents` | `*/15 * * * * *` (every 15s — `node-cron` supports an optional seconds field) | Counts TomTom incidents intersecting each `file_areas` polygon (`@turf/boolean-intersects`); read-only, no DB writes — **runs in all environments including local dev** (not gated by `config.local.ini` like the tasks above), also runs once immediately on boot. See `docs/tomtom.md`. |
 
 Manual trigger:
 ```powershell
@@ -197,7 +214,7 @@ docker compose exec nodejs node createUser.js
 - `zone.js` installed and configured — required for automatic change detection after async ops
   - `"polyfills": ["zone.js"]` in `angular.json` build options
   - `provideZoneChangeDetection()` in `src/main.ts` bootstrap options
-- Six lazy-loaded modules: `KnmiDataModule`, `ForecastModule`, `PlanetariumModule`, `EnergyPricesModule`, `SolarModule`, `LightningModule`
+- Seven lazy-loaded modules: `KnmiDataModule`, `ForecastModule`, `PlanetariumModule`, `EnergyPricesModule`, `SolarModule`, `LightningModule`, `FileAlertsModule`
 - `socket.io-client` installed; added to `allowedCommonJsDependencies`; `environment.wsUrl` points to backend Socket.IO server (`http://localhost:3000` dev, `''` prod)
 - Budget limit raised to `2MB` warn / `3MB` error in `angular.json` (PrimeNG Table/Tag/ProgressBar)
 - `"hmr": false` in `angular.json` serve options — required; HMR is unreliable with NgModule apps
@@ -238,6 +255,7 @@ docker compose exec nodejs node createUser.js
   - **RAF loop**: live canvas driven by `requestAnimationFrame` (not `setInterval(100ms)`) — smooth flash animation, auto-pauses when tab is hidden
   - **Playback timestamp chip**: `lightning-index` includes `lastMs` (origTimeMs of last strike); shown in counter pill as formatted `HH:MM:SS` or `DD-MM HH:MM:SS` with "laatste" label
   - **Playback tooling** (`tests/playbackWss.js`): `--from HH:MM:SS` or `--from YYYY-MM-DDTHH:MM:SS` (UTC) seeks into recording; prefills Redis with the 10-min window before `--from` (strikes appear correctly aged), then emits `prefill-done` → frontend reloads initial list so old strikes appear as grey before playback starts. See `docs/lightning-map.md`.
+- Filemeldingen (`/file-alerts`) — traffic jam alert areas; **TomTom incidents are public** (visible to everyone, no login — map + TomTom layer always render), **areas are login-only** (the "Gebieden" button, areas list dialog, incidentCount drill-down dialog, and the drawn polygons themselves are all hidden from anonymous visitors — not just draw/edit/reshape/delete). Reactive to login/logout via `authService.authChanged$` subscription (no page reload needed): logging in loads and draws the areas immediately, logging out removes all polygons from the map, closes any open area dialogs, cancels an in-progress draw, and stops the areas-list poll timer. Polygon drawing hand-rolled (click-to-add-point, draggable handles), ported from wo-ict.nl's openstreetmap page. Map opens centered on a fixed Rotterdam/Den Haag/Delft/Maasvlakte bbox (`TOMTOM_BBOX`) at zoom 11, with a dashed rectangle always showing the TomTom query area. TomTom incidents load automatically and stay live via 2-min upsert (no flash). Areas list shows a "Filemeldingen" column = live incident count per area (computed by the `file-area-incidents` background task, polled by the list dialog every 15s while open); clicking a count opens a detail dialog listing the actual matching incidents. See `docs/tomtom.md` for the full data pipeline.
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
 
 ## Solar Page — Key Details

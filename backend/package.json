@@ -7,6 +7,8 @@
     "start": "node app.js"
   },
   "dependencies": {
+    "@turf/boolean-intersects": "^7.3.5",
+    "@turf/helpers": "^7.3.5",
     "adm-zip": "^0.5.10",
     "axios": "^1.6.8",
     "bcryptjs": "^2.4.3",

@@ -1,0 +1,28 @@
+:host {
+    display: block;
+}
+
+.file-alerts-page {
+    position: fixed;
+    top: 4rem;       /* = topbar min-height */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;     /* above content, below topbar (z-index 999) */
+    overflow: hidden;
+}
+
+.map-container {
+    position: absolute;
+    inset: 0;
+}
+
+.toolbar-container {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: flex;
+    flex-direction: row;
+    gap: 15px;
+    z-index: 1000;
+}

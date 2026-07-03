@@ -2,8 +2,9 @@
 
 Self-hosted [ntfy](https://ntfy.sh) push notification server at
 `ntfy.bbqweer.eu`. Intended as a generic push channel for the project — the
-first consumer is the file-alert system (see `plans/ndw-data.md`), but the
-server itself is set up and tested independently of that.
+first consumer is the file-alert system (see `docs/tomtom.md`'s "Alerting
+design" section), but the server itself is set up and tested independently
+of that.
 
 ## Why self-host instead of a PWA web push or ntfy.sh
 
@@ -254,8 +255,8 @@ docker exec bbqweer-ntfy ntfy token add alertbot
 The token (`tk_...`) is the actual secret — the user's password is never
 used directly for publishing once the token exists. **Never commit the
 token or password to git.** Store it in a gitignored location (e.g.
-`backend/config.ini` on the VPS, once the NDW task in
-`plans/ndw-data.md` is built) or a password manager.
+`backend/config.ini` on the VPS, once the alerting task in `docs/tomtom.md`
+is built) or a password manager.
 
 **Publishing with the token:**
 

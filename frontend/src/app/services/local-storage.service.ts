@@ -14,7 +14,15 @@ export class LocalStorageService {
 
   public getData(key: string) {
     let data = localStorage.getItem(key) || "";
-    return this.decrypt(data);
+    if (!data) return "";
+    try {
+      return this.decrypt(data);
+    } catch {
+      // Corrupted/stale value that no longer decrypts with the current key — drop it
+      // instead of crashing every service that reads it (AuthService reads this at boot).
+      localStorage.removeItem(key);
+      return "";
+    }
   }
 
   public removeData(key: string) {

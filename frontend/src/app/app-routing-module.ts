@@ -31,6 +31,10 @@ const routes: Routes = [
             {
                 path: 'lightning',
                 loadChildren: () => import('./pages/lightning/lightning.module').then(m => m.LightningModule)
+            },
+            {
+                path: 'file-alerts',
+                loadChildren: () => import('./pages/file-alerts/file-alerts.module').then(m => m.FileAlertsModule)
             }
         ]
     },
