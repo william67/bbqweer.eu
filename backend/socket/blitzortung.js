@@ -4,7 +4,10 @@ const WebSocket = require('ws');
 const Redis     = require('ioredis');
 const fs        = require('fs');
 const ini       = require('ini');
-const axios     = require('axios');
+const { taskStart, taskError } = require('../helpers/server-tasks');
+const ntfy      = require('../helpers/ntfy.helper');
+
+const TASK_CODE = 'lightning-service';
 
 const BOUNDS = { latMin: 40.0, latMax: 59.0, lonMin: -12.0, lonMax: 30.0 };
 const TTL_MS = 10 * 60 * 1000;
@@ -55,20 +58,24 @@ const appConfig  = ini.parse(fs.readFileSync(configFile, 'utf-8'));
 const redisHost = fs.existsSync('./config.local.ini') ? '127.0.0.1' : 'redis';
 const redis     = new Redis({ host: redisHost, port: 6379, lazyConnect: true });
 
-// ntfy push notifications — optional; skipped silently if [ntfy] section absent
+// ntfy push notifications — optional; skipped silently if [ntfy] section absent.
+// Sending itself (auth header, queue, retry, dedup) is handled by ntfy.helper.js —
+// this only decides *whether* a strike is close enough to home to be worth an alert.
 const ntfyCfg     = appConfig.ntfy || null;
 const ntfyEnabled = !!(ntfyCfg && ntfyCfg.url && ntfyCfg.home_lat && ntfyCfg.home_lon);
 const HOME_LAT    = ntfyEnabled ? parseFloat(ntfyCfg.home_lat)      : 0;
 const HOME_LON    = ntfyEnabled ? parseFloat(ntfyCfg.home_lon)      : 0;
 const RADIUS_KM   = ntfyEnabled ? parseFloat(ntfyCfg.radius_km)  || 30 : 0;
 const COOLDOWN_MS = ntfyEnabled ? (parseFloat(ntfyCfg.cooldown_min) || 5) * 60_000 : 0;
-let   lastNotifiedAt = 0;
 let   lastStrikeMs   = 0;
 let   firstStrikeMs  = 0;
 
 if (ntfyEnabled) console.log(`[blitzortung] ntfy alerts enabled — home ${HOME_LAT},${HOME_LON} radius ${RADIUS_KM}km cooldown ${COOLDOWN_MS / 60_000}min`);
 
-redis.on('error', (err) => console.error('[blitzortung] Redis error:', err.message));
+redis.on('error', (err) => {
+    console.error('[blitzortung] Redis error:', err.message);
+    taskError(TASK_CODE).catch(() => {});
+});
 
 let io = null;
 
@@ -111,13 +118,18 @@ async function addStrike(strike) {
     }
     if (io) io.emit('new-strike', { ...strike, isNew: true });
 
-    if (ntfyEnabled && Date.now() - lastNotifiedAt > COOLDOWN_MS) {
+    if (ntfyEnabled) {
         const dist = haversineKm(strike.lat, strike.lon, HOME_LAT, HOME_LON);
         if (dist <= RADIUS_KM) {
-            lastNotifiedAt = Date.now();
-            axios.post(ntfyCfg.url, `Bliksem op ${Math.round(dist)}km van huis`, {
-                headers: { Title: '⚡ Bliksemwaarschuwing', Tags: 'warning,zap', Priority: 'high' }
-            }).catch(() => {});
+            ntfy.sendAlert({
+                topic: 'strikealerts',
+                key: 'lightning-proximity',
+                dedupeMs: COOLDOWN_MS,
+                title: '⚡ Bliksemwaarschuwing',
+                message: `Bliksem op ${Math.round(dist)}km van huis`,
+                priority: 'high',
+                tags: 'warning,zap'
+            });
         }
     }
 }
@@ -204,16 +216,21 @@ function startWss() {
     ws.on('close', () => {
         console.log('[blitzortung] WSS disconnected, reconnecting in 5s...');
         wssNextPort = 443;
+        taskError(TASK_CODE).catch(() => {});
         setTimeout(startWss, 5000);
     });
 
-    ws.on('error', () => {});
+    ws.on('error', (err) => {
+        console.error('[blitzortung] WSS error:', err.message);
+        taskError(TASK_CODE).catch(() => {});
+    });
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 function initBlitzortung(socketIo) {
     io = socketIo;
+    taskStart(TASK_CODE).catch(err => console.error('[blitzortung] taskStart:', err.message));
     redis.connect().then(() => {
         console.log(`[blitzortung] Redis connected (${redisHost}:6379)`);
 
@@ -261,6 +278,7 @@ function initBlitzortung(socketIo) {
         }, 1_000);
     }).catch(err => {
         console.error('[blitzortung] Redis connect failed:', err.message);
+        taskError(TASK_CODE).catch(() => {});
     });
 }
 

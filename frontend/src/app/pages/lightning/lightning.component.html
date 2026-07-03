@@ -2,7 +2,15 @@
 
   <div class="map-container" #mapEl></div>
 
-  <!-- Counter pill — top-left, after Leaflet zoom controls -->
+  <!-- Toolbar — top-left, consistent with Filemeldingen page -->
+  <div class="toolbar-container">
+    @if (authService.isLoggedIn) {
+      <app-area-manager [map]="map" [areasService]="areasService"></app-area-manager>
+      <p-button (click)="sendTestMessage()" icon="pi pi-send" label="Test bericht" severity="secondary"></p-button>
+    }
+  </div>
+
+  <!-- Counter pill — top-center -->
   <div class="map-pill counter-pill">
     <span class="total-chip">{{ totalCount }} / {{ viewportTotalCount }}</span>
     <span class="pill-label">10 min totaal / zichtbaar</span>

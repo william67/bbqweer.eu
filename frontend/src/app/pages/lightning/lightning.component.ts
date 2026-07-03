@@ -4,6 +4,10 @@ import { Subscription } from 'rxjs';
 import { filter, skip } from 'rxjs/operators';
 import * as L from 'leaflet';
 import { LightningService, Strike } from 'src/app/services/lightning.service';
+import { AuthService } from 'src/app/services/auth.service';
+import { NtfyService } from 'src/app/services/ntfy.service';
+import { MessageServiceWrapper } from 'src/app/services/message.service';
+import { StrikeAreasService } from 'src/app/services/strike-areas.service';
 
 const RING_SPEED       = 343;
 const RING_MAX_M       = 10_000;
@@ -280,7 +284,7 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     get lastStrikeTime(): string { return this.lastStrikeMs ? this._formatMs(this.lastStrikeMs) : ''; }
 
-    private map:             L.Map | null = null;
+    map:                     L.Map | null = null;
     private overlay!:        StrikeOverlay;
     private svgRenderer!:    L.SVG;
     private streetLayer!:    L.TileLayer;
@@ -291,7 +295,15 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
     private _rafId           = 0;
     private liveSubscribed   = false;
 
-    constructor(private svc: LightningService, private router: Router, private ngZone: NgZone) {}
+    constructor(
+        private svc: LightningService,
+        private router: Router,
+        private ngZone: NgZone,
+        public authService: AuthService,
+        private ntfyService: NtfyService,
+        private messageServiceWrapper: MessageServiceWrapper,
+        public areasService: StrikeAreasService
+    ) {}
 
     ngOnInit(): void {}
 
@@ -405,6 +417,13 @@ export class LightningComponent implements OnInit, AfterViewInit, OnDestroy {
                 this._rafId = requestAnimationFrame(loop);
             };
             this._rafId = requestAnimationFrame(loop);
+        });
+    }
+
+    sendTestMessage(): void {
+        this.ntfyService.sendTest('lightning').subscribe({
+            next: () => this.messageServiceWrapper.showMessage('success', 'Verstuurd', 'Testbericht ingepland'),
+            error: (err) => this.messageServiceWrapper.showMessage('error', 'Mislukt', err.message ?? err)
         });
     }
 

@@ -3,25 +3,18 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from 'src/environments/environment';
 import { AuthService } from 'src/app/services/auth.service';
-import { TomtomIncident } from 'src/app/services/tomtom.service';
 import { Area, AreaPoint, AreaCrudService } from 'src/app/services/area.types';
 
-export type { Area as FileArea, AreaPoint } from 'src/app/services/area.types';
-
 @Injectable({ providedIn: 'root' })
-export class FileAreasService implements AreaCrudService {
+export class StrikeAreasService implements AreaCrudService {
 
-    private baseUrl = `${environment.apiUrl}/file-areas`;
+    private baseUrl = `${environment.apiUrl}/strike-areas`;
     private get headers() { return { 'x-access-token': this.authService.jwtToken }; }
 
     constructor(private http: HttpClient, private authService: AuthService) {}
 
     getAreas(): Observable<Area[]> {
         return this.http.get<Area[]>(this.baseUrl, { headers: this.headers });
-    }
-
-    getAreaIncidents(id: number): Observable<TomtomIncident[]> {
-        return this.http.get<TomtomIncident[]>(`${this.baseUrl}/${id}/incidents`, { headers: this.headers });
     }
 
     createArea(area: Area): Observable<any> {

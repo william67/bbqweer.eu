@@ -17,6 +17,16 @@
     inset: 0;
 }
 
+.toolbar-container {
+    position: absolute;
+    top: 10px;
+    left: 54px;   /* clears Leaflet zoom controls */
+    display: flex;
+    flex-direction: row;
+    gap: 15px;
+    z-index: 1000;
+}
+
 /* Floating pill — shared base */
 .map-pill {
     position: absolute;
@@ -36,7 +46,8 @@
 
 .counter-pill {
     top: 10px;
-    left: 54px;   /* clears Leaflet zoom controls */
+    left: 50%;
+    transform: translateX(-50%);
 }
 
 .zoom-pill {

@@ -6,3 +6,11 @@ database = knmi
 
 [jwt]
 secret_key = change_this_to_a_long_random_string
+
+[ntfy]
+base_url =
+token =
+home_lat =
+home_lon =
+radius_km =
+cooldown_min =

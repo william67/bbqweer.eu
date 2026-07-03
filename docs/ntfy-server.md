@@ -244,9 +244,11 @@ deployed (see the `docker-compose.yml` snippet above):
 # Create a publish-only user (prompts for a password twice — pipe it non-interactively via SSH)
 docker exec -i bbqweer-ntfy sh -c "printf '%s\n%s\n' '<password>' '<password>' | ntfy user add alertbot"
 
-# Anonymous readers may subscribe; only alertbot may publish
+# Anonymous readers may subscribe; only alertbot may publish — repeat per topic
 docker exec bbqweer-ntfy ntfy access everyone filealerts read-only
 docker exec bbqweer-ntfy ntfy access alertbot filealerts write-only
+docker exec bbqweer-ntfy ntfy access everyone strikealerts read-only
+docker exec bbqweer-ntfy ntfy access alertbot strikealerts write-only
 
 # Generate a long-lived Bearer token for alertbot (this is what the backend / Postman uses)
 docker exec bbqweer-ntfy ntfy token add alertbot
@@ -275,6 +277,80 @@ any other publish request.
 
 See the [ntfy access control documentation](https://docs.ntfy.sh/config/#access-control)
 for the full permission model (roles, tiers, more granular ACLs).
+
+## Backend integration — centralized alert-dispatch queue
+
+All backend code that wants to push a notification calls a single shared
+helper instead of hitting ntfy's HTTP API directly. This avoids duplicating
+Bearer-token handling and cooldown/dedup logic across every alert producer
+(lightning proximity today; the TomTom file-alert task and any future
+producer later).
+
+**Two separate topics/streams** — each alert category gets its own ntfy
+topic, so a phone can subscribe to one without the other:
+
+| Topic | Content | Producers |
+|-------|---------|-----------|
+| `filealerts`   | Traffic jam / file-area alerts | `POST /api/ntfy/test` (`type: 'traffic'`); future TomTom file-alert task |
+| `strikealerts` | Lightning proximity alerts     | `backend/socket/blitzortung.js` (`lightning-proximity`); `POST /api/ntfy/test` (`type: 'lightning'`) |
+
+Both topics need the same anonymous-read ACL grant on the server (see
+"Authentication" below) — `ntfy access everyone <topic> read-only` per topic.
+
+**`backend/helpers/ntfy.helper.js`** — `sendAlert({ topic, key, title,
+message, priority, tags, dedupeMs })`:
+- Fire-and-forget: pushes onto an in-memory queue and returns immediately —
+  the caller (e.g. the Blitzortung WSS listener) never blocks on the actual
+  HTTP POST to ntfy.
+- A `setInterval` drain loop (1s) pops one item at a time and POSTs it to
+  `NTFY_URL` with `Authorization: Bearer <NTFY_TOKEN>` when a token is
+  configured.
+- `key` + `dedupeMs` (default 5 min) provide per-alert-type dedup — a second
+  `sendAlert()` call with the same `key` within the cooldown window is
+  dropped before it ever reaches the queue. Omit `key` to always send (used
+  for manual test messages).
+- Failed sends retry up to 3 attempts (re-queued at the back), then are
+  dropped with a logged error — no dead-letter storage, this is a
+  low-volume personal-alert use case, not a durable queue.
+- Deliberately **not** Redis Streams/BullMQ — in-memory is sufficient at this
+  alert volume and keeps the dependency footprint small.
+
+**Config** — `[ntfy]` section in `config.ini` / `config.local.ini` (both
+gitignored, never auto-deployed — see CLAUDE.md's config pattern):
+
+```ini
+[ntfy]
+base_url =
+token =
+home_lat =
+home_lon =
+radius_km =
+cooldown_min =
+```
+
+`base_url` is the server root (e.g. `https://ntfy.bbqweer.eu`, no topic
+suffix) — `sendAlert()` posts to `${base_url}/${topic}`. `base_url`/`token`
+are read directly by `ntfy.helper.js` (`NTFY_BASE_URL`/`NTFY_TOKEN`).
+`home_lat`/`home_lon`/`radius_km`/`cooldown_min` are read by
+`backend/socket/blitzortung.js` for the lightning-proximity feature (distance
+threshold + cooldown minutes, converted to `dedupeMs`). If `base_url` is
+empty, `sendAlert()` logs an error and no-ops instead of throwing — the app
+runs fine with ntfy unconfigured, it just doesn't send pushes.
+
+**Consumers today:**
+- `backend/socket/blitzortung.js` — `addStrike()` calls `sendAlert({ topic:
+  'strikealerts', key: 'lightning-proximity', dedupeMs: COOLDOWN_MS, ... })`
+  when a strike lands within `radius_km` of the configured home coordinates.
+  This replaced a bespoke `lastNotifiedAt`/`COOLDOWN_MS` tracking block that
+  used to live directly in this file.
+- `backend/routes/ntfy.route.js` — `POST /api/ntfy/test` (auth-protected),
+  body `{ type: 'traffic' | 'lightning' }`, sends one of two canned Dutch
+  test messages (`traffic` → `filealerts` topic, `lightning` →
+  `strikealerts` topic) with no dedup key (always sends). Exposed in the
+  frontend as a **"Test bericht" button**, visible only to logged-in users,
+  on both the Bliksem page (`type: 'lightning'`) and the Filemeldingen page
+  (`type: 'traffic'`) — lets an admin confirm push delivery end-to-end
+  without waiting for a real strike or traffic jam.
 
 ## Cost
 

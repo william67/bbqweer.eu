@@ -20,9 +20,66 @@
 .toolbar-container {
     position: absolute;
     top: 10px;
-    left: 10px;
+    left: 54px;   /* clears Leaflet zoom controls */
     display: flex;
     flex-direction: row;
     gap: 15px;
     z-index: 1000;
+}
+
+/* Floating pill — shared base, matches Bliksem page */
+.map-pill {
+    position: absolute;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 4px 12px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: #374151;
+    white-space: nowrap;
+}
+
+.zoom-pill {
+    top: 10px;
+    right: 10px;
+}
+
+.pill-label {
+    color: #6b7280;
+    font-size: 0.74rem;
+}
+
+.divider {
+    width: 1px;
+    height: 18px;
+    background: #d1d5db;
+    flex-shrink: 0;
+}
+
+.sat-btn {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #374151;
+    padding: 1px 6px;
+    line-height: 1.5;
+    transition: background 0.15s, color 0.15s;
+}
+
+.sat-btn:hover {
+    background: #f3f4f6;
+}
+
+.sat-btn.active {
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-color: #93c5fd;
 }

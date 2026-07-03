@@ -1,0 +1,25 @@
+USE bbqweer;
+
+CREATE TABLE IF NOT EXISTS strike_areas (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(200) NOT NULL,
+  description TEXT,
+  color       VARCHAR(20) NOT NULL DEFAULT '#3388ff',
+  active      TINYINT(1) NOT NULL DEFAULT 1,
+  minLat      DECIMAL(10,7) DEFAULT NULL,
+  maxLat      DECIMAL(10,7) DEFAULT NULL,
+  minLng      DECIMAL(10,7) DEFAULT NULL,
+  maxLng      DECIMAL(10,7) DEFAULT NULL,
+  createdAt   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS strike_area_points (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  areaId     INT NOT NULL,
+  latitude   DECIMAL(10,7) NOT NULL,
+  longitude  DECIMAL(10,7) NOT NULL,
+  orderIndex INT NOT NULL DEFAULT 0,
+  KEY fk_strike_area_points_area (areaId),
+  CONSTRAINT fk_strike_area_points_area FOREIGN KEY (areaId) REFERENCES strike_areas (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

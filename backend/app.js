@@ -42,7 +42,9 @@ const serverTasksRouter  = require('./routes/server-tasks.route');
 const energieRouter      = require('./routes/energy-prices.route');
 const solarRouter        = require('./routes/solar.route');
 const fileAreasRouter    = require('./routes/file-areas.route');
+const strikeAreasRouter  = require('./routes/strike-areas.route');
 const tomtomRouter       = require('./routes/tomtom.route');
+const ntfyRouter         = require('./routes/ntfy.route');
 
 app.use('/api/knmi-reports',  knmiReportsRouter);
 app.use('/api/stars',         starsRouter);
@@ -53,7 +55,9 @@ app.use('/api/server-tasks',  serverTasksRouter);
 app.use('/api/energie',       energieRouter);
 app.use('/api/solar',         solarRouter);
 app.use('/api/file-areas',    fileAreasRouter);
+app.use('/api/strike-areas',  strikeAreasRouter);
 app.use('/api/tomtom',        tomtomRouter);
+app.use('/api/ntfy',          ntfyRouter);
 
 server.listen(port, () => console.log(`bbqweer backend listening on port ${port}`));
 

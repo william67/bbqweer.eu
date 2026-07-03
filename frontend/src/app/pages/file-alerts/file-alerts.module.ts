@@ -6,10 +6,7 @@ import { FileAlertsComponent } from './file-alerts.component';
 import { ButtonModule } from 'primeng/button';
 import { DialogModule } from 'primeng/dialog';
 import { TableModule } from 'primeng/table';
-import { InputTextModule } from 'primeng/inputtext';
-import { ColorPickerModule } from 'primeng/colorpicker';
-import { IconFieldModule } from 'primeng/iconfield';
-import { InputIconModule } from 'primeng/inputicon';
+import { AreaManagerModule } from 'src/app/components/area-manager/area-manager.module';
 
 @NgModule({
     declarations: [FileAlertsComponent],
@@ -20,10 +17,7 @@ import { InputIconModule } from 'primeng/inputicon';
         ButtonModule,
         DialogModule,
         TableModule,
-        InputTextModule,
-        ColorPickerModule,
-        IconFieldModule,
-        InputIconModule,
+        AreaManagerModule,
     ]
 })
 export class FileAlertsModule {}

@@ -20,7 +20,9 @@
         </a>
         <a class="topbar-nav-link" [routerLink]="['/lightning']" routerLinkActive="active">
             <i class="pi pi-bolt mr-2"></i>Bliksem
-            @if (lightningActive > 0) { <span class="lightning-index-badge">{{ lightningTotal }} / {{ lightningActive }}</span> }
+            <span class="lightning-index-badge"
+                pTooltip="Central Europe bliksem-index: totaal aantal strikes laatste 10 minuten / aantal actieve strikes laatste 30 seconden"
+                tooltipPosition="bottom">{{ lightningTotal }} / {{ lightningActive }}</span>
         </a>
         <a class="topbar-nav-link" [routerLink]="['/knmidata']" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
             <i class="pi pi-chart-bar mr-2"></i>KNMI Data

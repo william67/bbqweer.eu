@@ -1,0 +1,119 @@
+<p-button (click)="showAreasListDialog()" icon="pi pi-list" label="Gebieden"></p-button>
+@if (!areaEditMode) {
+  <p-button (click)="startDrawMode()" icon="pi pi-pencil" label="Gebied tekenen" severity="secondary"></p-button>
+}
+@if (areaEditMode) {
+  <p-button (click)="finishAreaEdit()" icon="pi pi-check"
+    [label]="areaEditIsNew ? 'Klaar (' + areaEditPoints.length + ' pt)' : 'Vorm opslaan'"
+    severity="success" [disabled]="areaEditPoints.length < 3"></p-button>
+  <p-button (click)="undoLastAreaEditPoint()" icon="pi pi-undo" label="Ongedaan maken" severity="secondary" [disabled]="areaEditPoints.length === 0"></p-button>
+  <p-button (click)="cancelAreaEdit()" icon="pi pi-times"
+    [label]="areaEditIsNew ? 'Annuleren' : 'Reshape annuleren'" severity="danger"></p-button>
+}
+
+<!-- Areas list dialog -->
+<p-dialog [(visible)]="areasListDialogVisible"
+  [style]="{width: '380px', height: '650px', position: 'absolute', top: '135px', left: '245px'}"
+  header="Gebieden" class="p-fluid">
+  <ng-template pTemplate="content">
+    <p-iconfield class="block mt-4 mb-4">
+      <p-inputicon class="pi pi-search" />
+      <input pInputText type="text" (input)="onGlobalFilter(dtAreas, $event)" placeholder="Zoeken..." class="w-full"/>
+    </p-iconfield>
+    <p-table
+      #dtAreas
+      styleClass="p-datatable-sm p-datatable-gridlines p-datatable-striped"
+      [value]="allAreas"
+      [globalFilterFields]="['name', 'description']"
+      [rowHover]="true"
+      [loading]="loadingAreas"
+      dataKey="id">
+      <ng-template pTemplate="header">
+        <tr>
+          <th [style.width]="showIncidentCount ? '45%' : '60%'">Naam</th>
+          <th [style.width]="showIncidentCount ? '25%' : '40%'">Kleur</th>
+          @if (showIncidentCount) {
+            <th style="width:30%">Filemeldingen</th>
+          }
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-area>
+        <tr (click)="onAreaListRowClick(area)" style="cursor:pointer">
+          <td>{{ area.name }}</td>
+          <td>
+            <span [style.background]="area.color" style="display:inline-block;width:16px;height:16px;border-radius:3px;border:1px solid #ccc;vertical-align:middle;margin-right:4px"></span>
+          </td>
+          @if (showIncidentCount) {
+            <td (click)="$event.stopPropagation(); incidentClick.emit(area)">
+              <a style="cursor:pointer;text-decoration:underline">{{ area.incidentCount ?? 0 }}</a>
+            </td>
+          }
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="emptymessage">
+        <tr><td [attr.colspan]="showIncidentCount ? 3 : 2">Nog geen gebieden — teken er een op de kaart</td></tr>
+      </ng-template>
+    </p-table>
+  </ng-template>
+</p-dialog>
+
+<!-- Area click menu -->
+<p-dialog header="{{ selectedArea?.name }}" [(visible)]="areaClickMenuVisible" [modal]="true" [closable]="false">
+  <p>Wat wil je doen?</p>
+  <ng-template pTemplate="footer">
+    <p-button label="Bewerken" [text]="true" [raised]="true" (click)="onAreaEdit()" />
+    <p-button label="Vorm aanpassen" [text]="true" [raised]="true" (click)="onAreaReshape()" />
+    <p-button label="Verwijderen" [text]="true" [raised]="true" severity="danger" (click)="onAreaDelete()" />
+    <p-button label="Annuleren" [text]="true" [raised]="true" (click)="onAreaMenuCancel()" />
+  </ng-template>
+</p-dialog>
+
+<!-- Area edit dialog -->
+<p-dialog [(visible)]="editAreaDialogVisible" [style]="{width: '400px'}" header="Gebied bewerken" [modal]="true" class="p-fluid">
+  <ng-template pTemplate="content">
+    <div class="field">
+      <label for="editAreaName">Naam</label>
+      <input type="text" pInputText id="editAreaName" [(ngModel)]="editAreaName" autofocus/>
+    </div>
+    <div class="field">
+      <label for="editAreaDescription">Omschrijving</label>
+      <input type="text" pInputText id="editAreaDescription" [(ngModel)]="editAreaDescription"/>
+    </div>
+    <div class="field">
+      <label>Kleur</label>
+      <div class="flex align-items-center gap-2">
+        <p-colorpicker [(ngModel)]="editAreaColor" format="hex"></p-colorpicker>
+        <span>#{{ editAreaColor }}</span>
+      </div>
+    </div>
+  </ng-template>
+  <ng-template pTemplate="footer">
+    <p-button label="Annuleren" icon="pi pi-times" [text]="true" (onClick)="editAreaDialogVisible = false"></p-button>
+    <p-button label="Opslaan" icon="pi pi-check" [text]="true" (onClick)="saveAreaEdit()" [loading]="savingEditArea" [disabled]="!editAreaName"></p-button>
+  </ng-template>
+</p-dialog>
+
+<!-- Area save dialog -->
+<p-dialog [(visible)]="areaDialogVisible" [style]="{width: '400px'}" header="Gebied opslaan" [modal]="true" class="p-fluid">
+  <ng-template pTemplate="content">
+    <div class="field">
+      <label for="areaName">Naam</label>
+      <input type="text" pInputText id="areaName" [(ngModel)]="newAreaName" autofocus/>
+    </div>
+    <div class="field">
+      <label for="areaDescription">Omschrijving</label>
+      <input type="text" pInputText id="areaDescription" [(ngModel)]="newAreaDescription"/>
+    </div>
+    <div class="field">
+      <label>Kleur</label>
+      <div class="flex align-items-center gap-2">
+        <p-colorpicker [(ngModel)]="newAreaColor" format="hex"></p-colorpicker>
+        <span>#{{ newAreaColor }}</span>
+      </div>
+    </div>
+  </ng-template>
+  <ng-template pTemplate="footer">
+    <p-button label="Annuleren" icon="pi pi-times" [text]="true" (onClick)="cancelAreaDialog()"></p-button>
+    <p-button label="Opslaan" icon="pi pi-check" [text]="true" (onClick)="saveArea()" [loading]="savingArea" [disabled]="!newAreaName"></p-button>
+  </ng-template>
+</p-dialog>

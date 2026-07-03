@@ -111,6 +111,15 @@ gitignored; only the empty `[tomtom]\napi_key =` scaffold is tracked.
 
 ## Frontend implementation
 
+**Area drawing/editing/listing** (the "Gebieden" toolbar, draw/reshape mode,
+areas list dialog, click menu) now lives in the shared `AreaManagerComponent`
+(`frontend/src/app/components/area-manager/`), not in
+`file-alerts.component.ts` directly — it's also embedded in the Bliksem page
+against a separate `strike_areas` table. See `CLAUDE.md`'s "Area management"
+section for the full split. `file-alerts.component.ts` still owns the map
+itself, the TomTom incidents overlay below, and the incident-drilldown dialog
+(triggered by `AreaManagerComponent`'s `(incidentClick)` output).
+
 `frontend/src/app/pages/file-alerts/file-alerts.component.ts` — always on, no
 toggle button (removed; incidents load automatically with the map for
 **everyone**, unlike the areas layer, which only loads for logged-in users —
@@ -289,11 +298,14 @@ following the `satellites-sync.js` pattern: `taskStart`/`taskProgress`/
   `database/init/05-server-tasks.sql`.
 - The Gebieden list dialog polls `GET /api/file-areas` every 15s
   (`AREAS_LIST_REFRESH_MS`, matching this task's own cadence) **while open**
-  — `refreshAreasList()` in `file-alerts.component.ts` only updates the
-  `allAreas` array feeding the list table, deliberately not touching the
-  map's polygon layers, so there's no flash on the map while the count
-  updates in the background. Stops polling when the dialog closes
-  (`clearInterval` in `showAreasListDialog()` and `ngOnDestroy`).
+  — `refreshAreasList()` in the shared `AreaManagerComponent` (see
+  `CLAUDE.md`'s "Area management" section) only updates the `allAreas` array
+  feeding the list table, deliberately not touching the map's polygon
+  layers, so there's no flash on the map while the count updates in the
+  background. Only runs when `[showIncidentCount]="true"` (Filemeldingen
+  only — Bliksem's area list has no incident count to poll for). Stops
+  polling when the dialog closes (`clearInterval` in `showAreasListDialog()`
+  and `ngOnDestroy`).
 
 ### Note: count is per-incident-entry, not per real-world event
 

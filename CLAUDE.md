@@ -27,10 +27,14 @@ C:\Apps\bbqweer.eu\
 │   │   ├── pages/lightning/ — LightningComponent (lazy module) — real-time strike map
 │   │   ├── pages/file-alerts/ — FileAlertsComponent (lazy module) — traffic jam alert areas; TomTom incidents public, areas login-only
 │   │   ├── components/     — my-knmi-anychart, my-knmi-chartjs, my-knmi-table,
-│   │   │                     my-planetarium, login
+│   │   │                     my-planetarium, login, area-manager (AreaManagerComponent — shared
+│   │   │                     draw/edit/list UI for both file_areas and strike_areas, see "Area
+│   │   │                     management" below)
 │   │   ├── services/       — knmi-reports, forecast, anychart, local-storage,
 │   │   │                     stars, planetarium-calc, satellites, satellite-js,
-│   │   │                     energy-prices, solar, lightning, file-areas, tomtom
+│   │   │                     energy-prices, solar, lightning, file-areas, strike-areas,
+│   │   │                     area.types (shared Area/AreaPoint/AreaCrudService interfaces),
+│   │   │                     tomtom, ntfy
 │   │   └── layout/         — topbar, footer, layout (AppLayoutModule)
 │   └── proxy.conf.json     — deleted; not needed (environment.ts uses full localhost:3000 URL directly)
 ├── backend/                — Node.js/Express, CommonJS
@@ -38,8 +42,8 @@ C:\Apps\bbqweer.eu\
 │   ├── socket/             — blitzortung.js (WSS → Redis → Socket.IO)
 │   ├── config.ini          — Docker settings (host=mysql, port=3306) — NOT in git
 │   ├── config.local.ini    — Local dev settings (host=127.0.0.1, port=3307) — NOT in git
-│   ├── routes/             — knmi-reports, stars, satellites, auth, users, energy-prices, solar, file-areas, tomtom
-│   ├── helpers/            — mysqlpool-knmi.helper.js, server-tasks.js, tomtom.helper.js
+│   ├── routes/             — knmi-reports, stars, satellites, auth, users, energy-prices, solar, file-areas, strike-areas, tomtom, ntfy
+│   ├── helpers/            — mysqlpool-knmi.helper.js, server-tasks.js, tomtom.helper.js, ntfy.helper.js — centralized push-notification dispatch queue, see docs/ntfy-server.md "Backend integration"
 │   ├── tasks/              — knmidata-v4.js, satellites-sync.js, energy-prices-sync.js, file-area-incidents.js
 │   ├── callSyncKnmiData.js        — manual sync trigger (uses knmidata-v4)
 │   ├── callSyncEnergiePrices.js   — manual/historical energy price sync from energyzero.nl
@@ -56,7 +60,8 @@ C:\Apps\bbqweer.eu\
 │   │   ├── 07-neerslagstations.sql — 343 precipitation stations
 │   │   ├── 08-energy-prices.sql — energie_prices table
 │   │   ├── 09-datafiles-http-lastmod.sql — http_lastmod column for datafiles
-│   │   └── 10-file-areas.sql — file_areas + file_area_points tables
+│   │   ├── 10-file-areas.sql — file_areas + file_area_points tables
+│   │   └── 11-strike-areas.sql — strike_areas + strike_area_points tables (Bliksem page's own separate area set, same schema as file_areas)
 │   ├── knmi reports/       — JSON export files per dataset (versioned, import via UI)
 │   ├── fix-procedures.sql  — one-time fix: lowercase table names in stored procedures
 │   ├── migrate-uurgeg-datum-tijd.sql — one-time: rename DATUM_TIJD → DATUM_TIJD_VAN, add DATUM_TIJD_TOT (run on live DB)
@@ -190,6 +195,12 @@ Scheduled in `backend/app.js` via `node-cron`:
 | `energy-prices-sync` | `0 13-17 * * *` | Hourly electricity prices from energyzero.nl |
 | `file-area-incidents` | `*/15 * * * * *` (every 15s — `node-cron` supports an optional seconds field) | Counts TomTom incidents intersecting each `file_areas` polygon (`@turf/boolean-intersects`); read-only, no DB writes — **runs in all environments including local dev** (not gated by `config.local.ini` like the tasks above), also runs once immediately on boot. See `docs/tomtom.md`. |
 
+**Always-running tasks** (not cron-scheduled — a persistent connection, started once at boot and never "finished"): `taskStart()` is called once and `taskFinish()` is never called, so `isRunning` stays `1` indefinitely in the Taakstatus dialog; `taskError()` increments the error counter on each connection problem without resetting anything. Same pattern as wo-ict.nl's `cerbo-bridge` task.
+
+| Task | What it is | Errors counted on |
+|------|-----------|-------------------|
+| `lightning-service` | The Blitzortung WSS listener in `backend/socket/blitzortung.js` (`initBlitzortung`) — ingests lightning strikes into Redis | Redis connect failure, Redis runtime error, WSS disconnect (auto-reconnects after 5s regardless), WSS error |
+
 Manual trigger:
 ```powershell
 # Local
@@ -238,6 +249,37 @@ docker compose exec nodejs node createUser.js
 - Always commit updated JSON after editing chart config
 - See `docs/knmi-config-export-import.md`
 
+## Area management (shared component)
+`AreaManagerComponent` (`frontend/src/app/components/area-manager/`) is a shared, reusable
+component embedded in both the Bliksem and Filemeldingen pages — draws/edits/lists polygon
+"areas" on a host-provided Leaflet map. Inputs: `[map]` (the host's `L.Map` instance),
+`[areasService]` (an `AreaCrudService` — see `frontend/src/app/services/area.types.ts`),
+optional `[showIncidentCount]` (Filemeldingen only) and `(incidentClick)` output.
+
+- **Separate datasets per page** — Filemeldingen uses `FileAreasService` → `/api/file-areas`
+  → `file_areas`/`file_area_points`; Bliksem uses `StrikeAreasService` → `/api/strike-areas`
+  → `strike_areas`/`strike_area_points` (`database/init/11-strike-areas.sql`). Identical
+  schema/CRUD shape, fully independent data — an area drawn on one page does **not** appear
+  on the other.
+- Component owns: toolbar buttons (Gebieden / Gebied tekenen / draw-mode
+  Klaar-Ongedaan maken-Annuleren), areas list dialog, area click menu
+  (Bewerken/Vorm aanpassen/Verwijderen), edit dialog, save dialog, hand-rolled polygon
+  draw/reshape (click-to-add-point, draggable `L.divIcon` handles, midpoint-insert handles)
+  — ported from wo-ict.nl's openstreetmap page.
+- `:host { display: contents; }` on the component so its buttons/dialogs lay out as direct
+  flex children of the host page's `.toolbar-container` rather than nested in an extra box.
+- Host page still owns: the Leaflet map itself, page-specific overlays (TomTom incidents on
+  Filemeldingen), and any dialog driven by `(incidentClick)` (Filemeldingen's incident
+  drilldown; Bliksem doesn't use this output).
+
+**Toolbar / pill layout convention** — both map pages share the same floating-UI layout:
+- **Top-left `.toolbar-container`** (`left: 54px`, clears Leaflet's default zoom control) —
+  `<app-area-manager>` + a page-specific "Test bericht" button, both gated
+  `authService.isLoggedIn`.
+- **Top-right `.zoom-pill`** — live zoom level + Satelliet toggle (`toggleSatellite()`, swaps
+  OSM ↔ Esri World Imagery tile layers).
+- **Top-center pill** (Bliksem's strike counter pill) — `left: 50%; transform: translateX(-50%)`.
+
 ## Pages / Nav
 - KNMI Data (`/knmidata`) — weather data charts + admin (Beheer menu); chart-type buttons show text labels (Tabel/AnyChart/Chart.js) with active state highlighted
 - Weersverwachting (`/forecast`) — own lazy module (`ForecastModule`); 10-day hourly forecast via Open-Meteo (KNMI Seamless model); columns: temp, humidity, pressure, wind, rain, snow, cloud cover, radiation (GTI); location picked via Leaflet map dialog (saved in `localStorage` key `forecast_location`); Nominatim reverse geocoding resolves city name on save
@@ -255,7 +297,8 @@ docker compose exec nodejs node createUser.js
   - **RAF loop**: live canvas driven by `requestAnimationFrame` (not `setInterval(100ms)`) — smooth flash animation, auto-pauses when tab is hidden
   - **Playback timestamp chip**: `lightning-index` includes `lastMs` (origTimeMs of last strike); shown in counter pill as formatted `HH:MM:SS` or `DD-MM HH:MM:SS` with "laatste" label
   - **Playback tooling** (`tests/playbackWss.js`): `--from HH:MM:SS` or `--from YYYY-MM-DDTHH:MM:SS` (UTC) seeks into recording; prefills Redis with the 10-min window before `--from` (strikes appear correctly aged), then emits `prefill-done` → frontend reloads initial list so old strikes appear as grey before playback starts. See `docs/lightning-map.md`.
-- Filemeldingen (`/file-alerts`) — traffic jam alert areas; **TomTom incidents are public** (visible to everyone, no login — map + TomTom layer always render), **areas are login-only** (the "Gebieden" button, areas list dialog, incidentCount drill-down dialog, and the drawn polygons themselves are all hidden from anonymous visitors — not just draw/edit/reshape/delete). Reactive to login/logout via `authService.authChanged$` subscription (no page reload needed): logging in loads and draws the areas immediately, logging out removes all polygons from the map, closes any open area dialogs, cancels an in-progress draw, and stops the areas-list poll timer. Polygon drawing hand-rolled (click-to-add-point, draggable handles), ported from wo-ict.nl's openstreetmap page. Map opens centered on a fixed Rotterdam/Den Haag/Delft/Maasvlakte bbox (`TOMTOM_BBOX`) at zoom 11, with a dashed rectangle always showing the TomTom query area. TomTom incidents load automatically and stay live via 2-min upsert (no flash). Areas list shows a "Filemeldingen" column = live incident count per area (computed by the `file-area-incidents` background task, polled by the list dialog every 15s while open); clicking a count opens a detail dialog listing the actual matching incidents. See `docs/tomtom.md` for the full data pipeline.
+  - **Area management** — top-left toolbar hosts `<app-area-manager>` (bound to `StrikeAreasService` / `strike_areas`, see "Area management" above) + a **"Test bericht" button** (`authService.isLoggedIn` only) that calls `POST /api/ntfy/test` with `{type: 'lightning'}` via `NtfyService`, sending a canned test push through the shared `ntfy.helper.js` queue (topic `strikealerts`). See `docs/ntfy-server.md` "Backend integration". The strike counter pill moved to top-center to make room for the toolbar.
+- Filemeldingen (`/file-alerts`) — traffic jam alert areas; **TomTom incidents are public** (visible to everyone, no login — map + TomTom layer always render), **areas are login-only** (the toolbar's `<app-area-manager>`, areas list dialog, incidentCount drill-down dialog, and the drawn polygons themselves are all hidden from anonymous visitors). Area drawing/edit/list/delete is handled by the shared `AreaManagerComponent` (see "Area management" above) bound to `FileAreasService` / `file_areas`, with `[showIncidentCount]="true"` so its list dialog shows a live "Filemeldingen" column (computed by the `file-area-incidents` background task, polled every 15s while the dialog is open) — clicking a count emits `(incidentClick)`, which this page handles by opening a detail dialog listing the actual matching TomTom incidents (`FileAreasService.getAreaIncidents()`). Map opens centered on a fixed Rotterdam/Den Haag/Delft/Maasvlakte bbox (`TOMTOM_BBOX`) at zoom 11, with a dashed rectangle always showing the TomTom query area. TomTom incidents load automatically and stay live via 2-min upsert (no flash). Toolbar also has a **"Test bericht" button** (`authService.isLoggedIn` only) — `POST /api/ntfy/test` with `{type: 'traffic'}` (topic `filealerts`). Top-right zoom+Satelliet pill matches the Bliksem page. See `docs/tomtom.md` for the full TomTom data pipeline.
 - Taakstatus dialog — in login dropdown, polls `/api/server-tasks` every 2s while open (logged-in only)
 
 ## Solar Page — Key Details
