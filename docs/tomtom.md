@@ -55,12 +55,13 @@ Key facts confirmed from TomTom's own docs and from testing:
 - **`categoryFilter`**: comma-separated, e.g. `Accident,Jam,RoadClosed`.
 - **`key`**: API key as a query param (this is the v5 way; Orbis uses a header
   instead, see above).
-- Free tier quota: **not confirmed**. TomTom's pricing pages gave inconsistent
-  numbers across fetches (2,500/day non-tile vs 20,000/month for Flow API
-  specifically) — verify directly at
-  [docs.tomtom.com/pricing](https://docs.tomtom.com/pricing) before relying on
-  a specific number for capacity planning. The 2-minute backend cache (below)
-  keeps actual usage low regardless.
+- **Free tier quota: confirmed at 2,500 requests/month** (Traffic Incident
+  Details specifically — verified at
+  [docs.tomtom.com/pricing](https://docs.tomtom.com/pricing)'s usage
+  calculator, no credit card required). The next tier up (20K/month) costs
+  **€35/month**. See "Cost incident (2026-07-03)" below — the original
+  2-minute refresh interval blew straight through this and triggered a real
+  `InsufficientFunds` error in production.
 
 ## Fixed query area
 
@@ -85,11 +86,46 @@ than one region of interest — not built yet.
 
 **`backend/helpers/tomtom.helper.js`** — self-refreshing in-memory cache, same
 shape as the old `ndw.helper.js` was: fetches the incident list for
-`TOMTOM_BBOX` once on startup, then every 2 minutes via `setInterval`
-(independent of `config.local.ini` — this is just an in-memory cache, not a
-DB write, so it runs in local dev too). Exposes `getIncidents()` with a
-cold-start readiness gate (`whenReady()`), so the very first request after
-startup waits for the first fetch instead of getting an empty result.
+`TOMTOM_BBOX` once on startup, then on a **`node-cron` schedule**
+(`*/10 7-18 * * *`, `timezone: 'Europe/Amsterdam'`) — every 10 minutes,
+07:00–19:00 Dutch local time only (independent of `config.local.ini` — this
+is just an in-memory cache, not a DB write, so it runs in local dev too). The
+explicit `timezone` option makes node-cron evaluate the schedule against
+Amsterdam local time via the IANA tz database regardless of what timezone the
+host itself runs in (the VPS runs UTC) — this also means the window correctly
+shifts with CET/CEST DST twice a year with no manual adjustment. See "Cost
+incident" below for why the schedule looks like this. Exposes `getIncidents()`
+with a cold-start readiness gate (`whenReady()`), so the very first request
+after startup waits for the first fetch instead of getting an empty result —
+`markReady()` is called on **both** success and failure paths, so a cold
+start with zero TomTom credits still resolves (with an error state) instead
+of hanging the endpoint forever. The returned object carries `lastRefreshMs`
+(timestamp of the last *successful* fetch — untouched on failure, so it
+correctly goes stale rather than updating on every failed attempt) and
+`lastError` (message from the most recent failed attempt, cleared on the next
+success), both consumed by the frontend: `lastRefreshMs` renders as a
+"laatste update" chip, `lastError` as a red "⚠ Sync mislukt" chip with the
+full error as its tooltip — visible to **all** visitors (this data is public),
+not just via the admin-only Taakstatus dialog. Each refresh attempt is also
+instrumented with `taskStart`/`taskFinish`/`taskError` (task code
+`tomtom-incidents-sync`, error message prefixed with the TomTom error `code`
+when present, e.g. `InsufficientFunds: You do not have enough credits...`),
+so failures show up there too.
+
+### Cost incident (2026-07-03)
+
+Production logged a real `InsufficientFunds` error from TomTom. Root cause:
+the original refresh cadence was `setInterval(refreshIncidents, 2 * 60 * 1000)`
+running continuously, 24/7 — 30 requests/hour × 24h × 30 days ≈ 21,600/month,
+about **8.6x** the confirmed 2,500/month free quota. Production alone would
+exhaust an entire month's free allowance in ~3.5 days; local dev testing on
+the same API key/account added further usage on top of that.
+
+Checked the actual pricing page's usage calculator before deciding: 20K
+requests/month costs €35/month — not worth it for a feature that doesn't need
+by-the-minute freshness. Fix: 10-minute interval, restricted to 07:00–19:00
+(when traffic jams actually happen) — 12h × 6/h = 72/day × 30 ≈ 2,160/month,
+comfortably under the free quota with headroom left for local dev testing.
 
 **`backend/routes/tomtom.route.js`** — thin pass-through,
 `GET /api/tomtom/incidents`, **public** (no auth). Serves straight from the
@@ -124,9 +160,12 @@ itself, the TomTom incidents overlay below, and the incident-drilldown dialog
 toggle button (removed; incidents load automatically with the map for
 **everyone**, unlike the areas layer, which only loads for logged-in users —
 see "Auth model" below):
-- Fetches once on map init, then every 2 minutes (`TOMTOM_REFRESH_MS`,
+- Fetches once on map init, then every 10 minutes (`TOMTOM_REFRESH_MS`,
   matching the backend cache's own cadence — polling faster would just
-  re-fetch identical cached data).
+  re-fetch identical cached data). Also reads `lastRefreshMs` off each
+  response and shows it as a "laatste update" time chip in the zoom-pill
+  (top-right), same visual pattern as the Bliksem page's "laatste" strike
+  timestamp.
 - **Upserts** rather than clear-and-redraw: `tomtomIncidents`/`tomtomLayers`
   Maps keyed by `properties.id`. New incidents get added; incidents no longer
   returned get removed; incidents still present get their style/tooltip
@@ -269,9 +308,9 @@ following the `satellites-sync.js` pattern: `taskStart`/`taskProgress`/
   rather than a raw `setInterval`. Also called once immediately on boot (so
   the count isn't empty for the first 15s). Recomputing every 15s only costs
   a cheap DB read + in-memory turf checks — it does **not** make the TomTom
-  cache refresh any faster (that's still every 2 minutes, see above); it just
-  means a newly drawn/edited area's count shows up within 15s instead of
-  waiting up to the old 2-minute cadence. **Deliberately outside** the `if
+  cache refresh any faster (that's still every 10 minutes, 07:00-19:00 only,
+  see above); it just means a newly drawn/edited area's count shows up within
+  15s of the *next* TomTom refresh, not immediately. **Deliberately outside** the `if
   (!fs.existsSync('config.local.ini'))` block that disables the other sync
   tasks locally — this task only reads (DB + the already-cached TomTom
   incidents), never writes or calls an external API itself, and the frontend

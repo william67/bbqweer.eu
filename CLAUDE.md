@@ -55,7 +55,7 @@ C:\Apps\bbqweer.eu\
 │   │   ├── 02-extras.sql   — column_mapping, users, server-tasks, logfile tables
 │   │   ├── 03-column-mapping.sql — 42 column display config rows
 │   │   ├── 04-datafiles.sql — 1000 KNMI datafile rows
-│   │   ├── 05-server-tasks.sql — seed rows for knmidata-sync, satellites-sync, file-area-incidents
+│   │   ├── 05-server-tasks.sql — seed rows for knmidata-sync, satellites-sync, file-area-incidents, tomtom-incidents-sync
 │   │   ├── 06-stations.sql — 51 KNMI weather stations
 │   │   ├── 07-neerslagstations.sql — 343 precipitation stations
 │   │   ├── 08-energy-prices.sql — energie_prices table
@@ -194,6 +194,7 @@ Scheduled in `backend/app.js` via `node-cron`:
 | `satellites-sync` | `30 * * * *` | TLE sync from Celestrak |
 | `energy-prices-sync` | `0 13-17 * * *` | Hourly electricity prices from energyzero.nl |
 | `file-area-incidents` | `*/15 * * * * *` (every 15s — `node-cron` supports an optional seconds field) | Counts TomTom incidents intersecting each `file_areas` polygon (`@turf/boolean-intersects`); read-only, no DB writes — **runs in all environments including local dev** (not gated by `config.local.ini` like the tasks above), also runs once immediately on boot. See `docs/tomtom.md`. |
+| `tomtom-incidents-sync` | `*/10 7-18 * * *`, `timezone: 'Europe/Amsterdam'` | Refreshes `backend/helpers/tomtom.helper.js`'s in-memory incident cache from the TomTom API — 10 min, 07:00-19:00 Dutch local time only (DST-safe via the explicit timezone option, regardless of the VPS running UTC). Deliberately throttled to stay under TomTom's confirmed 2,500 requests/month free quota after a real `InsufficientFunds` production error — see `docs/tomtom.md` "Cost incident". Also runs once immediately on boot; **not** gated by `config.local.ini`, same reasoning as `file-area-incidents`. |
 
 **Always-running tasks** (not cron-scheduled — a persistent connection, started once at boot and never "finished"): `taskStart()` is called once and `taskFinish()` is never called, so `isRunning` stays `1` indefinitely in the Taakstatus dialog; `taskError()` increments the error counter on each connection problem without resetting anything. Same pattern as wo-ict.nl's `cerbo-bridge` task.
 

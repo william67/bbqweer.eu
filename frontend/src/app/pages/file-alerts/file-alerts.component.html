@@ -14,6 +14,15 @@
     <span class="pill-label">Zoom</span>&nbsp;<strong>{{ mapZoom }}</strong>
     <span class="divider"></span>
     <button class="sat-btn" [class.active]="showSatellite" (click)="toggleSatellite()">Satelliet</button>
+    @if (lastRefreshMs) {
+      <span class="divider"></span>
+      <span class="time-chip">{{ lastRefreshTime }}</span>
+      <span class="pill-label">laatste update</span>
+    }
+    @if (tomtomError) {
+      <span class="divider"></span>
+      <span class="error-chip" [title]="tomtomError">⚠ Sync mislukt</span>
+    }
   </div>
 
     <!-- Area incidents dialog -->

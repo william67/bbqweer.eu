@@ -34,6 +34,8 @@ export interface TomtomIncident {
 
 export interface TomtomIncidentsResponse {
     incidents: TomtomIncident[];
+    lastRefreshMs: number | null;
+    lastError: string | null;
 }
 
 @Injectable({ providedIn: 'root' })

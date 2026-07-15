@@ -7,9 +7,9 @@ import { FileArea, FileAreasService } from 'src/app/services/file-areas.service'
 import { TomtomService, TomtomIncident } from 'src/app/services/tomtom.service';
 import { NtfyService } from 'src/app/services/ntfy.service';
 
-// Matches the backend cache refresh cadence (backend/helpers/tomtom.helper.js) — polling
-// faster would just re-fetch the same cached data.
-const TOMTOM_REFRESH_MS = 2 * 60 * 1000;
+// Matches the backend cache refresh cadence (backend/helpers/tomtom.helper.js, 10 min
+// 07:00-19:00 Amsterdam time) — polling faster would just re-fetch the same cached data.
+const TOMTOM_REFRESH_MS = 10 * 60 * 1000;
 
 // iconCategory -> color, per docs/tomtom.md's confirmed category table
 const TOMTOM_CATEGORY_COLOR: Record<number, string> = {
@@ -56,6 +56,19 @@ export class FileAlertsComponent implements AfterViewInit, OnDestroy {
     map: L.Map | undefined;
     mapZoom = 11;
     showSatellite = false;
+    lastRefreshMs: number | null = null;
+    tomtomError: string | null = null;
+
+    private _formatMs(ms: number): string {
+        const d     = new Date(ms);
+        const today = new Date();
+        const time  = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const sameDay = d.getDate()     === today.getDate()     &&
+                        d.getMonth()    === today.getMonth()    &&
+                        d.getFullYear() === today.getFullYear();
+        return sameDay ? time : d.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' }) + ' ' + time;
+    }
+    get lastRefreshTime(): string { return this.lastRefreshMs ? this._formatMs(this.lastRefreshMs) : ''; }
 
     private svgRenderer = L.svg({ padding: 5 });
     private streetLayer!: L.TileLayer;
@@ -136,7 +149,11 @@ export class FileAlertsComponent implements AfterViewInit, OnDestroy {
     private loadTomtomIncidents() {
         if (!this.map) return;
         this.tomtomService.getIncidents(TOMTOM_BBOX.minLat, TOMTOM_BBOX.maxLat, TOMTOM_BBOX.minLng, TOMTOM_BBOX.maxLng).subscribe({
-            next: (response) => this.upsertTomtomIncidents(response.incidents),
+            next: (response) => {
+                this.upsertTomtomIncidents(response.incidents);
+                this.lastRefreshMs = response.lastRefreshMs;
+                this.tomtomError = response.lastError;
+            },
             error: (err) => {
                 console.error('[TOMTOM] load error:', err);
                 this.messageServiceWrapper.showMessage('error', 'Laden mislukt', err.message ?? err);
