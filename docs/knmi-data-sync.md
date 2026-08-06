@@ -222,6 +222,7 @@ docker exec -it bbqweer-nodejs node callSyncKnmiData.js --full
 
 ## Known Quirks
 
+- **Duplicate/out-of-order rows**: KNMI files can contain a preliminary + corrected revision for the same key (or out-of-order rows). `dedupeRows()` runs on parsed CSV rows before the merge, keeping the **last** occurrence (the corrected revision) and re-sorting by key.
 - **NULL vs 0**: KNMI CSV `-1` means "trace amount" — stored as `0` (via `parseSQ`/`parseRH`).
 - **Case sensitivity**: MySQL on Linux is case-sensitive for table names. All SQL in the task uses lowercase table names (`etmgeg`, `datafiles`, `logfile`, etc.).
 - **MaxListeners warning**: rapid parallel HTTPS downloads trigger a Node EventEmitter warning. Mitigated with `httpsAgent: maxSockets: 5` on the axios instance.

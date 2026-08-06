@@ -88,9 +88,7 @@ function extractStation(csvText) {
 
 function dedupeRows(rows) {
     const map = new Map();
-    for (const row of rows) {
-        if (!map.has(row.key)) map.set(row.key, row); // first occurrence wins
-    }
+    for (const row of rows) map.set(row.key, row); // last occurrence wins (KNMI corrected revision)
     return [...map.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
