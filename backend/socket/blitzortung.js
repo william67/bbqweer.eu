@@ -15,6 +15,11 @@ const TTL_MS = 10 * 60 * 1000;
 const WSS_SERVER  = 'live2.lightningmaps.org'; // live sends each bolt twice; live2 dedupes server-side
 let   wssNextPort = 443;
 
+// Watchdog — detects a "zombie" connection (TCP died without a clean close/error event,
+// e.g. after a network blip) by tracking time since the last message. The feed is global
+// and near-continuous, so >60s silence on an "open" socket means it's dead.
+const STALE_TIMEOUT_MS = 60_000;
+
 // Initial subscription message — tells server which geographic area we want
 const WSS_INIT_MSG = JSON.stringify({
     v: 24, i: {}, s: false, x: 0, w: 0, tx: 0, tw: 1, a: 4,
@@ -173,12 +178,22 @@ function startWss() {
         },
     });
 
+    let lastActivity = Date.now();
+    const watchdog = setInterval(() => {
+        if (Date.now() - lastActivity > STALE_TIMEOUT_MS) {
+            console.error(`[blitzortung] WSS stale (no data for ${STALE_TIMEOUT_MS / 1000}s), terminating and reconnecting`);
+            ws.terminate();
+        }
+    }, 15_000);
+
     ws.on('open', () => {
+        lastActivity = Date.now();
         console.log(`[blitzortung] WSS connected: ${url}`);
         ws.send(WSS_INIT_MSG);
     });
 
     ws.on('message', (data) => {
+        lastActivity = Date.now();
         try {
             const msg = JSON.parse(data.toString());
 
@@ -195,6 +210,7 @@ function startWss() {
 
             // Server requests a reconnect after a delay
             if ('reload' in msg) {
+                clearInterval(watchdog);
                 ws.removeAllListeners('close');
                 ws.close();
                 setTimeout(startWss, parseInt(msg.reload, 10) || 30_000);
@@ -214,6 +230,7 @@ function startWss() {
     });
 
     ws.on('close', () => {
+        clearInterval(watchdog);
         console.log('[blitzortung] WSS disconnected, reconnecting in 5s...');
         wssNextPort = 443;
         taskError(TASK_CODE).catch(() => {});

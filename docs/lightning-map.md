@@ -36,6 +36,7 @@ Data source: [lightningmaps.org](https://lightningmaps.org) WebSocket (Blitzortu
 - [x] Worldwide strike coverage — WSS subscription uses global bounds `[90, 180, -90, -180]`; no geographic ingestion filter; all strikes stored
 - [x] CE KPI — `strikes:ce:time` sorted set tracks BOUNDS-filtered strikes; `lightning-index` emits `ceActive`/`ceTotal`; topbar badge shows CE counts (worldwide counts go to map counter)
 - [x] All 4 map counter values computed client-side from `strikeMap` in a single RAF pass — consistent at all zoom levels
+- [x] WSS stale-connection watchdog — detects a "zombie" TCP connection (dead but no `close`/`error` event fired) via message-inactivity timeout, forces reconnect
 
 ---
 
@@ -122,6 +123,7 @@ Responsibilities:
 - `addStrike()`: write to `strikes:time` + `strikes:geo` + `strikes:data` in one `MULTI`; if `inBounds`, also write to `strikes:ce:time`
 - Emit `new-strike` to all Socket.IO clients
 - Auto-reconnect after 5s on close; `isNew: true` only on live strikes, not reconnect replay
+- Stale-connection watchdog: `setInterval` every 15s checks `Date.now() - lastActivity` (updated on every `open`/`message`); if it exceeds `STALE_TIMEOUT_MS` (60s), calls `ws.terminate()` — forces a `close` event so the normal reconnect path fires. The feed is global and near-continuous, so 60s of silence on a socket that never fired `close`/`error` means the TCP connection died silently (network blip, NAT timeout) and Node has no other way to detect it. Watchdog interval is cleared in both the `close` handler and the `reload` branch (which bypasses `close` via `removeAllListeners`) to avoid orphaned timers across reconnects.
 - Every 500ms: 4 parallel `ZCOUNT` calls → emit `lightning-index: { active, total, ceActive, ceTotal, lastMs, fromMs }` to all clients
 - Every 1s: `getDelayStats()` → emit `lightning-delay: { avg, min, max, samples }` to all clients
 - ntfy.sh optional alerts: Haversine distance check per strike; POST to topic when within `radius_km` of home and cooldown elapsed
@@ -381,6 +383,7 @@ wsUrl: ''   // same origin
 - **`app.listen` → `server.listen`** — required for Socket.IO to share the HTTP server.
 - **Double backend in local dev** — Docker `bbqweer-nodejs` + local `node app.js` both write to Redis. Stop the Docker container when running locally.
 - **NTP sync on local dev** — delay calculation uses `receivedAt - timeMs` (both from backend clock). If the host clock is unsynchronized, delay values will be wrong. Run `w32tm /resync` on Windows if seeing anomalous values.
+- **Zombie WSS connection (2026-08 production incident)** — the WSS connected successfully on 2026-07-22 and then produced zero strikes for 15 days with no `close`/`error` logged; Redis was empty and the map counter stuck at 0. lightningmaps.org itself was reachable and healthy the whole time (verified by connecting fresh from both the dev machine and the production container). Root cause: the underlying TCP connection died silently (no clean FIN/RST reached the process — likely a network blip or NAT/proxy timeout), and `ws` has no built-in way to detect a socket that's still "open" but has gone dead. Fixed by the stale-connection watchdog described above. `docker compose restart nodejs` is the immediate recovery if this happens again before a redeploy (does not require a rebuild, just forces `startWss()` to run fresh).
 
 ---
 
