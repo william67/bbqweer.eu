@@ -4,16 +4,28 @@ const pool = require('../helpers/mysqlpool-knmi.helper').promise();
 const booleanIntersects = require('@turf/boolean-intersects').default;
 const { polygon: turfPolygon } = require('@turf/helpers');
 const tomtom = require('../helpers/tomtom.helper');
+const ntfy = require('../helpers/ntfy.helper');
 const { taskStart, taskFinish, taskError, taskProgress } = require('../helpers/server-tasks');
 
 const TASK_CODE = 'file-area-incidents';
+
+const NTFY_DEDUPE_MS = 10 * 1000;
 
 // areaId -> incident count, recomputed on every run. Read via getIncidentCounts()
 // by backend/routes/file-areas.route.js.
 let counts = new Map();
 
+// When `counts` was last recomputed. Read via getLastCalculatedAt() by
+// backend/routes/file-areas.route.js.
+let lastCalculatedAt = null;
+
+// areaId -> isOngoing — alert state machine, separate from `counts`. No repeat-cadence
+// throttle needed: the task itself only recalculates every ~10 min, so every tick where
+// an area is still active is already sparse enough to notify on directly.
+const alertState = new Map();
+
 async function loadAreas() {
-    const [areaRows] = await pool.query(`SELECT id FROM file_areas WHERE active = 1`);
+    const [areaRows] = await pool.query(`SELECT id, name, notifyEnabled FROM file_areas WHERE active = 1`);
     if (areaRows.length === 0) return [];
 
     const areaIds = areaRows.map(a => a.id);
@@ -30,7 +42,9 @@ async function loadAreas() {
         pointsByArea.get(p.areaId).push([p.longitude, p.latitude]);
     });
 
-    return areaRows.map(a => ({ id: a.id, ring: pointsByArea.get(a.id) ?? [] }));
+    return areaRows.map(a => ({
+        id: a.id, name: a.name, notifyEnabled: !!a.notifyEnabled, ring: pointsByArea.get(a.id) ?? []
+    }));
 }
 
 async function loadAreaRing(areaId) {
@@ -61,6 +75,28 @@ function matchIncidents(polygon, incidents) {
     });
 }
 
+function sendAreaAlert(area, phase, count) {
+    const titles = {
+        start:  '🚗 Filemelding gestart',
+        repeat: '🚗 Filemelding actief',
+        end:    '🚗 Filemelding voorbij'
+    };
+    const messages = {
+        start:  `${count} filemeldingen in ${area.name}`,
+        repeat: `Nog steeds actief: ${count} filemeldingen in ${area.name}`,
+        end:    `Geen filemeldingen meer in ${area.name}`
+    };
+    ntfy.sendAlert({
+        topic: 'filealerts',
+        key: `file-area-${area.id}-${phase}`,
+        dedupeMs: NTFY_DEDUPE_MS,
+        title: titles[phase],
+        message: messages[phase],
+        priority: phase === 'end' ? 'default' : 'high',
+        tags: 'warning'
+    });
+}
+
 async function computeCounts(areas) {
     const incidentsResponse = await tomtom.getIncidents();
     const incidents = incidentsResponse?.incidents ?? [];
@@ -70,16 +106,40 @@ async function computeCounts(areas) {
 
     for (const area of areas) {
         const polygon = buildPolygon(area.ring);
-        next.set(area.id, matchIncidents(polygon, incidents).length);
+        const count = matchIncidents(polygon, incidents).length;
+        next.set(area.id, count);
+
+        const wasOngoing = alertState.get(area.id) ?? false;
+
+        if (area.notifyEnabled) {
+            if (count > 0 && !wasOngoing) {
+                sendAreaAlert(area, 'start', count);
+            } else if (count > 0 && wasOngoing) {
+                sendAreaAlert(area, 'repeat', count);
+            } else if (count === 0 && wasOngoing) {
+                sendAreaAlert(area, 'end', count);
+            }
+        }
+        alertState.set(area.id, count > 0);
+
         processed++;
         await taskProgress(TASK_CODE, processed);
     }
 
+    // Drop state for areas that no longer exist/are inactive
+    const activeIds = new Set(areas.map(a => a.id));
+    for (const id of alertState.keys()) if (!activeIds.has(id)) alertState.delete(id);
+
     counts = next;
+    lastCalculatedAt = new Date();
 }
 
 function getIncidentCounts() {
     return counts;
+}
+
+function getLastCalculatedAt() {
+    return lastCalculatedAt;
 }
 
 // On-demand — computed fresh per call, not cached, since this is a rarely-clicked
@@ -111,3 +171,4 @@ async function run() {
 module.exports = run;
 module.exports.getIncidentCounts = getIncidentCounts;
 module.exports.getMatchingIncidents = getMatchingIncidents;
+module.exports.getLastCalculatedAt = getLastCalculatedAt;

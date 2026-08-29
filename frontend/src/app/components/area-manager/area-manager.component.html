@@ -20,6 +20,9 @@
       <p-inputicon class="pi pi-search" />
       <input pInputText type="text" (input)="onGlobalFilter(dtAreas, $event)" placeholder="Zoeken..." class="w-full"/>
     </p-iconfield>
+    @if (showIncidentCount && allAreas[0]?.lastCalculatedAt) {
+      <div class="text-sm text-color-secondary mb-2">Laatst berekend: {{ allAreas[0].lastCalculatedAt | date:'HH:mm:ss' }}</div>
+    }
     <p-table
       #dtAreas
       styleClass="p-datatable-sm p-datatable-gridlines p-datatable-striped"
@@ -33,7 +36,7 @@
           <th [style.width]="showIncidentCount ? '45%' : '60%'">Naam</th>
           <th [style.width]="showIncidentCount ? '25%' : '40%'">Kleur</th>
           @if (showIncidentCount) {
-            <th style="width:30%">Filemeldingen</th>
+            <th style="width:30%">{{ incidentCountLabel }}</th>
           }
         </tr>
       </ng-template>
@@ -58,7 +61,20 @@
 </p-dialog>
 
 <!-- Area click menu -->
-<p-dialog header="{{ selectedArea?.name }}" [(visible)]="areaClickMenuVisible" [modal]="true" [closable]="false">
+<p-dialog [(visible)]="areaClickMenuVisible" [modal]="true" [closable]="false">
+  <ng-template pTemplate="header">
+    <div>
+      <div class="font-bold">{{ selectedArea?.name }}</div>
+      @if (showIncidentCount) {
+        <div class="text-sm text-color-secondary">
+          {{ selectedArea?.incidentCount ?? 0 }} {{ incidentCountLabel }}
+          @if (selectedArea?.lastCalculatedAt) {
+            <span> · {{ selectedArea?.lastCalculatedAt | date:'HH:mm:ss' }}</span>
+          }
+        </div>
+      }
+    </div>
+  </ng-template>
   <p>Wat wil je doen?</p>
   <ng-template pTemplate="footer">
     <p-button label="Bewerken" [text]="true" [raised]="true" (click)="onAreaEdit()" />
@@ -86,6 +102,12 @@
         <span>#{{ editAreaColor }}</span>
       </div>
     </div>
+    @if (showIncidentCount) {
+      <div class="field-checkbox">
+        <p-checkbox [(ngModel)]="editAreaNotifyEnabled" [binary]="true" inputId="editAreaNotifyEnabled"></p-checkbox>
+        <label for="editAreaNotifyEnabled" class="ml-2">Berichten versturen</label>
+      </div>
+    }
   </ng-template>
   <ng-template pTemplate="footer">
     <p-button label="Annuleren" icon="pi pi-times" [text]="true" (onClick)="editAreaDialogVisible = false"></p-button>

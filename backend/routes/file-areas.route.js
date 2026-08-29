@@ -4,7 +4,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth.middleware');
 const pool = require('../helpers/mysqlpool-knmi.helper').promise();
-const { getIncidentCounts, getMatchingIncidents } = require('../tasks/file-area-incidents');
+const { getIncidentCounts, getMatchingIncidents, getLastCalculatedAt } = require('../tasks/file-area-incidents');
 
 function calcBbox(points) {
     const lats = points.map(p => p.lat);
@@ -21,7 +21,7 @@ function calcBbox(points) {
 router.get('/', async (req, res) => {
     try {
         const [rows] = await pool.query(`
-            SELECT id, name, description, color, active, minLat, maxLat, minLng, maxLng, createdAt, updatedAt
+            SELECT id, name, description, color, active, notifyEnabled, minLat, maxLat, minLng, maxLng, createdAt, updatedAt
             FROM file_areas
             WHERE active = 1
             ORDER BY name
@@ -44,10 +44,12 @@ router.get('/', async (req, res) => {
         });
 
         const incidentCounts = getIncidentCounts();
+        const lastCalculatedAt = getLastCalculatedAt();
         const areas = rows.map(r => ({
             ...r,
             points: pointsMap.get(r.id) || [],
-            incidentCount: incidentCounts.get(r.id) ?? 0
+            incidentCount: incidentCounts.get(r.id) ?? 0,
+            lastCalculatedAt
         }));
         res.json(areas);
     } catch (err) {
@@ -92,13 +94,13 @@ router.post('/', auth, async (req, res) => {
     }
 });
 
-// PUT /api/file-areas/:id — update name/description/color
+// PUT /api/file-areas/:id — update name/description/color/notifyEnabled
 router.put('/:id', auth, async (req, res) => {
-    const { name, description, color } = req.body;
+    const { name, description, color, notifyEnabled } = req.body;
     try {
         await pool.query(`
-            UPDATE file_areas SET name = ?, description = ?, color = ? WHERE id = ?
-        `, [name, description || null, color || '#3388ff', req.params.id]);
+            UPDATE file_areas SET name = ?, description = ?, color = ?, notifyEnabled = ? WHERE id = ?
+        `, [name, description || null, color || '#3388ff', notifyEnabled === false ? 0 : 1, req.params.id]);
         const area = await getAreaById(req.params.id);
         res.json({ updatedRecord: area });
     } catch (err) {

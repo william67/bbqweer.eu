@@ -1,7 +1,9 @@
 # TomTom Traffic Incident Details
 
-Status: live in the `file-alerts` page. Read-only display so far — the
-alerting/notification loop (push to ntfy) is designed below but not built yet.
+Status: live in the `file-alerts` page. The alerting/notification loop (push
+to ntfy) is live too, as of 2026-08-29 — see "Notify on new incidents" below
+for what was actually built (a simpler per-area count state machine than the
+original per-incident-ID design this section still describes for context).
 
 ## Why TomTom (NDW was tried and removed)
 
@@ -381,64 +383,41 @@ beschrijving, vertraging — with a "Terug" button that just closes the modal
 - `FileAreasService.getAreaIncidents(id)` on the frontend, calling
   `showAreaIncidents(area)` on click.
 
-## Alerting design (not built yet)
+## Notify on new incidents (implemented 2026-08-29)
 
-Ported from the earlier NDW-based plan (`plans/ndw-data.md`, now deleted —
-its data source is gone, but this part of the design still applies, reframed
-around TomTom incident IDs instead of a speed-threshold state machine).
+The original design below (per-incident-ID Redis dedup, a separate
+`tomtom-file-alert` task) was never built. What shipped instead is simpler:
+the alert state machine lives directly inside `file-area-incidents.js`
+itself, per-area rather than per-incident-ID, in-memory rather than Redis —
+mirroring the pattern already proven in `strike-area-alerts.js`. Full details
+in `docs/ntfy-server.md` ("Backend integration" → consumers list); summary:
 
-**Goal**: notify (push to ntfy) when a `Jam`/`Accident` incident newly
-appears inside a drawn area — the piece still missing after "Per-area
-incident count" above, which only *counts* incidents, doesn't alert on them.
+- Per area: **start** alert when the intersecting-incident count goes
+  0→active, **repeat** alert on every subsequent calculation tick while it
+  stays active (no repeat-cadence throttle — the task's own ~10min
+  recalculation cadence is already sparse enough, unlike
+  `strike-area-alerts.js`'s 15s ticks, which do throttle repeats to 5min),
+  **end** alert on active→0 (fires on the very next tick — unlike
+  `strike-area-alerts.js`, TomTom counts aren't time-windowed, so there's no
+  "wait for the window to empty" delay to replicate).
+- No per-incident filtering by `iconCategory` — alerts on the raw
+  intersecting count, same granularity as the list dialog's count column.
+- Topic `filealerts`, key `file-area-{id}-{phase}`, same
+  `backend/helpers/ntfy.helper.js` queue as everything else.
+- **Experimental**: a real jam can stay "active" for hours since TomTom
+  itself decides when an incident resolves — watch for repeat-alert fatigue
+  in practice and adjust if it's too noisy.
+- **Per-area opt-in** (added same day): `file_areas.notifyEnabled` defaults
+  to `0` — pushes are off until an admin checks "Berichten versturen" on
+  that area in the edit dialog. See `docs/ntfy-server.md` "Per-area notify
+  toggle".
 
-**Backend task** — `backend/tasks/tomtom-file-alert.js`, a separate task from
-`file-area-incidents.js` above (that one just counts for display; this one
-would decide when to notify). Could reuse the same per-area intersection
-logic, filtered further to `iconCategory` 1 (Accident) or 6 (Jam) only — see
-the `RoadClosed` noise finding above for why not to alert on closures/
-roadworks by default.
-
-**Dedup/state via Redis** — same `ioredis` client pattern as
-`backend/socket/blitzortung.js:55-56` (host resolution based on
-`config.local.ini` presence, same as the MySQL pool). Key per incident:
-`tomtom:alert:<incident.properties.id>` — TomTom's own stable ID makes this
-simpler than the old NDW design (no need for a manual ok/congested state
-machine; presence/absence of the ID *is* the state):
-- **Incident ID appears for the first time**: send notification, store the ID
-  with `firstSeenAt`.
-- **Incident ID still present, >20 min since last notification**: send a
-  reminder, update `lastNotifiedAt`.
-- **Incident ID no longer in the cached list**: send a "resolved"
-  notification, clear the stored key.
-
-**Sending the notification**:
-```js
-axios.post('https://ntfy.bbqweer.eu/filealerts', message, {
-  headers: { Title: 'Filemelding', Priority: 'high', Tags: 'warning' },
-});
-```
-Requires the self-hosted ntfy server to already be running and reachable.
-
-**Task status integration** — same pattern as the other background tasks:
-- `taskStart` / `taskProgress` / `taskError` / `taskFinish` from
-  `backend/helpers/server-tasks.js`.
-- Cron registration in `backend/app.js`, inside the existing
-  `if (!fs.existsSync('config.local.ini'))` block alongside the other tasks:
-  ```js
-  const tomtomFileAlert = require('./tasks/tomtom-file-alert');
-  cron.schedule('*/2 * * * *', () => {
-      tomtomFileAlert().catch(err => console.error('tomtom-file-alert cron error:', err));
-  });
-  ```
-- Seed row in `database/init/05-server-tasks.sql`:
-  ```sql
-  ('tomtom-file-alert', 0, 'idle')
-  ```
-
-**Verification**:
-1. Dedup behavior: run the task twice in a row with a simulated ongoing
-   incident — confirm the second run does not send a duplicate notification.
-2. Task status dialog: confirm `tomtom-file-alert` shows up with
-   running/success status after a cron run.
-3. End-to-end: actually receive a test message on the ntfy app on the phone
-   when a real (or manually injected) Jam/Accident incident appears.
+Original design notes, kept for context (superseded, not implemented):
+ported from the earlier NDW-based plan (`plans/ndw-data.md`, now deleted),
+it proposed a separate `tomtom-file-alert.js` task using Redis-keyed
+per-incident-ID dedup (`tomtom:alert:<incident.properties.id>`), filtered to
+`iconCategory` 1 (Accident) / 6 (Jam) only, with its own cron schedule and
+task-status row. Rejected in favor of the simpler per-area approach above —
+reusing `strike-area-alerts.js`'s already-working pattern meant no new Redis
+key scheme, no separate task/cron entry, and no incident-category filtering
+logic to get right up front.

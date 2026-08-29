@@ -95,6 +95,20 @@ if (!fs.existsSync('config.local.ini')) {
 const cron = require('node-cron');
 const fileAreaIncidents = require('./tasks/file-area-incidents');
 fileAreaIncidents().catch(err => console.error('file-area-incidents initial run error:', err));
-cron.schedule('*/15 * * * * *', () => {
+// Offset 2 minutes after tomtom-incidents-sync's own */10 7-18 schedule (tomtom.helper.js) —
+// no point recalculating before the underlying incident cache has actually refreshed.
+cron.schedule('2,12,22,32,42,52 7-18 * * *', () => {
     fileAreaIncidents().catch(err => console.error('file-area-incidents cron error:', err));
+}, { timezone: 'Europe/Amsterdam' });
+cron.schedule('2 19 * * *', () => {
+    fileAreaIncidents().catch(err => console.error('file-area-incidents cron error:', err));
+}, { timezone: 'Europe/Amsterdam' });
+
+// strike-area-alerts — same always-on reasoning as file-area-incidents (reads Redis +
+// DB only). Runs in local dev too, so it will send real ntfy pushes there if [ntfy] is
+// configured, same as the existing lightning-proximity alert already does.
+const strikeAreaAlerts = require('./tasks/strike-area-alerts');
+strikeAreaAlerts().catch(err => console.error('strike-area-alerts initial run error:', err));
+cron.schedule('*/15 * * * * *', () => {
+    strikeAreaAlerts().catch(err => console.error('strike-area-alerts cron error:', err));
 });

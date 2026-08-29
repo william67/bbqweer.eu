@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth.middleware');
 const pool = require('../helpers/mysqlpool-knmi.helper').promise();
+const { getStrikeCounts, getLastCalculatedAt } = require('../tasks/strike-area-alerts');
 
 function calcBbox(points) {
     const lats = points.map(p => p.lat);
@@ -20,7 +21,7 @@ function calcBbox(points) {
 router.get('/', async (req, res) => {
     try {
         const [rows] = await pool.query(`
-            SELECT id, name, description, color, active, minLat, maxLat, minLng, maxLng, createdAt, updatedAt
+            SELECT id, name, description, color, active, notifyEnabled, minLat, maxLat, minLng, maxLng, createdAt, updatedAt
             FROM strike_areas
             WHERE active = 1
             ORDER BY name
@@ -42,9 +43,13 @@ router.get('/', async (req, res) => {
             pointsMap.get(p.areaId).push({ lat: p.latitude, lng: p.longitude });
         });
 
+        const strikeCounts = getStrikeCounts();
+        const lastCalculatedAt = getLastCalculatedAt();
         const areas = rows.map(r => ({
             ...r,
-            points: pointsMap.get(r.id) || []
+            points: pointsMap.get(r.id) || [],
+            incidentCount: strikeCounts.get(r.id) ?? 0,
+            lastCalculatedAt
         }));
         res.json(areas);
     } catch (err) {
@@ -77,13 +82,13 @@ router.post('/', auth, async (req, res) => {
     }
 });
 
-// PUT /api/strike-areas/:id — update name/description/color
+// PUT /api/strike-areas/:id — update name/description/color/notifyEnabled
 router.put('/:id', auth, async (req, res) => {
-    const { name, description, color } = req.body;
+    const { name, description, color, notifyEnabled } = req.body;
     try {
         await pool.query(`
-            UPDATE strike_areas SET name = ?, description = ?, color = ? WHERE id = ?
-        `, [name, description || null, color || '#3388ff', req.params.id]);
+            UPDATE strike_areas SET name = ?, description = ?, color = ?, notifyEnabled = ? WHERE id = ?
+        `, [name, description || null, color || '#3388ff', notifyEnabled === false ? 0 : 1, req.params.id]);
         const area = await getAreaById(req.params.id);
         res.json({ updatedRecord: area });
     } catch (err) {

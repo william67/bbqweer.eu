@@ -291,8 +291,8 @@ topic, so a phone can subscribe to one without the other:
 
 | Topic | Content | Producers |
 |-------|---------|-----------|
-| `filealerts`   | Traffic jam / file-area alerts | `POST /api/ntfy/test` (`type: 'traffic'`); future TomTom file-alert task |
-| `strikealerts` | Lightning proximity alerts     | `backend/socket/blitzortung.js` (`lightning-proximity`); `POST /api/ntfy/test` (`type: 'lightning'`) |
+| `filealerts`   | Traffic jam / file-area alerts | `backend/tasks/file-area-incidents.js` (`file-area-{id}-{start,repeat,end}`); `POST /api/ntfy/test` (`type: 'traffic'`) |
+| `strikealerts` | Lightning proximity alerts + per-area strike alerts | `backend/socket/blitzortung.js` (`lightning-proximity`); `backend/tasks/strike-area-alerts.js` (`strike-area-{id}-{start,repeat,end}`); `POST /api/ntfy/test` (`type: 'lightning'`) |
 
 Both topics need the same anonymous-read ACL grant on the server (see
 "Authentication" below) — `ntfy access everyone <topic> read-only` per topic.
@@ -326,16 +326,34 @@ home_lat =
 home_lon =
 radius_km =
 cooldown_min =
+topic_suffix =
 ```
 
 `base_url` is the server root (e.g. `https://ntfy.bbqweer.eu`, no topic
-suffix) — `sendAlert()` posts to `${base_url}/${topic}`. `base_url`/`token`
-are read directly by `ntfy.helper.js` (`NTFY_BASE_URL`/`NTFY_TOKEN`).
-`home_lat`/`home_lon`/`radius_km`/`cooldown_min` are read by
-`backend/socket/blitzortung.js` for the lightning-proximity feature (distance
-threshold + cooldown minutes, converted to `dedupeMs`). If `base_url` is
-empty, `sendAlert()` logs an error and no-ops instead of throwing — the app
-runs fine with ntfy unconfigured, it just doesn't send pushes.
+suffix) — `sendAlert()` posts to `${base_url}/${topic}${topic_suffix}`.
+`base_url`/`token`/`topic_suffix` are read directly by `ntfy.helper.js`
+(`NTFY_BASE_URL`/`NTFY_TOKEN`/`NTFY_TOPIC_SUFFIX`). `home_lat`/`home_lon`/
+`radius_km`/`cooldown_min` are read by `backend/socket/blitzortung.js` for
+the lightning-proximity feature (distance threshold + cooldown minutes,
+converted to `dedupeMs`). If `base_url` is empty, `sendAlert()` logs an error
+and no-ops instead of throwing — the app runs fine with ntfy unconfigured, it
+just doesn't send pushes.
+
+`topic_suffix` is appended to every topic name before publishing — e.g.
+`_dev` turns `strikealerts` into `strikealerts_dev`. Set in
+`config.local.ini` only (left empty in `config.ini`/prod), so local dev
+testing never lands on the real production topics a phone might be
+subscribed to. Under `deny-all`, the suffixed topic doesn't inherit the base
+topic's ACL grants — both are needed before it works end-to-end:
+
+```bash
+docker exec bbqweer-ntfy ntfy access alertbot strikealerts_dev write-only
+docker exec bbqweer-ntfy ntfy access everyone strikealerts_dev read-only
+```
+
+Without the `write-only` grant, `sendAlert()` still queues normally but the
+actual POST gets a 403 from ntfy — logged as a failed send, retried 3x, then
+dropped; nothing crashes.
 
 **Consumers today:**
 - `backend/socket/blitzortung.js` — `addStrike()` calls `sendAlert({ topic:
@@ -351,6 +369,47 @@ runs fine with ntfy unconfigured, it just doesn't send pushes.
   on both the Bliksem page (`type: 'lightning'`) and the Filemeldingen page
   (`type: 'traffic'`) — lets an admin confirm push delivery end-to-end
   without waiting for a real strike or traffic jam.
+- `backend/tasks/strike-area-alerts.js` — cron task (`*/15 * * * * *`,
+  always-on, same reasoning as `file-area-incidents`), computes strikes per
+  `strike_areas` polygon using `blitzortung.js`'s `getInWindow()` (Redis
+  `GEOSEARCH` bbox prefilter) + `@turf/boolean-point-in-polygon` (exact
+  filter), keeping only strikes within `ACTIVE_WINDOW_MS` (2 min) of now.
+  Per-area state machine sends a **start** alert on 0→active, a **repeat**
+  alert every `REPEAT_INTERVAL_MS` (5 min) while it stays active, and an
+  **end** alert on active→0 — the 2-minute window (not the 5-minute repeat
+  cadence) is what drives the end alert, so it tracks the real last-strike
+  time to within one ~15s tick. Message text spells out the window ("X
+  inslagen in de laatste 2 minuten in {area.name}") so it's clear the count
+  isn't a running total. The same computed count is exposed via
+  `getStrikeCounts()` and merged into `GET /api/strike-areas` as
+  `incidentCount`, shown in the Bliksem page's areas list dialog
+  (`incidentCountLabel="Inslagen (laatste 2 min)"` on `<app-area-manager>`).
+- `backend/tasks/file-area-incidents.js` — cron task (`2,12,22,32,42,52 7-18
+  * * *` + `2 19 * * *`, `Europe/Amsterdam`, offset 2 min after
+  `tomtom-incidents-sync`), same per-area state machine pattern as
+  `strike-area-alerts.js` above, added 2026-08-29. Counts TomTom incidents
+  intersecting each `file_areas` polygon (`@turf/boolean-intersects`) and
+  sends a **start** alert on 0→active, a **repeat** alert on every
+  subsequent tick while active (no time-based throttle — the task's own
+  ~10min recalculation cadence is already sparse enough, unlike strikes'
+  15s ticks), an **end** alert on active→0, firing immediately on the next
+  tick since the count isn't time-windowed. **Experimental**: unlike strikes,
+  TomTom's counts aren't time-windowed — an incident only clears when TomTom
+  itself reports it resolved, so "active" can persist for hours on a real
+  jam. Count exposed via `getIncidentCounts()`, merged into `GET
+  /api/file-areas` as `incidentCount`, shown in the Filemeldingen page's
+  areas list dialog (`incidentCountLabel="Filemeldingen"` on
+  `<app-area-manager>`).
+- **Per-area notify toggle** (added 2026-08-29): both `file_areas` and
+  `strike_areas` have a `notifyEnabled TINYINT(1) NOT NULL DEFAULT 0` column
+  (`database/init/14-area-notify-toggle.sql`) — off by default, an admin
+  opts an area in via the "Berichten versturen" checkbox in
+  `AreaManagerComponent`'s edit dialog. Both tasks' `loadAreas()` select it
+  and gate only the `sendAreaAlert()` call sites with it; the underlying
+  count/`isOngoing` state machine keeps recalculating every tick regardless,
+  so toggling on mid-active-period can surface a `repeat`/`end` push without
+  a preceding `start` — accepted as a simplification rather than adding
+  suppression logic for that edge case.
 
 ## Cost
 

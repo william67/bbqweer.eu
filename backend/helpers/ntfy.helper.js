@@ -8,16 +8,17 @@ const configFile = fs.existsSync('config.local.ini') ? 'config.local.ini' : 'con
 const config = ini.parse(fs.readFileSync(configFile, 'utf-8'));
 const ntfyCfg = config.ntfy || {};
 
-const NTFY_BASE_URL = ntfyCfg.base_url || null;
-const NTFY_TOKEN    = ntfyCfg.token || null;
+const NTFY_BASE_URL     = ntfyCfg.base_url || null;
+const NTFY_TOKEN        = ntfyCfg.token || null;
+const NTFY_TOPIC_SUFFIX = ntfyCfg.topic_suffix || '';
 
 const DRAIN_INTERVAL_MS  = 1000;
 const DEFAULT_DEDUPE_MS  = 5 * 60 * 1000;
 const MAX_ATTEMPTS       = 3;
 
-// Central queue — every alert producer (lightning proximity, TomTom file-alert task
-// once built, manual test menu) calls sendAlert() and returns immediately; the actual
-// HTTP POST to ntfy happens on the drain loop below, decoupled from the caller.
+// Central queue — every alert producer (lightning proximity, strike-area-alerts,
+// file-area-incidents, manual test menu) calls sendAlert() and returns immediately;
+// the actual HTTP POST to ntfy happens on the drain loop below, decoupled from the caller.
 const queue = [];
 const lastSentByKey = new Map();
 
@@ -37,7 +38,7 @@ function sendAlert({ topic, key, title, message, priority = 'default', tags = ''
             return;
         }
     }
-    queue.push({ topic, key, title, message, priority, tags, dedupeMs, attempts: 0 });
+    queue.push({ topic: topic + NTFY_TOPIC_SUFFIX, key, title, message, priority, tags, dedupeMs, attempts: 0 });
 }
 
 async function drainOnce() {

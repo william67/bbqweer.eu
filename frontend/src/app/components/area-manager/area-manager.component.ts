@@ -26,6 +26,7 @@ export class AreaManagerComponent implements OnChanges, OnDestroy {
     @Input() map: L.Map | null | undefined;
     @Input() areasService!: AreaCrudService;
     @Input() showIncidentCount = false;
+    @Input() incidentCountLabel = 'Filemeldingen';
     @Output() incidentClick = new EventEmitter<Area>();
 
     private areasLayerGroup: L.LayerGroup = L.layerGroup();
@@ -38,6 +39,7 @@ export class AreaManagerComponent implements OnChanges, OnDestroy {
     areasListDialogVisible = false;
     loadingAreas = false;
     private areasListRefreshTimer: any;
+    private areaClickMenuRefreshTimer: any;
 
     selectedArea: Area | null = null;
     areaClickMenuVisible = false;
@@ -45,6 +47,7 @@ export class AreaManagerComponent implements OnChanges, OnDestroy {
     editAreaName = '';
     editAreaDescription = '';
     editAreaColor = '3388ff';
+    editAreaNotifyEnabled = true;
     savingEditArea = false;
 
     areaEditMode = false;
@@ -92,6 +95,8 @@ export class AreaManagerComponent implements OnChanges, OnDestroy {
             this.allAreas = [];
             this.areasListDialogVisible = false;
             clearInterval(this.areasListRefreshTimer);
+            this.areaClickMenuVisible = false;
+            clearInterval(this.areaClickMenuRefreshTimer);
             if (this.areaEditMode) this.cancelAreaEdit();
         }
     }
@@ -150,6 +155,7 @@ export class AreaManagerComponent implements OnChanges, OnDestroy {
 
     onAreaReshape() {
         this.areaClickMenuVisible = false;
+        clearInterval(this.areaClickMenuRefreshTimer);
         const area = this.selectedArea!;
         this.areaEditIsNew = false;
         this.areaEditAreaId = area.id!;
@@ -351,18 +357,43 @@ export class AreaManagerComponent implements OnChanges, OnDestroy {
     onAreaClick(id: number) {
         if (this.areaEditMode || !this.authService.isLoggedIn) return;
         this.selectedArea = this.loadedAreaData.get(id) ?? null;
-        if (this.selectedArea) this.areaClickMenuVisible = true;
+        if (this.selectedArea) {
+            this.areaClickMenuVisible = true;
+            if (this.showIncidentCount) {
+                this.refreshSelectedAreaCount(id);
+                this.areaClickMenuRefreshTimer = setInterval(() => this.refreshSelectedAreaCount(id), AREAS_LIST_REFRESH_MS);
+            }
+        }
+    }
+
+    // Keeps the click-menu's count/timestamp live while the dialog is open — same
+    // cadence and endpoint as refreshAreasList(), but only patches the one selected
+    // area rather than the whole list.
+    private refreshSelectedAreaCount(id: number) {
+        this.areasService.getAreas().subscribe({
+            next: (areas: Area[]) => {
+                const match = areas.find(a => a.id === id);
+                if (match && this.selectedArea?.id === id) {
+                    this.selectedArea.incidentCount = match.incidentCount;
+                    this.selectedArea.lastCalculatedAt = match.lastCalculatedAt;
+                }
+            },
+            error: (err) => console.error('[AREA-MANAGER] selected area refresh error:', err)
+        });
     }
 
     onAreaMenuCancel() {
         this.areaClickMenuVisible = false;
+        clearInterval(this.areaClickMenuRefreshTimer);
     }
 
     onAreaEdit() {
         this.areaClickMenuVisible = false;
+        clearInterval(this.areaClickMenuRefreshTimer);
         this.editAreaName = this.selectedArea!.name;
         this.editAreaDescription = this.selectedArea!.description ?? '';
         this.editAreaColor = (this.selectedArea!.color ?? '#3388ff').replace('#', '');
+        this.editAreaNotifyEnabled = this.selectedArea!.notifyEnabled !== false && this.selectedArea!.notifyEnabled !== 0;
         this.editAreaDialogVisible = true;
     }
 
@@ -372,7 +403,8 @@ export class AreaManagerComponent implements OnChanges, OnDestroy {
         this.areasService.updateArea(this.selectedArea!.id!, {
             name: this.editAreaName,
             description: this.editAreaDescription || null,
-            color: '#' + this.editAreaColor
+            color: '#' + this.editAreaColor,
+            notifyEnabled: this.editAreaNotifyEnabled
         }).subscribe({
             next: () => {
                 this.savingEditArea = false;
@@ -389,6 +421,7 @@ export class AreaManagerComponent implements OnChanges, OnDestroy {
 
     onAreaDelete() {
         this.areaClickMenuVisible = false;
+        clearInterval(this.areaClickMenuRefreshTimer);
         this.areasService.deleteArea(this.selectedArea!.id!).subscribe({
             next: () => {
                 this.selectedArea = null;
@@ -436,6 +469,7 @@ export class AreaManagerComponent implements OnChanges, OnDestroy {
     ngOnDestroy(): void {
         this.clearAreaEditMode();
         clearInterval(this.areasListRefreshTimer);
+        clearInterval(this.areaClickMenuRefreshTimer);
         this.authSub?.unsubscribe();
         if (this.map && this.mapInitialized) {
             this.map.off('click', this.mapClickHandler);

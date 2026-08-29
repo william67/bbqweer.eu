@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@turf/boolean-intersects": "^7.3.5",
+    "@turf/boolean-point-in-polygon": "^7.4.0",
     "@turf/helpers": "^7.3.5",
     "adm-zip": "^0.5.10",
     "axios": "^1.6.8",

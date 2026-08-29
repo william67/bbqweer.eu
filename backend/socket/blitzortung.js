@@ -323,4 +323,4 @@ function initSocketBlitzortung(socket) {
     });
 }
 
-module.exports = { initBlitzortung, initSocketBlitzortung };
+module.exports = { initBlitzortung, initSocketBlitzortung, getInWindow };

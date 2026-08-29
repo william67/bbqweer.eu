@@ -10,6 +10,8 @@ export interface Area {
     active?: number;
     points: AreaPoint[];
     incidentCount?: number;
+    lastCalculatedAt?: string | null;
+    notifyEnabled?: number | boolean;
 }
 
 export interface AreaCrudService {

@@ -5,7 +5,7 @@
   <!-- Toolbar — top-left, consistent with Filemeldingen page -->
   <div class="toolbar-container">
     @if (authService.isLoggedIn) {
-      <app-area-manager [map]="map" [areasService]="areasService"></app-area-manager>
+      <app-area-manager [map]="map" [areasService]="areasService" [showIncidentCount]="true" incidentCountLabel="Inslagen (laatste 2 min)"></app-area-manager>
       <p-button (click)="sendTestMessage()" icon="pi pi-send" label="Test bericht" severity="secondary"></p-button>
     }
   </div>

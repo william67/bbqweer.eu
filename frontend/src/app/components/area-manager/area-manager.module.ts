@@ -8,6 +8,7 @@ import { InputTextModule } from 'primeng/inputtext';
 import { ColorPickerModule } from 'primeng/colorpicker';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
+import { CheckboxModule } from 'primeng/checkbox';
 import { AreaManagerComponent } from './area-manager.component';
 
 @NgModule({
@@ -22,6 +23,7 @@ import { AreaManagerComponent } from './area-manager.component';
         ColorPickerModule,
         IconFieldModule,
         InputIconModule,
+        CheckboxModule,
     ],
     exports: [AreaManagerComponent]
 })
