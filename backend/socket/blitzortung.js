@@ -7,7 +7,7 @@ const ini       = require('ini');
 const { taskStart, taskError } = require('../helpers/server-tasks');
 const ntfy      = require('../helpers/ntfy.helper');
 
-const TASK_CODE = 'lightning-service';
+const TASK_CODE = 'blitzortung-service';
 
 const BOUNDS = { latMin: 40.0, latMax: 59.0, lonMin: -12.0, lonMax: 30.0 };
 const TTL_MS = 10 * 60 * 1000;
@@ -86,7 +86,7 @@ const STREAM_ERROR_DEDUPE_MS = 60 * 60 * 1000;
 function sendStreamProblemAlert(detail) {
     ntfy.sendAlert({
         topic: 'servererrors',
-        key: 'lightning-service-error',
+        key: 'blitzortung-service-error',
         dedupeMs: STREAM_ERROR_DEDUPE_MS,
         title: '🔴 bbqweer.eu — Bliksem stream probleem',
         message: detail,

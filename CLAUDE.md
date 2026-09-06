@@ -64,7 +64,8 @@ C:\Apps\bbqweer.eu\
 │   │   ├── 11-strike-areas.sql — strike_areas + strike_area_points tables (Bliksem page's own separate area set, same schema as file_areas)
 │   │   ├── 12-new-stations-2026-08-07.sql — KNMI stations Horst (392), Hoornsterzwaag (92), Simonshaven (485)
 │   │   ├── 13-strike-area-alerts-task.sql — seed row for strike-area-alerts
-│   │   └── 14-area-notify-toggle.sql — notifyEnabled column on file_areas + strike_areas
+│   │   ├── 14-area-notify-toggle.sql — notifyEnabled column on file_areas + strike_areas
+│   │   └── 15-rename-lightning-service-task.sql — renames lightning-service task to blitzortung-service
 │   ├── knmi reports/       — JSON export files per dataset (versioned, import via UI)
 │   ├── fix-procedures.sql  — one-time fix: lowercase table names in stored procedures
 │   ├── migrate-uurgeg-datum-tijd.sql — one-time: rename DATUM_TIJD → DATUM_TIJD_VAN, add DATUM_TIJD_TOT (run on live DB)
@@ -200,11 +201,11 @@ Scheduled in `backend/app.js` via `node-cron`:
 | `tomtom-incidents-sync` | `*/10 7-18 * * *`, `timezone: 'Europe/Amsterdam'` | Refreshes `backend/helpers/tomtom.helper.js`'s in-memory incident cache from the TomTom API — 10 min, 07:00-19:00 Dutch local time only (DST-safe via the explicit timezone option, regardless of the VPS running UTC). Deliberately throttled to stay under TomTom's confirmed 2,500 requests/month free quota after a real `InsufficientFunds` production error — see `docs/tomtom.md` "Cost incident". Also runs once immediately on boot; **not** gated by `config.local.ini`, same reasoning as `file-area-incidents`. |
 | `strike-area-alerts` | `*/15 * * * * *` (every 15s) | Counts recent lightning strikes (last `ACTIVE_WINDOW_MS`=2min) intersecting each `strike_areas` polygon, via `blitzortung.js`'s `getInWindow()` (Redis GEOSEARCH bbox prefilter) + `@turf/boolean-point-in-polygon` (exact filter). Sends a start/repeat/end ntfy push (`strikealerts` topic) per area via a per-area in-memory state machine — start on 0→active, repeat every 5min while active, end on active→0 (driven by the 2-min window emptying, not the repeat cadence). Count exposed via `getStrikeCounts()`, merged into `GET /api/strike-areas` as `incidentCount`. **Runs in all environments including local dev** (not gated by `config.local.ini`) — same as `file-area-incidents`, so it will send real ntfy pushes locally too if `[ntfy]` is configured. See `docs/ntfy-server.md`. |
 
-**Always-running tasks** (not cron-scheduled — a persistent connection, started once at boot and never "finished"): `taskStart()` is called once and `taskFinish()` is never called, so `isRunning` stays `1` indefinitely in the Taakstatus dialog; `taskError()` increments the error counter on each connection problem without resetting anything. Same pattern as wo-ict.nl's `cerbo-bridge` task. Since `taskFinish()` never fires, these tasks are outside the generic `servererrors` ntfy hook (see `docs/ntfy-server.md`) — `lightning-service` gets its own targeted, heavily-deduped (1/hour) alert instead, wired directly into `blitzortung.js`'s error handlers.
+**Always-running tasks** (not cron-scheduled — a persistent connection, started once at boot and never "finished"): `taskStart()` is called once and `taskFinish()` is never called, so `isRunning` stays `1` indefinitely in the Taakstatus dialog; `taskError()` increments the error counter on each connection problem without resetting anything. Same pattern as wo-ict.nl's `cerbo-bridge` task. Since `taskFinish()` never fires, these tasks are outside the generic `servererrors` ntfy hook (see `docs/ntfy-server.md`) — `blitzortung-service` gets its own targeted, heavily-deduped (1/hour) alert instead, wired directly into `blitzortung.js`'s error handlers.
 
 | Task | What it is | Errors counted on |
 |------|-----------|-------------------|
-| `lightning-service` | The Blitzortung WSS listener in `backend/socket/blitzortung.js` (`initBlitzortung`) — ingests lightning strikes into Redis | Redis connect failure, Redis runtime error, WSS disconnect (auto-reconnects after 5s regardless), WSS error |
+| `blitzortung-service` | The Blitzortung WSS listener in `backend/socket/blitzortung.js` (`initBlitzortung`) — ingests lightning strikes into Redis. Named to match wo-ict.nl's own `-service` naming convention for this kind of always-running listener (`database/init/15-rename-lightning-service-task.sql` renamed it from `lightning-service`) — see `c:\Apps\dev-standards\backend\server-monitoring.md`. | Redis connect failure, Redis runtime error, WSS disconnect (auto-reconnects after 5s regardless), WSS error |
 
 Manual trigger:
 ```powershell
@@ -414,6 +415,7 @@ Read the relevant file before writing code in that domain:
 - Location picker:     c:\Apps\dev-standards\frontend\location-picker.md
 - Socket.IO / live data: c:\Apps\dev-standards\frontend\live-data-socketio.md
 - Task monitoring:     c:\Apps\dev-standards\backend\task-monitoring.md
+- Server/process monitoring + ntfy alerting: c:\Apps\dev-standards\backend\server-monitoring.md
 
 ### Deviations from central standard
 

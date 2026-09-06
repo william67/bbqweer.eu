@@ -308,7 +308,7 @@ so a phone can subscribe to one without the other:
 |-------|---------|-----------|
 | `filealerts`   | Traffic jam / file-area alerts | `backend/tasks/file-area-incidents.js` (`file-area-{id}-{start,repeat,end}`); `POST /api/ntfy/test` (`type: 'traffic'`) |
 | `strikealerts` | Lightning proximity alerts + per-area strike alerts | `backend/socket/blitzortung.js` (`lightning-proximity`); `backend/tasks/strike-area-alerts.js` (`strike-area-{id}-{start,repeat,end}`); `POST /api/ntfy/test` (`type: 'lightning'`) |
-| `servererrors` | Cross-project server/task error alerts (as of 2026-09-06) | `backend/helpers/server-tasks.js` (`taskFinish()` on `status: 'error'`, key `task-error-{taskCode}`) — covers every one-shot background task (`knmidata-v4`, `satellites-sync`, `energy-prices-sync`, `file-area-incidents`, `tomtom-incidents-sync`, `strike-area-alerts`); `backend/socket/blitzortung.js` (`lightning-service-error`, for the always-running WSS/Redis stream — see below); `POST /api/ntfy/test` (`type: 'server'`); **also shared with wo-ict.nl**'s own independent copy of `ntfy.helper.js` — see "Shared across projects" above. |
+| `servererrors` | Cross-project server/task error alerts (as of 2026-09-06) | `backend/helpers/server-tasks.js` (`taskFinish()` on `status: 'error'`, key `task-error-{taskCode}`) — covers every one-shot background task (`knmidata-v4`, `satellites-sync`, `energy-prices-sync`, `file-area-incidents`, `tomtom-incidents-sync`, `strike-area-alerts`); `backend/socket/blitzortung.js` (`blitzortung-service-error`, for the always-running WSS/Redis stream — see below); `POST /api/ntfy/test` (`type: 'server'`); **also shared with wo-ict.nl**'s own independent copy of `ntfy.helper.js` — see "Shared across projects" above. |
 
 All topics need the same anonymous-read ACL grant on the server (see
 "Authentication" below) — `ntfy access everyone <topic> read-only` per topic.
@@ -434,13 +434,17 @@ dropped; nothing crashes.
   otherwise flood the topic if stuck failing). This is a single shared hook,
   so it automatically covers every one-shot task that calls `taskFinish()`
   on failure — no per-task wiring needed. It does **not** cover
-  `lightning-service` (the always-running WSS/Redis listener in
-  `blitzortung.js`), which by design never calls `taskFinish()` (see
-  "Background Tasks" → "Always-running tasks" in CLAUDE.md); that task gets
-  its own targeted alert instead — `sendStreamProblemAlert()` in
-  `blitzortung.js`, called from all 4 of its error paths (Redis error, Redis
-  connect failure, WSS disconnect, WSS error) with one shared key
-  (`lightning-service-error`) deduped to once per hour, since the WSS
+  `blitzortung-service` (the always-running WSS/Redis listener in
+  `blitzortung.js`, renamed from `lightning-service` in
+  `database/init/15-rename-lightning-service-task.sql` to match wo-ict.nl's
+  own `-service` naming convention — see
+  `c:\Apps\dev-standards\backend\server-monitoring.md`), which by design
+  never calls `taskFinish()` (see "Background Tasks" → "Always-running
+  tasks" in CLAUDE.md); that task gets its own targeted alert instead —
+  `sendStreamProblemAlert()` in `blitzortung.js`, called from all 4 of its
+  error paths (Redis error, Redis connect failure, WSS disconnect, WSS
+  error) with one shared key (`blitzortung-service-error`) deduped to once
+  per hour, since the WSS
   auto-reconnects every 5s and would otherwise spam on a routine hiccup.
   Manually testable via the Taakstatus dialog's **"Test bericht" button**
   (`POST /api/ntfy/test`, `{type: 'server'}`).
