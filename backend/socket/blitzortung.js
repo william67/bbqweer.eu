@@ -77,9 +77,28 @@ let   firstStrikeMs  = 0;
 
 if (ntfyEnabled) console.log(`[blitzortung] ntfy alerts enabled — home ${HOME_LAT},${HOME_LON} radius ${RADIUS_KM}km cooldown ${COOLDOWN_MS / 60_000}min`);
 
+// Stream-health alerts — separate from the generic task-error mechanism in
+// server-tasks.js, since this task never calls taskFinish() (see TASK_CODE's
+// "always-running" doc in CLAUDE.md) and the WSS auto-reconnects every 5s, so
+// per-event pushes would spam on any routine hiccup. One shared dedupe key/hour
+// instead: enough to know the stream is having trouble without flooding servererrors.
+const STREAM_ERROR_DEDUPE_MS = 60 * 60 * 1000;
+function sendStreamProblemAlert(detail) {
+    ntfy.sendAlert({
+        topic: 'servererrors',
+        key: 'lightning-service-error',
+        dedupeMs: STREAM_ERROR_DEDUPE_MS,
+        title: '🔴 bbqweer.eu — Bliksem stream probleem',
+        message: detail,
+        priority: 'high',
+        tags: 'warning'
+    });
+}
+
 redis.on('error', (err) => {
     console.error('[blitzortung] Redis error:', err.message);
     taskError(TASK_CODE).catch(() => {});
+    sendStreamProblemAlert(`Redis fout: ${err.message}`);
 });
 
 let io = null;
@@ -234,12 +253,14 @@ function startWss() {
         console.log('[blitzortung] WSS disconnected, reconnecting in 5s...');
         wssNextPort = 443;
         taskError(TASK_CODE).catch(() => {});
+        sendStreamProblemAlert('WSS verbinding verbroken, herverbinden over 5s');
         setTimeout(startWss, 5000);
     });
 
     ws.on('error', (err) => {
         console.error('[blitzortung] WSS error:', err.message);
         taskError(TASK_CODE).catch(() => {});
+        sendStreamProblemAlert(`WSS fout: ${err.message}`);
     });
 }
 
@@ -296,6 +317,7 @@ function initBlitzortung(socketIo) {
     }).catch(err => {
         console.error('[blitzortung] Redis connect failed:', err.message);
         taskError(TASK_CODE).catch(() => {});
+        sendStreamProblemAlert(`Redis verbinding mislukt: ${err.message}`);
     });
 }
 

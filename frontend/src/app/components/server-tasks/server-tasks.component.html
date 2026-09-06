@@ -1,10 +1,15 @@
 <p-dialog
-    header="Taakstatus"
     [(visible)]="visible"
     [modal]="true"
     [style]="{'width':'900px'}"
     [closable]="true"
     (onHide)="close()">
+    <ng-template pTemplate="header">
+        <div class="flex align-items-center justify-content-between w-full pr-2">
+            <span class="p-dialog-title">Taakstatus</span>
+            <p-button (click)="sendTestMessage()" icon="pi pi-send" label="Test bericht" severity="secondary" [text]="true"></p-button>
+        </div>
+    </ng-template>
 
     <p-table [value]="tasks" styleClass="p-datatable-sm p-datatable-gridlines">
         <ng-template pTemplate="header">

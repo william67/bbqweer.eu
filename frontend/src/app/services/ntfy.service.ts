@@ -12,7 +12,7 @@ export class NtfyService {
 
     constructor(private http: HttpClient, private authService: AuthService) {}
 
-    sendTest(type: 'traffic' | 'lightning'): Observable<{ queued: boolean }> {
+    sendTest(type: 'traffic' | 'lightning' | 'server'): Observable<{ queued: boolean }> {
         return this.http.post<{ queued: boolean }>(`${this.baseUrl}/test`, { type }, { headers: this.headers });
     }
 }

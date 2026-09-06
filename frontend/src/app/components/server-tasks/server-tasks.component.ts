@@ -1,5 +1,7 @@
 import { Component, OnDestroy } from '@angular/core';
 import { ServerTasksService } from 'src/app/services/server-tasks.service';
+import { NtfyService } from 'src/app/services/ntfy.service';
+import { MessageServiceWrapper } from 'src/app/services/message.service';
 
 @Component({
     selector: 'app-server-tasks',
@@ -12,7 +14,11 @@ export class ServerTasksComponent implements OnDestroy {
     tasks: any[] = [];
     private pollTimer: any;
 
-    constructor(private svc: ServerTasksService) {}
+    constructor(
+        private svc: ServerTasksService,
+        private ntfyService: NtfyService,
+        private messageServiceWrapper: MessageServiceWrapper
+    ) {}
 
     open() {
         this.visible = true;
@@ -49,6 +55,13 @@ export class ServerTasksComponent implements OnDestroy {
 
     statusLabel(t: any): string {
         return t.isRunning ? 'running' : (t.lastStatus ?? '—');
+    }
+
+    sendTestMessage() {
+        this.ntfyService.sendTest('server').subscribe({
+            next: () => this.messageServiceWrapper.showMessage('success', 'Verstuurd', 'Testbericht ingepland'),
+            error: (err) => this.messageServiceWrapper.showMessage('error', 'Mislukt', err.message ?? err)
+        });
     }
 
     ngOnDestroy() {

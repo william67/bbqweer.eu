@@ -6,6 +6,21 @@ first consumer is the file-alert system (see `docs/tomtom.md`'s "Alerting
 design" section), but the server itself is set up and tested independently
 of that.
 
+**Shared across projects** (as of 2026-09-06): this same `bbqweer-ntfy`
+container/domain is also used by wo-ict.nl, which copied
+`backend/helpers/ntfy.helper.js` as its own independent file rather than a
+shared package — a fix or change made here does **not** automatically apply
+there, and vice versa. Most topics are project-exclusive (see the table
+below) so one project's traffic/outage never shows up in another's
+subscription — the one exception is `servererrors`, deliberately shared:
+both projects push generic task/server-health failures onto it (each
+message is prefixed with the project name, e.g. "bbqweer.eu", so the source
+is always clear on a combined feed). `NTFY_AUTH_DEFAULT_ACCESS: deny-all`
+means a brand-new topic is invisible to everyone until explicitly granted,
+so onboarding a new project/topic always means running `ntfy access` grants
+like the ones below — see "Config" for the `topic_suffix` pattern used for
+per-project dev/prod isolation too.
+
 ## Why self-host instead of a PWA web push or ntfy.sh
 
 - No VAPID keys, no service worker to maintain, no iOS instability of
@@ -286,15 +301,16 @@ Bearer-token handling and cooldown/dedup logic across every alert producer
 (lightning proximity today; the TomTom file-alert task and any future
 producer later).
 
-**Two separate topics/streams** — each alert category gets its own ntfy
-topic, so a phone can subscribe to one without the other:
+**Separate topics/streams** — each alert category gets its own ntfy topic,
+so a phone can subscribe to one without the other:
 
 | Topic | Content | Producers |
 |-------|---------|-----------|
 | `filealerts`   | Traffic jam / file-area alerts | `backend/tasks/file-area-incidents.js` (`file-area-{id}-{start,repeat,end}`); `POST /api/ntfy/test` (`type: 'traffic'`) |
 | `strikealerts` | Lightning proximity alerts + per-area strike alerts | `backend/socket/blitzortung.js` (`lightning-proximity`); `backend/tasks/strike-area-alerts.js` (`strike-area-{id}-{start,repeat,end}`); `POST /api/ntfy/test` (`type: 'lightning'`) |
+| `servererrors` | Cross-project server/task error alerts (as of 2026-09-06) | `backend/helpers/server-tasks.js` (`taskFinish()` on `status: 'error'`, key `task-error-{taskCode}`) — covers every one-shot background task (`knmidata-v4`, `satellites-sync`, `energy-prices-sync`, `file-area-incidents`, `tomtom-incidents-sync`, `strike-area-alerts`); `backend/socket/blitzortung.js` (`lightning-service-error`, for the always-running WSS/Redis stream — see below); `POST /api/ntfy/test` (`type: 'server'`); **also shared with wo-ict.nl**'s own independent copy of `ntfy.helper.js` — see "Shared across projects" above. |
 
-Both topics need the same anonymous-read ACL grant on the server (see
+All topics need the same anonymous-read ACL grant on the server (see
 "Authentication" below) — `ntfy access everyone <topic> read-only` per topic.
 
 **`backend/helpers/ntfy.helper.js`** — `sendAlert({ topic, key, title,
@@ -410,6 +426,24 @@ dropped; nothing crashes.
   so toggling on mid-active-period can surface a `repeat`/`end` push without
   a preceding `start` — accepted as a simplification rather than adding
   suppression logic for that edge case.
+- **Task/server-error alerts** (added 2026-09-06): `backend/helpers/server-tasks.js`'s
+  `taskFinish(taskCode, status, message)` pushes to `servererrors` whenever
+  `status === 'error'` — title "🔴 bbqweer.eu — Taak fout", body
+  `{taskCode}: {message}`, key `task-error-{taskCode}`, deduped 15 min per
+  task (some tasks, e.g. `strike-area-alerts`, run every 15s and would
+  otherwise flood the topic if stuck failing). This is a single shared hook,
+  so it automatically covers every one-shot task that calls `taskFinish()`
+  on failure — no per-task wiring needed. It does **not** cover
+  `lightning-service` (the always-running WSS/Redis listener in
+  `blitzortung.js`), which by design never calls `taskFinish()` (see
+  "Background Tasks" → "Always-running tasks" in CLAUDE.md); that task gets
+  its own targeted alert instead — `sendStreamProblemAlert()` in
+  `blitzortung.js`, called from all 4 of its error paths (Redis error, Redis
+  connect failure, WSS disconnect, WSS error) with one shared key
+  (`lightning-service-error`) deduped to once per hour, since the WSS
+  auto-reconnects every 5s and would otherwise spam on a routine hiccup.
+  Manually testable via the Taakstatus dialog's **"Test bericht" button**
+  (`POST /api/ntfy/test`, `{type: 'server'}`).
 
 ## Cost
 

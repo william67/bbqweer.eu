@@ -1,6 +1,11 @@
 'use strict';
 
 const db = require('./mysqlpool-knmi.helper').promise();
+const ntfy = require('./ntfy.helper');
+
+// Cooldown per taskCode — tasks on tight schedules (e.g. strike-area-alerts every 15s)
+// would otherwise flood the shared servererrors topic if stuck failing.
+const TASK_ERROR_DEDUPE_MS = 15 * 60 * 1000;
 
 async function taskStart(taskCode, progressTotal = null) {
     await db.execute(
@@ -33,6 +38,18 @@ async function taskFinish(taskCode, status, message = null) {
          WHERE taskCode=?`,
         [status, message ? message.slice(0, 500) : null, taskCode]
     );
+
+    if (status === 'error') {
+        ntfy.sendAlert({
+            topic: 'servererrors',
+            key: `task-error-${taskCode}`,
+            dedupeMs: TASK_ERROR_DEDUPE_MS,
+            title: '🔴 bbqweer.eu — Taak fout',
+            message: `${taskCode}: ${message ?? 'onbekende fout'}`,
+            priority: 'high',
+            tags: 'warning'
+        });
+    }
 }
 
 module.exports = { taskStart, taskProgress, taskFinish, taskError };
