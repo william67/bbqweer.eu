@@ -139,8 +139,13 @@ Before touching production: run the `ntfy` service locally via the
 `http://localhost:<mapped port>` (temporarily map a port for local testing,
 not part of the production config).
 
+`ntfy` is pinned to the `donotstart` Compose profile in `docker-compose.local.yml`
+(so a bare `docker compose up -d` never starts it locally — local dev talks to the
+real `ntfy.bbqweer.eu` instead, see `CLAUDE.md`'s "Full Docker local" section), so
+starting it here needs the profile explicitly activated:
+
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --no-build ntfy
+docker compose -f docker-compose.yml -f docker-compose.local.yml --profile donotstart up -d --no-build ntfy
 ```
 
 Send a test message:

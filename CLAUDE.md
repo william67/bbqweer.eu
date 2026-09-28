@@ -116,14 +116,19 @@ cd frontend && ng serve --open    # proxies /api/* to localhost:3000, live reloa
 ### Full Docker local (Stage 2 — no HTTPS)
 Uses `docker-compose.local.yml` override — HTTP only, no SSL certs needed.
 
+**Not needed for normal day-to-day dev** (see "Claude testing convention" above — that's `nodemon`+`ng serve` directly, only `mysql`+`redis` need to be running). `nodejs`, `nginx`, `certbot`, and `ntfy` are all pinned to a `donotstart` Compose profile in `docker-compose.local.yml` specifically so a bare `docker compose up -d` (or Docker Desktop's "Start all") never accidentally brings them up — `restart: unless-stopped` alone only protects against auto-restart *after* a manual stop, not against a future `up -d` starting them fresh. Starting them for real requires explicitly activating the profile:
+
 ```powershell
 # Build with timestamp, deploy, restore placeholder (run from project root)
 node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts',ts=new Date().toISOString().replace('T',' ').substring(0,19);fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('BUILD_TIME_PLACEHOLDER',ts));console.log('Stamped:',ts);" && cd frontend && ng build --configuration=production && node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
 
-# Restart nginx with local override (HTTP only, no certs)
+# Rebuild + start nodejs (stale between uses — rebuild picks up current code) and nginx
+# with the local override (HTTP only, no certs). --profile activates the donotstart-gated services.
 cd c:/Apps/bbqweer.eu
-docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --no-build nginx
+docker compose -f docker-compose.yml -f docker-compose.local.yml --profile donotstart up -d --build nodejs nginx
 ```
+
+**Before starting `nodejs` this way**: `backend/config.ini` (bind-mounted into the container) currently has the *same* TomTom API key and ntfy token/topics as production, with no `topic_suffix` — unlike `config.local.ini`, which has `topic_suffix = _dev` for exactly this reason. Starting `nodejs` here means its cron tasks run for real against the real TomTom quota, and any error pushes a real, production-indistinguishable alert to the shared `servererrors`/`filealerts`/`strikealerts` topics. Add a `topic_suffix` to this `config.ini` before relying on Stage 2 regularly, or accept the risk for a one-off test.
 
 ### Hetzner VPS (Stage 3 — HTTPS)
 Uses `docker-compose.yml` only — nginx.conf has SSL, certs at `/opt/bbqweer/certbot_certs`.
