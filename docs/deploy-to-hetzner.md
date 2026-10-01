@@ -290,11 +290,13 @@ server {
       - ./frontend/dist/frontend/browser:/usr/share/nginx/html:ro
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - /opt/bbqweer/certbot_certs:/etc/letsencrypt:ro   # bind mount — certs are on host
+      - /opt/bbqweer/certbot_www:/var/www/certbot:ro     # ACME webroot challenge files
 
   certbot:
     image: certbot/certbot
     volumes:
       - /opt/bbqweer/certbot_certs:/etc/letsencrypt
+      - /opt/bbqweer/certbot_www:/var/www/certbot
     entrypoint: >
       sh -c "trap exit TERM;
              while :; do certbot renew --quiet; sleep 12h & wait $${!}; done"
@@ -314,6 +316,27 @@ ssh root@<VPS_IP> "cd /opt/bbqweer && docker compose up -d --build"
 ```
 
 Open `https://bbqweer.eu` — should load with valid certificate.
+
+### Automatic renewal (webroot)
+
+The cert covers `bbqweer.eu`, `www.bbqweer.eu` and `ntfy.bbqweer.eu`. The `certbot` container runs `certbot renew` every 12h using the **webroot** authenticator: nginx serves `/.well-known/acme-challenge/` from `/var/www/certbot` (host dir `/opt/bbqweer/certbot_www`, shared by both containers) on port 80, so nginx never has to be stopped.
+
+The renewal config `/opt/bbqweer/certbot_certs/renewal/bbqweer.eu.conf` (host-only, not in git) must contain:
+
+```ini
+authenticator = webroot
+webroot_path = /var/www/certbot
+```
+
+> **History**: the cert was originally obtained with `--standalone`, which needs port 80 for itself. With nginx permanently holding port 80, every automatic renewal failed its challenge and the cert expired on 2026-09-29. Switched to webroot on 2026-10-01.
+
+Verify renewal works without touching the real cert:
+
+```bash
+cd /opt/bbqweer && docker compose exec certbot certbot renew --dry-run
+```
+
+nginx only reads certs at startup — after a renewal, reload it: `docker compose exec nginx nginx -s reload`. (Not automated yet; the new cert is picked up at the latest on the next nginx restart.)
 
 ---
 

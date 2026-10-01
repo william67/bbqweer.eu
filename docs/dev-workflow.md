@@ -1,7 +1,7 @@
 # Development Workflow
 
 Two local stages: Stage 1 (live dev) and Stage 2 (local Docker test).
-For remote deployments see `deploy-to-nuc.md` and `deploy-to-hetzner.md`.
+For the remote deployment see `deploy-to-hetzner.md`.
 
 ---
 

@@ -1,6 +1,6 @@
 # Deployment Overview
 
-Four deployment targets — same codebase, same Docker stack, different environments.
+Three deployment targets — same codebase, same Docker stack, different environments.
 
 ---
 
@@ -15,17 +15,17 @@ Four deployment targets — same codebase, same Docker stack, different environm
 
 ## At a glance
 
-| | Local Dev | Local Docker | NUC Docker | Hetzner |
-|---|---|---|---|---|
-| **Purpose** | Daily coding | Pre-deploy test | LAN server | Public internet |
-| **Accessible by** | You only | You only | LAN only | Everyone |
-| **URL** | localhost:4200 | localhost | 192.168.0.217 | bbqweer.eu |
-| **Angular** | `ng serve` (live) | Built dist | Built dist | Built dist |
-| **Backend** | `node app.js` | Docker | Docker | Docker |
-| **MySQL** | Docker :3307 | Docker | Docker | Docker |
-| **Cron tasks** | Disabled | Running | Running | Running |
-| **HTTPS** | No | No | No | Yes (Let's Encrypt) |
-| **Deploy dist** | — | `docker compose restart nginx` | `scp` + `docker restart` | `rsync` + `docker compose restart` |
+| | Local Dev | Local Docker | Hetzner |
+|---|---|---|---|
+| **Purpose** | Daily coding | Pre-deploy test | Public internet |
+| **Accessible by** | You only | You only | Everyone |
+| **URL** | localhost:4200 | localhost | bbqweer.eu |
+| **Angular** | `ng serve` (live) | Built dist | Built dist |
+| **Backend** | `node app.js` | Docker | Docker |
+| **MySQL** | Docker :3307 | Docker | Docker |
+| **Cron tasks** | Disabled | Running | Running |
+| **HTTPS** | No | No | Yes (Let's Encrypt) |
+| **Deploy dist** | — | `docker compose restart nginx` | `rsync` + `docker compose restart` |
 
 ---
 
@@ -50,25 +50,10 @@ Four deployment targets — same codebase, same Docker stack, different environm
 **When to use:** verify a build before pushing to a remote server.
 
 **Key points:**
-- Identical to NUC/Hetzner setup
+- Identical to the Hetzner setup
 - Angular must be built (`ng build`) before changes are visible
 - nginx serves the static dist, backend runs in a container
 - Quick to test: one build command + `docker compose restart nginx`
-
----
-
-## Intel NUC — docker-prod (LAN server)
-
-**What it is:** always-on Linux server in your home network running the full Docker stack.
-
-**When to use:** persistent LAN deployment — data syncs run 24/7, accessible from any device on your network.
-
-**Key points:**
-- Accessible on `192.168.0.217` — not reachable from outside your network
-- Older Docker: uses `docker-compose` (not `docker compose`)
-- Angular dist deployed via `scp` from Windows
-- MySQL data persists in a Docker volume across restarts
-- KNMI sync and satellites sync run automatically on cron schedule
 
 ---
 
@@ -94,12 +79,9 @@ Windows (ng build)
        │
        ├─── Local Docker ──► docker compose restart nginx          (localhost)
        │
-       ├─── NUC ───────────► scp dist → docker restart nginx       (192.168.0.217)
-       │
        └─── Hetzner ────────► rsync dist → docker compose restart  (bbqweer.eu)
 ```
 
 **Detailed guides:**
 - Local dev + local Docker → `docs/dev-workflow.md`
-- NUC → `docs/deploy-to-nuc.md`
 - Hetzner → `docs/deploy-to-hetzner.md`
