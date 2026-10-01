@@ -68,7 +68,7 @@ Three deployment targets — same codebase, same Docker stack, different environ
 - HTTPS via Let's Encrypt (certbot in Docker)
 - Angular dist deployed via `rsync` from Windows
 - Requires domain DNS pointing to the VPS IP
-- Not yet live — setup documented in `deploy-to-hetzner.md`
+- Live in production — setup documented in `deploy-to-hetzner.md`
 
 ---
 

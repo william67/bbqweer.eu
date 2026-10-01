@@ -336,7 +336,13 @@ Verify renewal works without touching the real cert:
 cd /opt/bbqweer && docker compose exec certbot certbot renew --dry-run
 ```
 
-nginx only reads certs at startup — after a renewal, reload it: `docker compose exec nginx nginx -s reload`. (Not automated yet; the new cert is picked up at the latest on the next nginx restart.)
+nginx only reads certs at startup, so a renewed cert isn't served until nginx reloads. A root cron job on the VPS (host-only, not in git) does this gracefully every night:
+
+```
+0 4 * * * cd /opt/bbqweer && docker compose exec -T nginx nginx -s reload >> /var/log/nginx-reload.log 2>&1
+```
+
+Manual reload if needed: `docker compose exec nginx nginx -s reload`.
 
 ---
 
