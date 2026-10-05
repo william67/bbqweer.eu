@@ -41,7 +41,7 @@ C:\Apps\bbqweer.eu\
 │   ├── app.js              — Express + Socket.IO + node-cron wiring
 │   ├── socket/             — blitzortung.js (WSS → Redis → Socket.IO)
 │   ├── config.ini          — Docker settings (host=mysql, port=3306) — NOT in git
-│   ├── config.local.ini    — Local dev settings (host=127.0.0.1, port=3307) — NOT in git
+│   ├── config.local.ini    — Local dev settings (host=127.0.0.1, port=3306) — NOT in git
 │   ├── routes/             — knmi-reports, stars, satellites, auth, users, energy-prices, solar, file-areas, strike-areas, tomtom, ntfy
 │   ├── helpers/            — mysqlpool-knmi.helper.js, server-tasks.js, tomtom.helper.js, ntfy.helper.js — centralized push-notification dispatch queue, see docs/ntfy-server.md "Backend integration". The `bbqweer-ntfy` server itself is shared with wo-ict.nl, which keeps its own independent copy of this file — a fix here does not propagate there, see docs/ntfy-server.md "Shared across projects"
 │   ├── tasks/              — knmidata-v4.js, satellites-sync.js, energy-prices-sync.js, file-area-incidents.js, strike-area-alerts.js
@@ -94,7 +94,7 @@ C:\Apps\bbqweer.eu\
 ### Docker services
 | Container | Image | Port |
 |-----------|-------|------|
-| bbqweer-mysql | mysql:8.0 | 3307 (host) / 3306 (internal) |
+| bbqweer-mysql | mysql:8.0 | 127.0.0.1:3306 (host, loopback only) / 3306 (internal) |
 | bbqweer-redis | redis:8-alpine | internal only (6379 exposed on host via docker-compose.local.yml) |
 | bbqweer-nodejs | node:20-alpine (built from backend/) | 3000 (internal only) |
 | bbqweer-nginx | nginx:alpine | 80, 443 |
@@ -141,9 +141,10 @@ See `docs/deploy-to-hetzner.md` for full deployment guide.
 
 **MySQL Workbench via SSH tunnel:**
 ```powershell
-ssh -L 3307:127.0.0.1:3307 root@65.109.129.96   # keep open while working
-# then connect Workbench to 127.0.0.1:3307 as bbqweer_user
+ssh -L 3316:127.0.0.1:3306 root@65.109.129.96   # keep open while working
+# then connect Workbench to 127.0.0.1:3316 as bbqweer_user
 ```
+On the VPS, MySQL is published as `127.0.0.1:3306` (changed 2026-10-05; was `0.0.0.0:3307`), so the tunnel's remote side is 3306. Local side is 3316 to avoid clashing with the local Docker MySQL on 3306. Portainer is VPN-only (WireGuard, `10.20.20.254:9000`). See `c:\Apps\dev-standards\infra\docker-exposure-and-vpn-admin.md`.
 
 ## Build Timestamp
 - Footer shows `bbqweer.eu v1.0009 — YYYY-MM-DD HH:MM:SS` (version/timestamp in smaller font)
@@ -170,7 +171,7 @@ secret_key = ...
 ```ini
 [mysql_knmi]
 host     = 127.0.0.1
-port     = 3307
+port     = 3306
 ...
 ```
 

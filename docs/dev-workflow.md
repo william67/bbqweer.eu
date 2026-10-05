@@ -10,7 +10,7 @@ For the remote deployment see `deploy-to-hetzner.md`.
 MySQL runs in Docker, backend and frontend run directly on your machine. Fastest for iteration — live reload, no Docker rebuilds needed.
 
 ```
-MySQL     → Docker (port 3307 on host)
+MySQL     → Docker (port 3306 on host)
 Backend   → node app.js in terminal  (port 3000)
 Frontend  → ng serve in terminal     (port 4200)
 Browser   → http://localhost:4200
@@ -32,7 +32,7 @@ node app.js
 You should see:
 ```
 mySqlPoolKnmi using config.local.ini
-mySqlPoolKnmi initiated (127.0.0.1:3307)
+mySqlPoolKnmi initiated (127.0.0.1:3306)
 bbqweer backend listening on port 3000
 Cron tasks disabled (local dev)
 ```
@@ -44,7 +44,7 @@ ng serve --open
 ```
 
 ### How the config switch works
-- `backend/config.local.ini` — local dev settings (`host=127.0.0.1`, `port=3307`)
+- `backend/config.local.ini` — local dev settings (`host=127.0.0.1`, `port=3306`)
 - `backend/config.ini` — Docker settings (`host=mysql`, `port=3306`)
 - The backend helper automatically uses `config.local.ini` if it exists, otherwise falls back to `config.ini`
 - `config.local.ini` is in `.dockerignore` so it is never copied into the Docker image
@@ -89,7 +89,7 @@ The footer shows `bbqweer.eu v1.0003 — YYYY-MM-DD HH:MM:SS`.
 
 | | MySQL | Backend | Frontend | URL |
 |---|---|---|---|---|
-| Stage 1 (dev) | Docker :3307 | `node app.js` | `ng serve` | localhost:4200 |
+| Stage 1 (dev) | Docker :3306 | `node app.js` | `ng serve` | localhost:4200 |
 | Stage 2 (local Docker) | Docker | Docker | Docker (nginx) | localhost:80 |
 
 ---
@@ -99,7 +99,7 @@ The footer shows `bbqweer.eu v1.0003 — YYYY-MM-DD HH:MM:SS`.
 - [ ] Install Docker Desktop
 - [ ] Copy `.env` to project root with MySQL passwords
 - [ ] Copy `backend/config.ini` with `host=mysql` and prod-style passwords
-- [ ] Copy `backend/config.local.ini` with `host=127.0.0.1`, `port=3307`
+- [ ] Copy `backend/config.local.ini` with `host=127.0.0.1`, `port=3306`
 - [ ] `docker compose up -d mysql` — start MySQL
 - [ ] Wait ~15 seconds for MySQL init scripts to run
 - [ ] `cd backend && node createUser.js` — create first admin user

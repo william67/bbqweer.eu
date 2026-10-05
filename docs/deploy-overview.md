@@ -22,7 +22,7 @@ Three deployment targets — same codebase, same Docker stack, different environ
 | **URL** | localhost:4200 | localhost | bbqweer.eu |
 | **Angular** | `ng serve` (live) | Built dist | Built dist |
 | **Backend** | `node app.js` | Docker | Docker |
-| **MySQL** | Docker :3307 | Docker | Docker |
+| **MySQL** | Docker :3306 | Docker | Docker |
 | **Cron tasks** | Disabled | Running | Running |
 | **HTTPS** | No | No | Yes (Let's Encrypt) |
 | **Deploy dist** | — | `docker compose restart nginx` | `rsync` + `docker compose restart` |

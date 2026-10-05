@@ -433,7 +433,7 @@ ufw enable
 ufw status
 ```
 
-Port 3307 (MySQL) is intentionally blocked — access via SSH tunnel instead (see below).
+MySQL is published only on the VPS loopback (`127.0.0.1:3306`) — access via SSH tunnel instead (see below). Only nginx (80/443) is public. See `dev-standards/infra/docker-exposure-and-vpn-admin.md`.
 
 ---
 
@@ -443,26 +443,23 @@ MySQL is not exposed to the internet. Use an SSH tunnel:
 
 ```powershell
 # In a PowerShell window — keep it open while you work
-ssh -L 3307:127.0.0.1:3307 root@<VPS_IP>
+ssh -L 3316:127.0.0.1:3306 root@<VPS_IP>
 ```
 
-## Portainer access from Windows (SSH tunnel)
-
-Portainer is not exposed to the internet. Use an SSH tunnel:
-
-```powershell
-# In a PowerShell window — keep it open while you work
-ssh -L 9000:127.0.0.1:9000 root@bbqweer.eu
-```
-
-Then open `http://localhost:9000` in your browser.
+(Remote side is 3306 since 2026-10-05; the local side is 3316 to avoid clashing with the local Docker MySQL on 3306.)
 
 Then connect your MySQL client (Workbench, DBeaver, etc.) to:
 - **Host**: `127.0.0.1`
-- **Port**: `3307`
+- **Port**: `3316` (the local end of the tunnel)
 - **User**: `bbqweer_user`
 - **Password**: app password from `.env`
 - **Database**: `bbqweer`
+
+## Portainer access (WireGuard VPN)
+
+Portainer listens on `10.20.20.254:9000` and is reachable only through the WireGuard VPN (tunnel `wg0`, UDP 51821, config `/etc/wireguard/wg0.conf`, one peer: the admin PC at `10.20.20.2`). Connect the VPN, then open `http://10.20.20.254:9000`. The old SSH tunnel to `localhost:9000` no longer applies.
+
+Open item: after a server reboot WireGuard must start before Portainer — not yet tested. Details: `dev-standards/infra/docker-exposure-and-vpn-admin.md`.
 
 ---
 

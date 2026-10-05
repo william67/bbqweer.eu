@@ -20,7 +20,7 @@ node:20-alpine  (port 3000, internal only)
   │  Express REST API
   │  node-cron background tasks
   ▼
-mysql:8.0  (port 3307 on host, 3306 internal)
+mysql:8.0  (port 3306 on host, 3306 internal)
   └─ database: bbqweer
 ```
 
@@ -47,7 +47,7 @@ All three services are defined in `docker-compose.yml` and share the default Doc
 - Image: `mysql:8.0`
 - Data persisted in named volume `mysql_data` (survives container restarts)
 - Init scripts in `database/init/` run automatically on first start (numbered 01–07)
-- Exposed on host port `3307` to avoid clashing with any local MySQL installation
+- Exposed on host port `3306` to avoid clashing with any local MySQL installation
 - Root password and app credentials set via `.env` file (never committed)
 
 ---
@@ -64,7 +64,7 @@ MYSQL_PASSWORD=...
 ### `backend/config.ini` (bind-mounted into container, never commit)
 ```ini
 [mysql_knmi]
-host     = mysql        ← Docker service name (use 127.0.0.1 + port=3307 for local dev)
+host     = mysql        ← Docker service name (use 127.0.0.1 + port=3306 for local dev)
 port     = 3306
 user     = bbqweer_user
 password = ...
@@ -171,7 +171,7 @@ docker compose logs -f nginx
 For local dev, the Angular dev server proxies `/api/*` to the Express backend.
 
 ```powershell
-# Terminal 1 — backend (connects to Docker MySQL on 127.0.0.1:3307)
+# Terminal 1 — backend (connects to Docker MySQL on 127.0.0.1:3306)
 cd backend
 node app.js
 

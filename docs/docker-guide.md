@@ -44,7 +44,7 @@ Receives all HTTP traffic on port 80. Serves the Angular app as static HTML/JS/C
 Runs the Express backend on port 3000 — but only inside Docker's internal network. It is **not** reachable from your browser directly; only nginx can reach it. This is intentional — it keeps the API behind nginx which handles connection management.
 
 ### mysql
-Stores all the data. Port 3307 is mapped to your host machine so you can connect from MySQL Workbench (`127.0.0.1:3307`). Internally the other containers reach it on port 3306 using the hostname `mysql`.
+Stores all the data. Port 3306 is mapped to your host machine so you can connect from MySQL Workbench (`127.0.0.1:3306`). Internally the other containers reach it on port 3306 using the hostname `mysql`.
 
 ---
 
@@ -201,7 +201,7 @@ Inside Docker Compose all containers share the same private network. They addres
 | nodejs | mysql | `mysql:3306` |
 | nginx | nodejs | `nodejs:3000` |
 | Your browser | nginx | `localhost:80` |
-| MySQL Workbench | mysql | `127.0.0.1:3307` |
+| MySQL Workbench | mysql | `127.0.0.1:3306` |
 
 Port 3000 (Node.js) is **not** exposed to the host — only nginx is on port 80. This means the API is only reachable via nginx, which is the correct production setup.
 
@@ -230,4 +230,4 @@ ports:
 Did you rebuild? `docker compose up -d --build` — not just `up -d`.
 
 ### MySQL Workbench can't connect
-Use `127.0.0.1` (not `localhost`) and port `3307`.
+Use `127.0.0.1` (not `localhost`) and port `3306`.
