@@ -7,6 +7,9 @@ backend/config.local.ini
 backend/node_modules/
 frontend/node_modules/
 
+# Let's Encrypt certificates: live on the VPS only (mounted into nginx and certbot)
+certbot_certs/
+
 # Angular build output
 frontend/dist/
 
