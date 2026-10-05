@@ -220,7 +220,7 @@ docker compose logs nodejs    # check for startup errors
 - Check `docker compose ps` — mysql should show `healthy` or `running`
 
 ### Port 80 already in use
-Something else (IIS, another nginx) is using port 80. Either stop it or change the nginx port in `docker-compose.yml`:
+Something else (another web server, another nginx) is using port 80. Either stop it or change the nginx port in `docker-compose.yml`:
 ```yaml
 ports:
   - "8080:80"   # access via localhost:8080
