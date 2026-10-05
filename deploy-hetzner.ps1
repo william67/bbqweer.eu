@@ -6,7 +6,7 @@
 .DESCRIPTION
     One script per host, one unit per run (dev-standards\ops\deploy-scripts.md).
       frontend   stamp build time, build Angular, restore the placeholder, upload dist to
-                 /opt/bbqweer/frontend/dist/frontend (bind-mounted into nginx), reload nginx
+                 /opt/bbqweer/frontend/dist/frontend (bind-mounted into nginx), restart nginx
       nodejs     git pull --ff-only on the VPS, rebuild the nodejs container, reload nginx
 
     The script does not push. Push first: the VPS pulls from origin, and the script aborts on
@@ -129,11 +129,20 @@ try {
         Write-Log '  nodejs updated' 'Green'
     }
 
-    # nginx resolves the nodejs upstream once at startup and keeps the old container IP, and serves
-    # the frontend from a bind mount. A graceful reload covers both and drops no connections.
-    Write-Step 'Reloading nginx'
-    Invoke-Native 'nginx reload' { ssh @SshOpts $Vps "cd $AppDir && docker compose exec -T nginx nginx -t && docker compose exec -T nginx nginx -s reload" }
-    Write-Log '  nginx reloaded' 'Green'
+    if ($Service -eq 'frontend') {
+        # nginx bind-mounts frontend/dist/frontend/browser. The upload deletes and recreates that
+        # directory, and a running nginx keeps pointing at the old (deleted) one: only a RESTART
+        # re-mounts the new files. A reload leaves the site returning 403 (found 2026-10-05).
+        Write-Step 'Restarting nginx (re-mounts the new dist)'
+        Invoke-Native 'nginx restart' { ssh @SshOpts $Vps "cd $AppDir && docker compose restart nginx" }
+        Write-Log '  nginx restarted' 'Green'
+    } else {
+        # nginx resolves the nodejs upstream once at startup and keeps the old container IP,
+        # so a recreated nodejs needs a graceful reload (drops no connections).
+        Write-Step 'Reloading nginx'
+        Invoke-Native 'nginx reload' { ssh @SshOpts $Vps "cd $AppDir && docker compose exec -T nginx nginx -t && docker compose exec -T nginx nginx -s reload" }
+        Write-Log '  nginx reloaded' 'Green'
+    }
 
     if ($Service -eq 'nodejs') {
         Write-Step 'Last log lines of nodejs'

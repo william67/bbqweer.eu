@@ -137,7 +137,7 @@ See `docs/deploy-to-hetzner.md` for full deployment guide.
 **Automated deploy** (`git push` first; the script does not push and aborts on unpushed commits):
 ```powershell
 .\deploy-hetzner.ps1 -Service nodejs     # VPS git pull --ff-only → rebuild nodejs → nginx reload → health check
-.\deploy-hetzner.ps1 -Service frontend   # stamp → build → restore placeholder → upload dist → nginx reload → health check
+.\deploy-hetzner.ps1 -Service frontend   # stamp → build → restore placeholder → upload dist → nginx RESTART (a reload leaves 403) → health check
 ```
 The VPS pulls over SSH with a read-only deploy key (`github-bbqweer`); see `docs/deploy-to-hetzner.md` "Git on the server".
 

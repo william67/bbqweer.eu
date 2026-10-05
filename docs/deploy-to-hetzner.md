@@ -375,12 +375,12 @@ After this, ssh/scp to `bbqweer.eu` will never prompt for host key confirmation.
 
 ```powershell
 .\deploy-hetzner.ps1 -Service nodejs     # git pull --ff-only, rebuild the nodejs image, reload nginx, health check
-.\deploy-hetzner.ps1 -Service frontend   # stamp build time, ng build, restore placeholder, tar upload, reload nginx, health check
+.\deploy-hetzner.ps1 -Service frontend   # stamp build time, ng build, restore placeholder, tar upload, restart nginx, health check
 ```
 
 - Both abort with exit 1 on unpushed commits (compared against the local `origin/main`, no network). Uncommitted changes only give a warning: the frontend build uses them, the nodejs deploy does not.
 - **nodejs:** `git pull --ff-only` in `/opt/bbqweer`, then `docker compose up -d --build nodejs` (restart alone would run the old image), then an nginx reload (nginx keeps the old nodejs container IP until reloaded).
-- **frontend:** the script stamps `BUILD_TIME_PLACEHOLDER` in `environment.production.ts`, builds, and always restores the exact original file, even if the build fails. It then uploads `dist` as a tarball to `/opt/bbqweer/frontend/dist/frontend` and reloads nginx.
+- **frontend:** the script stamps `BUILD_TIME_PLACEHOLDER` in `environment.production.ts`, builds, and always restores the exact original file, even if the build fails. It then uploads `dist` as a tarball to `/opt/bbqweer/frontend/dist/frontend` and **restarts** nginx. nginx bind-mounts `frontend/dist/frontend/browser`; the upload deletes and recreates that directory, and a running nginx keeps pointing at the old one, so only a restart re-mounts the new files. A reload leaves the site returning `403 directory index forbidden` (this took bbqweer.eu down for about a minute on 2026-10-05).
 - Health check: `https://bbqweer.eu/` for the frontend, and the `/api/solar/tomorrow` call for nodejs (there is no health endpoint). Logs go to `deploy.log` (gitignored).
 - Never run `git reset --hard` on the VPS to "fix" a failed pull: a failing `--ff-only` means someone changed a tracked file on the server. Look at `git status` there first.
 
