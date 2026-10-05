@@ -369,57 +369,26 @@ ssh-keyscan bbqweer.eu >> C:/Users/William/.ssh/known_hosts
 
 After this, ssh/scp to `bbqweer.eu` will never prompt for host key confirmation.
 
-### Backend change
+### Deploy script
+
+`git push` first, then one service per run from PowerShell on the dev machine (the script does not push):
 
 ```powershell
-# 1. Commit and push locally
-git add backend/
-git commit -m "your message"
-git push
-
-# 2. Pull on VPS and rebuild nodejs image (restart alone is not enough)
-ssh root@bbqweer.eu "cd /opt/bbqweer && git pull && docker compose up -d --build nodejs"
+.\deploy-hetzner.ps1 -Service nodejs     # git pull --ff-only, rebuild the nodejs image, reload nginx, health check
+.\deploy-hetzner.ps1 -Service frontend   # stamp build time, ng build, restore placeholder, tar upload, reload nginx, health check
 ```
 
-### Frontend change
+- Both abort with exit 1 on unpushed commits (compared against the local `origin/main`, no network). Uncommitted changes only give a warning: the frontend build uses them, the nodejs deploy does not.
+- **nodejs:** `git pull --ff-only` in `/opt/bbqweer`, then `docker compose up -d --build nodejs` (restart alone would run the old image), then an nginx reload (nginx keeps the old nodejs container IP until reloaded).
+- **frontend:** the script stamps `BUILD_TIME_PLACEHOLDER` in `environment.production.ts`, builds, and always restores the exact original file, even if the build fails. It then uploads `dist` as a tarball to `/opt/bbqweer/frontend/dist/frontend` and reloads nginx.
+- Health check: `https://bbqweer.eu/` for the frontend, and the `/api/solar/tomorrow` call for nodejs (there is no health endpoint). Logs go to `deploy.log` (gitignored).
+- Never run `git reset --hard` on the VPS to "fix" a failed pull: a failing `--ff-only` means someone changed a tracked file on the server. Look at `git status` there first.
 
-```powershell
-# 1. Commit and push
-git add frontend/
-git commit -m "your message"
-git push
+### Git on the server
 
-# 2. Build with timestamp
-node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts',ts=new Date().toISOString().replace('T',' ').substring(0,19);fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('BUILD_TIME_PLACEHOLDER',ts));console.log('Stamped:',ts);"
-cd c:/Apps/bbqweer.eu/frontend
-ng build --configuration=production
-node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
+`/opt/bbqweer` pulls over SSH with a read-only GitHub **deploy key** (`~/.ssh/bbqweer-deploy` on the VPS, alias `github-bbqweer` in `~/.ssh/config`, GitHub key title `hetzner-bbqweer`, remote `git@github-bbqweer:william67/bbqweer.eu.git`, tracking `origin/main`), set up 2026-10-05. Before that the VPS pulled anonymously over HTTPS because the repo is public. Standard: `C:\Apps\dev-standards\ops\git-deploy-pat.md`. A deploy key does not expire. If `git pull` fails, check that the key is still listed under the repo's GitHub Settings → Deploy keys and that `git ls-remote origin HEAD` works on the VPS.
 
-# 3. Upload dist and restart nginx (dist is bind-mounted, restart picks it up)
-scp -r C:/Apps/bbqweer.eu/frontend/dist/frontend/* root@bbqweer.eu:/opt/bbqweer/frontend/dist/frontend/
-ssh root@bbqweer.eu "cd /opt/bbqweer && docker compose restart nginx"
-```
-
-### Both changed
-
-```powershell
-# 1. Commit and push
-git add -A
-git commit -m "your message"
-git push
-
-# 2. Build frontend
-node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts',ts=new Date().toISOString().replace('T',' ').substring(0,19);fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('BUILD_TIME_PLACEHOLDER',ts));console.log('Stamped:',ts);"
-cd c:/Apps/bbqweer.eu/frontend
-ng build --configuration=production
-node -e "const fs=require('fs'),f='c:/Apps/bbqweer.eu/frontend/src/environments/environment.production.ts';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,'BUILD_TIME_PLACEHOLDER'));console.log('Restored');"
-
-# 3. Upload dist
-scp -r C:/Apps/bbqweer.eu/frontend/dist/frontend/* root@bbqweer.eu:/opt/bbqweer/frontend/dist/frontend/
-
-# 4. Pull and rebuild on VPS
-ssh root@bbqweer.eu "cd /opt/bbqweer && git pull && docker compose up -d --build nodejs && docker compose restart nginx"
-```
+When the old checkout was switched over, two tracked files had local edits (`docker-compose.yml`, `nginx/nginx.conf`, already equal to upstream apart from one comment). A copy was kept in `/root/bbqweer-local-changes-20261005/` on the VPS.
 
 ---
 
@@ -433,7 +402,7 @@ ufw enable
 ufw status
 ```
 
-MySQL is published only on the VPS loopback (`127.0.0.1:3306`) — access via SSH tunnel instead (see below). Only nginx (80/443) is public. See `dev-standards/infra/docker-exposure-and-vpn-admin.md`.
+MySQL is published only on the VPS loopback (`127.0.0.1:3306`) — access via SSH tunnel instead (see below). Only nginx (80/443) is public. See `C:\Apps\infra\docs\docker-exposure-and-vpn-admin.md`.
 
 ---
 
@@ -459,7 +428,7 @@ Then connect your MySQL client (Workbench, DBeaver, etc.) to:
 
 Portainer listens on `10.20.20.254:9000` and is reachable only through the WireGuard VPN (tunnel `wg0`, UDP 51821, config `/etc/wireguard/wg0.conf`, one peer: the admin PC at `10.20.20.2`). Connect the VPN, then open `http://10.20.20.254:9000`. The old SSH tunnel to `localhost:9000` no longer applies.
 
-Open item: after a server reboot WireGuard must start before Portainer — not yet tested. Details: `dev-standards/infra/docker-exposure-and-vpn-admin.md`.
+Open item: after a server reboot WireGuard must start before Portainer — not yet tested. Details: `C:\Apps\infra\docs\docker-exposure-and-vpn-admin.md`.
 
 ---
 

@@ -83,7 +83,7 @@ C:\Apps\bbqweer.eu\
 │   └── tomtom.md           — TomTom Traffic Incident Details integration + file-alerts data pipeline
 ├── plans/                  — pre-implementation design docs (see dev-standards workflow)
 ├── nginx/nginx.conf        — serves bbqweer.eu; HTTP→HTTPS redirect + SSL + /api/* proxy to nodejs:3000
-├── deploy-hetzner.ps1      — automated deploy script (build + upload + VPS git pull + health check)
+├── deploy-hetzner.ps1      — automated deploy script (-Service nodejs|frontend: build + upload + VPS git pull --ff-only + health check)
 ├── .env                    — MySQL root + app passwords — NOT in git
 ├── .gitignore
 └── docker-compose.yml
@@ -134,10 +134,12 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml --profile donot
 Uses `docker-compose.yml` only — nginx.conf has SSL, certs at `/opt/bbqweer/certbot_certs`.
 See `docs/deploy-to-hetzner.md` for full deployment guide.
 
-**Automated deploy** (requires clean working tree):
+**Automated deploy** (`git push` first; the script does not push and aborts on unpushed commits):
 ```powershell
-.\deploy-hetzner.ps1   # build + scp dist + git pull + rebuild nodejs + restart nginx + health check
+.\deploy-hetzner.ps1 -Service nodejs     # VPS git pull --ff-only → rebuild nodejs → nginx reload → health check
+.\deploy-hetzner.ps1 -Service frontend   # stamp → build → restore placeholder → upload dist → nginx reload → health check
 ```
+The VPS pulls over SSH with a read-only deploy key (`github-bbqweer`); see `docs/deploy-to-hetzner.md` "Git on the server".
 
 **MySQL Workbench via SSH tunnel:**
 ```powershell
