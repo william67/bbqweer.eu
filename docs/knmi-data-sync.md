@@ -202,6 +202,8 @@ After all files are processed, `CALL UpdateHistory()` recalculates aggregate tab
 - `UpdateHittegolven` — heat waves
 - `UpdateSuperHittegolven` — extreme heat waves
 
+**No truncate (since 2026-10-12).** Each procedure builds its full result in a `TEMPORARY` table, then in one transaction upserts it into the real table (`INSERT … ON DUPLICATE KEY UPDATE`, unchanged rows are skipped by MySQL and written nowhere) and deletes rows that are no longer in the result. The result tables are never empty during a run, and a run writes a few KB of binlog instead of ~15 MB. The intermediate `dagnormen_raw` is a temporary table inside `UpdateNormen` now. The four wave/frost tables (`vorstperiodes`, `koudegolven`, `hittegolven`, `superhittegolven`) have a unique key `(STATION, VOLGNR)` for the upsert. Details and the migration: `docs/knmi-no-op-upsert.md`, `database/updates/knmi-updatehistory-no-op-upsert-20261012.sql`.
+
 ---
 
 ## Manual Trigger
