@@ -47,8 +47,7 @@ C:\Apps\bbqweer.eu\
 │   ├── tasks/              — knmidata-v4.js, satellites-sync.js, energy-prices-sync.js, file-area-incidents.js, strike-area-alerts.js
 │   ├── callSyncKnmiData.js        — manual sync trigger (uses knmidata-v4)
 │   ├── callSyncEnergiePrices.js   — manual/historical energy price sync from energyzero.nl
-│   ├── createUser.js       — one-off admin user creation script
-│   └── importReports.js    — import JSON configs into categories/datasets/reports_new
+│   └── createUser.js       — one-off admin user creation script
 ├── database/
 │   ├── init/               — MySQL init scripts (run once on first container start)
 │   │   ├── 01-schema.sql   — full bbqweer schema (tables, views, stored procedures)
@@ -59,6 +58,7 @@ C:\Apps\bbqweer.eu\
 │   │   ├── 06-stations.sql — 51 KNMI weather stations
 │   │   ├── 07-neerslagstations.sql — 343 precipitation stations
 │   │   ├── 08-energy-prices.sql — energie_prices table
+│   │   ├── 08-stars.sql    — HYG star catalogue (87,475 rows; the only source — no sync, `stars` is read-only via /api/stars)
 │   │   ├── 09-datafiles-http-lastmod.sql — http_lastmod column for datafiles
 │   │   ├── 10-file-areas.sql — file_areas + file_area_points tables
 │   │   ├── 11-strike-areas.sql — strike_areas + strike_area_points tables (Bliksem page's own separate area set, same schema as file_areas)
@@ -70,7 +70,8 @@ C:\Apps\bbqweer.eu\
 │   ├── fix-procedures.sql  — one-time fix: lowercase table names in stored procedures
 │   ├── migrate-uurgeg-datum-tijd.sql — one-time: rename DATUM_TIJD → DATUM_TIJD_VAN, add DATUM_TIJD_TOT (run on live DB)
 │   ├── mysql-binlog-expire.cnf — MySQL config: binlog_expire_logs_seconds = 604800 (7 days)
-│   └── knmi_stars.sql      — HYG star catalogue (87,475 rows)
+│   └── updates/            — one-off migrations for databases that already exist (not run by Docker; `01-schema.sql` has the end state)
+│       └── knmi-updatehistory-no-op-upsert-20261012.sql — UpdateHistory upserts instead of TRUNCATE; applied to prod 2026-10-12
 ├── docs/                   — Documentation
 │   ├── system-architecture.md
 │   ├── knmi-data-sync.md
@@ -78,6 +79,7 @@ C:\Apps\bbqweer.eu\
 │   ├── dev-workflow.md
 │   ├── deploy-to-hetzner.md
 │   ├── knmi-config-export-import.md
+│   ├── knmi-no-op-upsert.md — UpdateHistory without TRUNCATE: rollout notes + remaining to-do (drop dagnormen_raw on prod)
 │   ├── lightning-map.md
 │   ├── ntfy-server.md      — self-hosted ntfy push notification server (shared with wo-ict.nl, see "Shared across projects")
 │   └── tomtom.md           — TomTom Traffic Incident Details integration + file-alerts data pipeline

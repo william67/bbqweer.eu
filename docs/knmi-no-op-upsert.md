@@ -8,7 +8,7 @@ From wo-ict.nl, built and applied there on 2026-10-12 (full story: `C:\Apps\wo-i
 - **Local dev tested first**: rebuilt every result table from empty with prod's `etmgeg` data; all 13 tables (excluding `dagnormen_raw`) matched prod's old-procedure output exactly.
 - **`UpdateKoudegolven` bug fixed in this copy** (not in the wo-ict.nl original): the closing INSERT had `TMIN` and `HELLMANN` swapped (`vHELLMANN, vMIN`). It only fires when the last frost sequence of the highest station is itself a qualifying cold wave, which is not the case in today's data, so no checksum changed.
 - `database/init/01-schema.sql` updated: new procedure definitions, the four unique keys, `dagnormen_raw` removed.
-- **Still to do**: after a few more hourly syncs ran fine, `DROP TABLE dagnormen_raw` on prod (dump it first), then `CALL UpdateNormen();` once and check the `*normen` checksums are unchanged.
+- **`dagnormen_raw` dropped on prod 2026-10-12 15:27 UTC** (the 15:00 sync had run fine first). Backup of the table: `/root/knmi-noop-20261012/dagnormen_raw-table.sql`. `CALL UpdateNormen();` afterwards: all five `*normen` checksums identical. The table is easy to recreate if ever needed (it's rebuilt as a temporary table inside `UpdateNormen`).
 - Not done: only call `UpdateHistory` from `knmidata-v4.js` when the sync changed something.
 
 The steps below are the original recipe from wo-ict.nl, kept for reference.
