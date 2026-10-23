@@ -3,6 +3,8 @@ import * as L from 'leaflet';
 import { HttpClient } from '@angular/common/http';
 import { ForecastService } from 'src/app/services/forecast.service';
 import { LocalStorageService } from 'src/app/services/local-storage.service';
+import { WeatherChartSeries } from 'src/app/components/my-weather-chart/my-weather-chart.component';
+import { localDateTime } from 'src/app/utils/local-time.util';
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -47,6 +49,21 @@ export const LOCATIONS = [
 ];
 
 const FORECAST_LOCATION_KEY = 'forecast_location';
+
+// Parameters of the table that open a chart over the whole forecast period when clicked
+const FORECAST_CHARTS: Record<string, { label: string; unit: string; bar?: boolean; ref?: number; fields: { field: string; label: string; color: string }[] }> = {
+    temp:      { label: 'Temperatuur',   unit: '°C',   fields: [{ field: 'temp',      label: 'Temp',        color: '#ef4444' }] },
+    temp850:   { label: '850hPa',        unit: '°C',   fields: [{ field: 'temp850',   label: '850hPa',      color: '#f97316' }] },
+    temp500:   { label: '500hPa',        unit: '°C',   fields: [{ field: 'temp500',   label: '500hPa',      color: '#6366f1' }] },
+    humidity:  { label: 'Vochtigheid',   unit: '%',    fields: [{ field: 'humidity',  label: 'Vochtigheid', color: '#14b8a6' }] },
+    pressure:  { label: 'Druk',          unit: 'hPa',  fields: [{ field: 'pressure',  label: 'Druk',        color: '#64748b' }] },
+    wind:      { label: 'Wind',          unit: 'km/h', ref: 75, fields: [{ field: 'wind', label: 'Wind', color: '#3b82f6' }, { field: 'gust', label: 'Windstoten', color: '#f97316' }] },
+    gust:      { label: 'Windstoten',    unit: 'km/h', ref: 75, fields: [{ field: 'gust', label: 'Windstoten', color: '#f97316' }] },
+    precip:    { label: 'Neerslag',      unit: 'mm',   bar: true, fields: [{ field: 'precip', label: 'Neerslag', color: '#3b82f6' }] },
+    snow:      { label: 'Sneeuw',        unit: 'cm',   bar: true, fields: [{ field: 'snow',   label: 'Sneeuw',   color: '#93c5fd' }] },
+    clouds:    { label: 'Bewolking',     unit: '%',    fields: [{ field: 'clouds',    label: 'Bewolking',   color: '#94a3b8' }] },
+    radiation: { label: 'Straling',      unit: 'W/m²', fields: [{ field: 'radiation', label: 'Straling',    color: '#f59e0b' }] },
+};
 
 @Component({
     selector: 'app-forecast',
@@ -176,10 +193,10 @@ export class ForecastComponent implements OnInit, OnDestroy {
 
     private processData(data: any) {
         const h = data.hourly;
-        this.hours = h.time.map((t: string, i: number) => ({
+        this.hours = h.time.map((t: string, i: number) => { const lt = localDateTime(t); return ({
             time:       t,
-            date:       t.slice(0, 10),
-            timeLabel:  t.slice(11, 16),
+            date:       lt.date,
+            timeLabel:  lt.time,
             temp:       h.temperature_2m[i],
             precip:     h.precipitation[i],
             wind:       h.windspeed_10m[i],
@@ -192,7 +209,15 @@ export class ForecastComponent implements OnInit, OnDestroy {
             humidity:   h.relativehumidity_2m[i],
             pressure:   h.pressure_msl[i],
             snow:       h.snowfall[i],
-        }));
+            gust:       h.wind_gusts_10m[i],
+            temp850:    h.temperature_850hPa[i],
+            temp500:    h.temperature_500hPa[i],
+        }); });
+
+        // from today (local) up to 10 local days: the UTC request also holds yesterday's hours and a short eleventh day
+        const today = localDateTime(new Date().toISOString().slice(0, 16)).date;
+        const dates = [...new Set<string>(this.hours.map(r => r.date))].filter(d => d >= today).slice(0, 10);
+        this.hours = this.hours.filter(r => dates.includes(r.date));
 
         const byDay: Record<string, any[]> = {};
         for (const row of this.hours) {
@@ -210,6 +235,28 @@ export class ForecastComponent implements OnInit, OnDestroy {
         }));
 
         this.selectedDay = this.days[0]?.date ?? null;
+    }
+
+    // chart of one table parameter over all hours of the forecast, the selected day shaded
+    chartVisible = false;
+    chartTitle = '';
+    chartUnit = '';
+    chartTimes: string[] = [];
+    chartSeries: WeatherChartSeries[] = [];
+    chartRefLine: { value: number; label: string } | null = null;
+
+    openChart(key: string): void {
+        const def = FORECAST_CHARTS[key];
+        if (!def || this.hours.length === 0) return;
+        this.chartTitle = `${def.label} (${def.unit})`;
+        this.chartUnit = def.unit;
+        this.chartTimes = this.hours.map(h => h.time);
+        this.chartSeries = def.fields.map(f => ({
+            label: f.label, color: f.color, type: def.bar ? 'bar' : 'line',
+            data: this.hours.map(h => (h[f.field] ?? null) as number | null)
+        }));
+        this.chartRefLine = def.ref ? { value: def.ref, label: def.ref + ' km/h' } : null;
+        this.chartVisible = true;
     }
 
     windDirLabel(deg: number): string {

@@ -412,21 +412,46 @@ router.get('/tomorrow', async (req, res) => {
                     tilt:          arr.tilt,
                     azimuth:       arr.azimuth,
                     forecast_days: 4,
-                    timezone:      'Europe/Amsterdam',
+                    past_days:     1,   // UTC day starts at 01:00/02:00 local: the extra day covers the first hours of today
+                    timezone:      'UTC',   // local conversion below: with Europe/Amsterdam Open-Meteo applies the first day's UTC offset to the whole response (wrong after a DST change)
                 },
                 timeout: 10000,
             })
         ));
 
+        // Global radiation as shown on the forecast page (horizontal plane, KNMI Seamless): the W/m² column shows this
+        // one-to-one; the yield itself is still calculated from the tilted GTI of the arrays above
+        const horizontal = await axios.get(url, {
+            params: {
+                latitude: lat, longitude: lon,
+                hourly: 'global_tilted_irradiance,temperature_2m,cloud_cover', models: 'knmi_seamless', tilt: 0, azimuth: 0,
+                forecast_days: 4, past_days: 1, timezone: 'UTC',
+            },
+            timeout: 10000,
+        });
+        const hh = horizontal.data.hourly;
+        const globalByTime = {}, tempByTime = {}, cloudByTime = {};
+        hh.time.forEach((t, i) => {
+            globalByTime[t] = hh.global_tilted_irradiance[i] != null ? Math.round(hh.global_tilted_irradiance[i]) : null;
+            tempByTime[t]   = hh.temperature_2m[i];
+            cloudByTime[t]  = hh.cloud_cover[i];
+        });
+
         const times = fetches[0].data.hourly.time;
-        const temp  = fetches[0].data.hourly.temperature_2m;
-        const cloud = fetches[0].data.hourly.cloud_cover;
 
         // Collect today + next 2 days (3 days total)
-        const today = new Date();
+        const tzFmt = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+        });
+        const localParts = (d) => {
+            const p = {};
+            tzFmt.formatToParts(d).forEach(x => { p[x.type] = x.value; });
+            return { date: `${p.year}-${p.month}-${p.day}`, hour: parseInt(p.hour) };
+        };
+        const todayLocal = localParts(new Date()).date;
         const dateStrings = [0, 1, 2].map(offset => {
-            const d = new Date(today);
-            d.setDate(d.getDate() + offset);
+            const d = new Date(todayLocal + 'T12:00:00Z');
+            d.setUTCDate(d.getUTCDate() + offset);
             return d.toISOString().slice(0, 10);
         });
 
@@ -434,13 +459,10 @@ router.get('/tomorrow', async (req, res) => {
         dateStrings.forEach(ds => { dayMap[ds] = { totalWh: 0, hours: [] }; });
 
         times.forEach((t, i) => {
-            const dateStr = t.slice(0, 10);
+            const { date: dateStr, hour } = localParts(new Date(t + ':00Z'));
             if (!dayMap[dateStr]) return;
-            const hour = parseInt(t.slice(11, 13));
 
             let systemW  = 0;
-            let gtiSum   = 0;
-            let gtiCount = 0;
 
             // Per inverter: sum DC across its arrays, then apply per-inverter AC cap
             inverters.forEach((inv, ii) => {
@@ -450,8 +472,6 @@ router.get('/tomorrow', async (req, res) => {
                     const gtiVal = fetches[fi].data.hourly.global_tilted_irradiance[i];
                     if (gtiVal != null) {
                         invDcW   += Math.round((gtiVal / 1000) * fa.panels * fa.wp * efficiency);
-                        gtiSum   += gtiVal;
-                        gtiCount += 1;
                     }
                 });
                 systemW += (inv.maxAcW > 0 && invDcW > inv.maxAcW) ? inv.maxAcW : invDcW;
@@ -460,11 +480,11 @@ router.get('/tomorrow', async (req, res) => {
             dayMap[dateStr].totalWh += systemW;
             dayMap[dateStr].hours.push({
                 hour,
-                gti_wm2:   gtiCount > 0 ? Math.round(gtiSum / gtiCount) : null,
+                gti_wm2:   globalByTime[t] ?? null,
                 power_w:   systemW,
                 energy_wh: systemW,
-                temp_c:    temp[i]  != null ? Math.round(temp[i] * 10) / 10 : null,
-                cloud_pct: cloud[i] != null ? cloud[i] : null,
+                temp_c:    tempByTime[t] != null ? Math.round(tempByTime[t] * 10) / 10 : null,
+                cloud_pct: cloudByTime[t] ?? null,
             });
         });
 

@@ -46,14 +46,17 @@
             <tr>
               <th style="width:70px">Tijd</th>
               <th style="width:60px">Weer</th>
-              <th style="width:90px">Temp (°C)</th>
-              <th style="width:80px">Vochtigheid (%)</th>
-              <th style="width:90px">Druk (hPa)</th>
-              <th style="width:100px">Wind (km/h)</th>
-              <th style="width:80px">Neerslag (mm)</th>
-              <th style="width:80px">Sneeuw (cm)</th>
-              <th style="width:80px">Bewolking (%)</th>
-              <th style="width:90px">Straling (W/m²)</th>
+              <th style="width:90px" class="chart-click" pTooltip="Klik voor een grafiek" tooltipPosition="top" (click)="openChart('temp')">Temp (°C)</th>
+              <th style="width:80px" class="chart-click" pTooltip="Klik voor een grafiek" tooltipPosition="top" (click)="openChart('temp850')">850hPa (°C)</th>
+              <th style="width:80px" class="chart-click" pTooltip="Klik voor een grafiek" tooltipPosition="top" (click)="openChart('temp500')">500hPa (°C)</th>
+              <th style="width:80px" class="chart-click" pTooltip="Klik voor een grafiek" tooltipPosition="top" (click)="openChart('humidity')">Vochtigheid (%)</th>
+              <th style="width:90px" class="chart-click" pTooltip="Klik voor een grafiek" tooltipPosition="top" (click)="openChart('pressure')">Druk (hPa)</th>
+              <th style="width:100px" class="chart-click" pTooltip="Klik voor een grafiek" tooltipPosition="top" (click)="openChart('wind')">Wind (km/h)</th>
+              <th style="width:90px" class="chart-click" pTooltip="Klik voor een grafiek" tooltipPosition="top" (click)="openChart('gust')">Windstoten (km/h)</th>
+              <th style="width:80px" class="chart-click" pTooltip="Klik voor een grafiek" tooltipPosition="top" (click)="openChart('precip')">Neerslag (mm)</th>
+              <th style="width:80px" class="chart-click" pTooltip="Klik voor een grafiek" tooltipPosition="top" (click)="openChart('snow')">Sneeuw (cm)</th>
+              <th style="width:80px" class="chart-click" pTooltip="Klik voor een grafiek" tooltipPosition="top" (click)="openChart('clouds')">Bewolking (%)</th>
+              <th style="width:90px" class="chart-click" pTooltip="Klik voor een grafiek" tooltipPosition="top" (click)="openChart('radiation')">Straling (W/m²)</th>
             </tr>
           </ng-template>
           <ng-template pTemplate="body" let-row>
@@ -62,22 +65,25 @@
               <td>
                 <span pTooltip="{{ row.wmoLabel }}" tooltipPosition="right">{{ row.wmoIcon }}</span>
               </td>
-              <td>
+              <td class="chart-click" (click)="openChart('temp')">
                 <span class="temp-badge" [style.background]="tempColor(row.temp)">
                   {{ row.temp | number:'1.1-1' }}°
                 </span>
               </td>
-              <td>{{ row.humidity }}</td>
-              <td>{{ row.pressure | number:'1.0-0' }}</td>
-              <td>{{ row.wind | number:'1.0-0' }} {{ windDirLabel(row.windDir) }}</td>
-              <td [style.color]="row.precip > 0 ? '#3b82f6' : ''">
+              <td class="chart-click" (click)="openChart('temp850')">{{ row.temp850 | number:'1.1-1' }}°</td>
+              <td class="chart-click" (click)="openChart('temp500')">{{ row.temp500 | number:'1.1-1' }}°</td>
+              <td class="chart-click" (click)="openChart('humidity')">{{ row.humidity }}</td>
+              <td class="chart-click" (click)="openChart('pressure')">{{ row.pressure | number:'1.0-0' }}</td>
+              <td class="chart-click" (click)="openChart('wind')">{{ row.wind | number:'1.0-0' }} {{ windDirLabel(row.windDir) }}</td>
+              <td class="chart-click" (click)="openChart('gust')" [style.color]="row.gust >= 75 ? '#ef4444' : ''" [style.font-weight]="row.gust >= 75 ? '700' : ''">{{ row.gust | number:'1.0-0' }}</td>
+              <td class="chart-click" (click)="openChart('precip')" [style.color]="row.precip > 0 ? '#3b82f6' : ''">
                 {{ row.precip > 0 ? (row.precip | number:'1.1-1') : '—' }}
               </td>
-              <td [style.color]="row.snow > 0 ? '#93c5fd' : ''">
+              <td class="chart-click" (click)="openChart('snow')" [style.color]="row.snow > 0 ? '#93c5fd' : ''">
                 {{ row.snow > 0 ? (row.snow | number:'1.1-1') : '—' }}
               </td>
-              <td>{{ row.clouds }}</td>
-              <td [style.color]="row.radiation > 0 ? '#f59e0b' : ''">
+              <td class="chart-click" (click)="openChart('clouds')">{{ row.clouds }}</td>
+              <td class="chart-click" (click)="openChart('radiation')" [style.color]="row.radiation > 0 ? '#f59e0b' : ''">
                 {{ row.radiation > 0 ? row.radiation : '—' }}
               </td>
             </tr>
@@ -113,4 +119,9 @@
     <p-button label="Opslaan" icon="pi pi-check" [loading]="savingLocation" (onClick)="saveLocation()" />
   </ng-template>
 
+</p-dialog>
+
+<!-- Chart of one parameter over the whole forecast period -->
+<p-dialog [header]="chartTitle" [(visible)]="chartVisible" [modal]="true" appendTo="body" [style]="{'width':'min(1200px, 95vw)'}">
+  <app-my-weather-chart [times]="chartTimes" [series]="chartSeries" [unit]="chartUnit" [refLine]="chartRefLine" [highlightDate]="selectedDay" />
 </p-dialog>

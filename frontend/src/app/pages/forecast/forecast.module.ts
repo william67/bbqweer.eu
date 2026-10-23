@@ -7,6 +7,7 @@ import { MessageModule } from 'primeng/message';
 import { DialogModule } from 'primeng/dialog';
 import { TooltipModule } from 'primeng/tooltip';
 import { TableModule } from 'primeng/table';
+import { MyWeatherChartComponent } from 'src/app/components/my-weather-chart/my-weather-chart.component';
 
 @NgModule({
     imports: [
@@ -17,6 +18,7 @@ import { TableModule } from 'primeng/table';
         DialogModule,
         TooltipModule,
         TableModule,
+        MyWeatherChartComponent,
     ],
     declarations: [ForecastComponent]
 })
