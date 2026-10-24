@@ -1,6 +1,6 @@
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 import requests
 
@@ -37,12 +37,29 @@ def iter_tasks(tasks, workers):
     """Run the download tasks in parallel and yield (step, param, message, mult, add) as they finish.
     tasks: list of (step, param, func, mult, add); func() returns the bytes of one GRIB message, or None when
     that field legitimately does not exist (accumulated precipitation at step 0). A failure ends the run."""
+    # Deviation from the wo-ict.nl original: at most `window` downloads are submitted / waiting at a time and a result
+    # is dropped as soon as it has been handed on. The original submitted every task at once and kept all futures (so
+    # all downloaded bytes of the run) until the end: a GFS run (~1450 fields) needed over 1 GB.
+    window = workers * 3
     ex = ThreadPoolExecutor(workers)
     try:
-        futs = {ex.submit(t[2]): t for t in tasks}
-        for f in as_completed(futs):
-            step, param, _func, mult, add = futs[f]
-            msg = f.result()
+        todo = iter(tasks)
+        futs = {}
+
+        def fill():
+            while len(futs) < window:
+                t = next(todo, None)
+                if t is None:
+                    return
+                futs[ex.submit(t[2])] = t
+
+        fill()
+        while futs:
+            done = next(iter(wait(list(futs), return_when=FIRST_COMPLETED).done))
+            step, param, _func, mult, add = futs.pop(done)
+            msg = done.result()
+            del done
+            fill()
             if msg is not None:
                 yield step, param, msg, mult, add
     finally:
