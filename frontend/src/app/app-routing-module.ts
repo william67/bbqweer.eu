@@ -13,6 +13,10 @@ const routes: Routes = [
                 loadChildren: () => import('./pages/knmidata/knmidata.module').then(m => m.KnmiDataModule)
             },
             {
+                path: 'weathercharts',
+                loadChildren: () => import('./pages/weathercharts/weathercharts.module').then(m => m.WeatherChartsModule)
+            },
+            {
                 path: 'planetarium',
                 loadChildren: () => import('./pages/planetarium/planetarium.module').then(m => m.PlanetariumModule)
             },

@@ -1,0 +1,152 @@
+/* Stretch to fill the layout-content area (its padding is removed by the component), like Lightning and the planetarium */
+.wc-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+}
+
+.wc-map {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* floating panels on the map (the look of the Lightning page) */
+.wc-panel {
+    position: absolute;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 6px 10px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.wc-date {
+    position: absolute;
+    z-index: 1000;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 6px 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+/* one step back / forward in the slider */
+.wc-nav {
+    flex: none;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 50%;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #0f172a;
+    font-size: 1rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.wc-nav:hover:not(:disabled) { background: #e0e7ff; border-color: #6366f1; }
+.wc-nav:disabled { opacity: 0.35; cursor: default; }
+.wc-date-main { font-size: 1.7rem; font-weight: 800; line-height: 1.2; color: #0f172a; }
+.wc-date-sub  { font-size: 0.78rem; color: #6b7280; }
+
+/* the values at a point; the pointer passes through it, so it cannot flicker under the pointer */
+.wc-tip {
+    position: absolute;
+    z-index: 1100;
+    width: 214px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 6px 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+    font-size: 0.78rem;
+}
+.wc-tip-title { font-weight: 700; color: #0f172a; border-bottom: 1px solid #e5e7eb; margin-bottom: 3px; padding-bottom: 2px; }
+.wc-tip-row { display: flex; justify-content: space-between; gap: 8px; color: #4b5563; }
+.wc-tip-row b { color: #0f172a; text-align: right; }
+
+/* next to the zoom buttons, level with the date; on a narrower window it would run under the date, so it drops below it */
+.wc-toolbar {
+    top: 10px;
+    left: 54px;
+    right: 10px;
+    width: fit-content;
+    max-width: calc(100% - 64px);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+}
+
+.wc-info {
+    top: 10px;
+    right: 10px;
+    max-width: 340px;
+}
+.wc-info-line { font-size: 0.72rem; color: #4b5563; }
+
+.wc-player {
+    bottom: 30px;
+    left: 54px;
+    right: 200px;
+    max-width: 900px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+@media (max-width: 1300px) {
+    .wc-toolbar { top: 70px; }
+}
+
+@media (max-width: 768px) {
+    .wc-date-main { font-size: 1.2rem; }
+    .wc-date { padding: 4px 14px; }
+    .wc-toolbar { top: 60px; }
+    .wc-info { display: none; }
+    .wc-player { right: 10px; left: 10px; }
+}
+
+/* the labels and the highs/lows are Leaflet divIcons, created outside the component's view: ::ng-deep */
+::ng-deep .wc-lbl {
+    font-weight: 700;
+    font-size: 11px;
+    color: #0f172a;
+    text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
+    white-space: nowrap;
+}
+::ng-deep .wc-hl {
+    font-weight: 800;
+    font-size: 15px;
+    line-height: 1;
+    text-align: center;
+    text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
+}
+::ng-deep .wc-hl small { display: block; font-size: 10px; font-weight: 600; }
+
+/* the wind legend is a Leaflet control, created outside the component's view */
+::ng-deep .wc-legend {
+    background: rgba(255, 255, 255, 0.92);
+    padding: 6px 9px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.5;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+::ng-deep .wc-legend i { display: inline-block; width: 16px; height: 10px; margin-right: 6px; vertical-align: middle; opacity: 0.8; }

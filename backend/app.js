@@ -36,6 +36,7 @@ app.use(express.static(staticPath, {
 const knmiReportsRouter  = require('./routes/knmi-reports.route');
 const starsRouter        = require('./routes/stars.route');
 const satellitesRouter   = require('./routes/satellites.route');
+const weatherMapsRouter  = require('./routes/weathermaps.route');
 const authRouter         = require('./routes/auth.route');
 const usersRouter        = require('./routes/users.route');
 const serverTasksRouter  = require('./routes/server-tasks.route');
@@ -58,6 +59,7 @@ app.use('/api/file-areas',    fileAreasRouter);
 app.use('/api/strike-areas',  strikeAreasRouter);
 app.use('/api/tomtom',        tomtomRouter);
 app.use('/api/ntfy',          ntfyRouter);
+app.use('/api/weather-maps',  weatherMapsRouter);
 
 server.listen(port, () => console.log(`bbqweer backend listening on port ${port}`));
 

@@ -25,6 +25,7 @@ C:\Apps\bbqweer.eu\
 │   │   ├── pages/energy-prices/ — EnergyPricesComponent (lazy module)
 │   │   ├── pages/solar/    — SolarComponent (lazy module)
 │   │   ├── pages/lightning/ — LightningComponent (lazy module) — real-time strike map
+│   │   ├── pages/weathercharts/ — WeatherChartsComponent (lazy module) — public model weather maps (isobars, wind/temp/rain layers)
 │   │   ├── pages/file-alerts/ — FileAlertsComponent (lazy module) — traffic jam alert areas; TomTom incidents public, areas login-only
 │   │   ├── components/     — my-knmi-anychart, my-knmi-chartjs, my-knmi-table,
 │   │   │                     my-planetarium, login, area-manager (AreaManagerComponent — shared
@@ -48,6 +49,7 @@ C:\Apps\bbqweer.eu\
 │   ├── callSyncKnmiData.js        — manual sync trigger (uses knmidata-v4)
 │   ├── callSyncEnergiePrices.js   — manual/historical energy price sync from energyzero.nl
 │   └── createUser.js       — one-off admin user creation script
+├── weather-maps/           — Python sync service (eccodes): ECMWF/ICON-EU/GFS/HARMONIE grids → own MongoDB; config.ini NOT in git, see docs/weather-charts.md
 ├── database/
 │   ├── init/               — MySQL init scripts (run once on first container start)
 │   │   ├── 01-schema.sql   — full bbqweer schema (tables, views, stored procedures)
@@ -82,6 +84,7 @@ C:\Apps\bbqweer.eu\
 │   ├── knmi-no-op-upsert.md — UpdateHistory without TRUNCATE: rollout notes + remaining to-do (drop dagnormen_raw on prod)
 │   ├── lightning-map.md
 │   ├── ntfy-server.md      — self-hosted ntfy push notification server (shared with wo-ict.nl, see "Shared across projects")
+│   ├── weather-charts.md   — Weerkaarten: weather-maps sync service, MongoDB grids, public route + page, memory notes
 │   └── tomtom.md           — TomTom Traffic Incident Details integration + file-alerts data pipeline
 ├── plans/                  — pre-implementation design docs (see dev-standards workflow)
 ├── nginx/nginx.conf        — serves bbqweer.eu; HTTP→HTTPS redirect + SSL + /api/* proxy to nodejs:3000
@@ -97,6 +100,8 @@ C:\Apps\bbqweer.eu\
 | Container | Image | Port |
 |-----------|-------|------|
 | bbqweer-mysql | mysql:8.0 | 127.0.0.1:3306 (host, loopback only) / 3306 (internal) |
+| bbqweer-mongodb | mongo:7.0.16 | internal only, **no `ports:`** (no password); weather-maps grids; local dev exposes 127.0.0.1:27018 |
+| bbqweer-weather-maps | built from weather-maps/ | — (sync service, 1 GiB limit; local dev behind the `donotstart` profile) |
 | bbqweer-redis | redis:8-alpine | internal only (6379 exposed on host via docker-compose.local.yml) |
 | bbqweer-nodejs | node:20-alpine (built from backend/) | 3000 (internal only) |
 | bbqweer-nginx | nginx:alpine | 80, 443 |
@@ -241,7 +246,7 @@ docker compose exec nodejs node createUser.js
 - `zone.js` installed and configured — required for automatic change detection after async ops
   - `"polyfills": ["zone.js"]` in `angular.json` build options
   - `provideZoneChangeDetection()` in `src/main.ts` bootstrap options
-- Seven lazy-loaded modules: `KnmiDataModule`, `ForecastModule`, `PlanetariumModule`, `EnergyPricesModule`, `SolarModule`, `LightningModule`, `FileAlertsModule`
+- Eight lazy-loaded modules: `KnmiDataModule`, `ForecastModule`, `WeatherChartsModule`, `PlanetariumModule`, `EnergyPricesModule`, `SolarModule`, `LightningModule`, `FileAlertsModule`
 - `socket.io-client` installed; added to `allowedCommonJsDependencies`; `environment.wsUrl` points to backend Socket.IO server (`http://localhost:3000` dev, `''` prod)
 - Budget limit raised to `2MB` warn / `3MB` error in `angular.json` (PrimeNG Table/Tag/ProgressBar)
 - `"hmr": false` in `angular.json` serve options — required; HMR is unreliable with NgModule apps
@@ -322,6 +327,7 @@ shows the count with no drilldown).
 ## Pages / Nav
 - KNMI Data (`/knmidata`) — weather data charts + admin (Beheer menu); chart-type buttons show text labels (Tabel/AnyChart/Chart.js) with active state highlighted
 - Weersverwachting (`/forecast`) — own lazy module (`ForecastModule`); 10-day hourly forecast via Open-Meteo (KNMI Seamless model); columns: temp, humidity, pressure, wind, rain, snow, cloud cover, radiation (GTI); location picked via Leaflet map dialog (saved in `localStorage` key `forecast_location`); Nominatim reverse geocoding resolves city name on save
+- Weerkaarten (`/weathercharts`) — public, no login; model grids (ECMWF, ICON-EU, GFS, HARMONIE) served from MongoDB by `/api/weather-maps` (rate-limited in nginx), drawn client-side (isobars, wind/temperature/rain layers, time slider, tooltip). Data attribution in the Leaflet attribution control is required — keep it. Full details and memory notes: `docs/weather-charts.md`
 - Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions; location picked via Leaflet map dialog (saved in `localStorage` key `planetarium_location`); Nominatim reverse geocoding resolves city name on save; uses default coords if no stored location (no geolocation)
 - Energieprijzen (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart; always shows today + tomorrow (fixed, no date nav); summary cards (Nu/Gemiddeld/Laagste/Hoogste) for today, summary cards (Gemiddeld/Laagste/Hoogste) for tomorrow; historical section with date picker below; UTC→local time conversion (Dutch UTC+1/+2 offsets); backend fetches CURDATE-1 through CURDATE+1 so local 00:00–01:00 hours are included; manual backfill: `node callSyncEnergiePrices.js [YYYY-MM-DD]`
 - Zonne-energie (`/solar`) — solar panel output forecast (3-day) via Open-Meteo GTI + historical backtest via KNMI uurgeg radiation data; backtest at bottom of page (collapsible); selected station saved in `localStorage` key `solar_backtest_stn`

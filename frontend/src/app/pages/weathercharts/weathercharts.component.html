@@ -1,0 +1,74 @@
+<div class="wc-wrapper">
+  <div #mapEl class="wc-map"></div>
+
+  <!-- the values at the point the pointer rests on -->
+  @if (tip) {
+    <div class="wc-tip" [style.left.px]="tip.x" [style.top.px]="tip.y">
+      <div class="wc-tip-title">{{ tip.title }}</div>
+      @for (r of tip.rows; track r.label) {
+        <div class="wc-tip-row"><span>{{ r.label }}</span><b>{{ r.value }}</b></div>
+      }
+    </div>
+  }
+
+  <!-- the valid time of the map on screen, straight at the top -->
+  @if (validLabel) {
+    <div class="wc-date">
+      <button type="button" class="wc-nav" (click)="stepBy(-1)" [disabled]="frameIndex <= 0" aria-label="Eén stap terug">
+        <i class="pi pi-chevron-left"></i>
+      </button>
+      <div>
+        <div class="wc-date-main">{{ validLabel }}</div>
+        <div class="wc-date-sub">{{ runLabel }}</div>
+      </div>
+      <button type="button" class="wc-nav" (click)="stepBy(1)" [disabled]="frameIndex >= maxIndex" aria-label="Eén stap vooruit">
+        <i class="pi pi-chevron-right"></i>
+      </button>
+    </div>
+  }
+
+  <!-- model, run, layer -->
+  <div class="wc-panel wc-toolbar">
+    <p-select [options]="modelOptions" [(ngModel)]="selectedId" (onChange)="onModelChange()"
+      optionLabel="label" optionValue="value" placeholder="Model" appendTo="body" [style]="{'min-width':'12rem'}" />
+    <p-select [options]="runOptions" [(ngModel)]="selectedRun" (onChange)="onRunChange()"
+      optionLabel="label" optionValue="value" placeholder="Run" appendTo="body" [style]="{'min-width':'14rem','max-width':'18rem'}" />
+    <div class="flex align-items-center gap-2">
+      <label for="wc-layer">Laag</label>
+      <p-select inputId="wc-layer" [options]="layerOptions" [(ngModel)]="layer" (onChange)="onLayerChange()"
+        optionLabel="label" optionValue="value" appendTo="body" [style]="{'min-width':'10rem'}" />
+      @if (layer === 'wind') {
+        <p-select [options]="windModeOptions" [(ngModel)]="windMode" (onChange)="onLayerChange()"
+          optionLabel="label" optionValue="value" appendTo="body" [style]="{'min-width':'8rem'}" />
+      }
+    </div>
+    <div class="flex align-items-center gap-2">
+      <p-checkbox [(ngModel)]="showLabels" [binary]="true" inputId="wc-labels" (onChange)="draw()" />
+      <label for="wc-labels">Labels</label>
+    </div>
+  </div>
+
+  <!-- run info, notes and errors -->
+  @if (errorMessage || layerNote || seamLine || infoLine) {
+    <div class="wc-panel wc-info">
+      @if (errorMessage) {
+        <p-message severity="error" styleClass="mb-2">{{ errorMessage }}</p-message>
+      }
+      <div class="wc-info-line">
+        {{ infoLine }}
+        @if (infoLine) { · isobaar elke 4 hPa, blauw onder 1013 hPa, rood erboven, dik elke 20 hPa }
+      </div>
+      @if (seamLine) { <div class="wc-info-line">{{ seamLine }}</div> }
+      @if (layerNote) { <div class="wc-info-line">{{ layerNote }}</div> }
+    </div>
+  }
+
+  <!-- slider and play, at the bottom (the legend sits in the bottom right corner) -->
+  <div class="wc-panel wc-player">
+    <p-button [label]="playing ? 'Stop' : 'Afspelen'" [icon]="playing ? 'pi pi-pause' : 'pi pi-play'"
+      severity="secondary" size="small" (onClick)="togglePlay()" />
+    <div class="flex-1" style="min-width:150px">
+      <p-slider [(ngModel)]="frameIndex" [min]="0" [max]="maxIndex" (onChange)="onStepChange()" styleClass="w-full" />
+    </div>
+  </div>
+</div>
