@@ -37,9 +37,9 @@ def iter_tasks(tasks, workers):
     """Run the download tasks in parallel and yield (step, param, message, mult, add) as they finish.
     tasks: list of (step, param, func, mult, add); func() returns the bytes of one GRIB message, or None when
     that field legitimately does not exist (accumulated precipitation at step 0). A failure ends the run."""
-    # Deviation from the wo-ict.nl original: at most `window` downloads are submitted / waiting at a time and a result
-    # is dropped as soon as it has been handed on. The original submitted every task at once and kept all futures (so
-    # all downloaded bytes of the run) until the end: a GFS run (~1450 fields) needed over 1 GB.
+    # At most `window` downloads are submitted / waiting at a time and a result is dropped as soon as it has been
+    # handed on. Submitting every task at once and keeping all futures would keep all downloaded bytes of the run in
+    # memory until the end: a GFS run (~1450 fields) needs over 1 GB that way.
     window = workers * 3
     ex = ThreadPoolExecutor(workers)
     try:

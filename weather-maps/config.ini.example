@@ -9,8 +9,7 @@ host = mysql
 port = 3306
 user = your_db_user
 password = your_db_password
-; historical key name (from the wo-ict.nl original); the value is the bbqweer database
-database_woict = bbqweer
+database = bbqweer
 
 [ntfy]
 base_url = https://your-ntfy-server
@@ -39,7 +38,7 @@ lon_min = -25
 lon_max = 45
 ; HARMONIE: only runs whose hour is a multiple of this (each tar is about 900 MB)
 harmonie_run_every_hours = 6
-; grids that are not stored (light set: ICON-EU only 0.25, HARMONIE only 0.058). Deviation from the wo-ict.nl original
+; grids that are not stored (light set: ICON-EU only 0.25, HARMONIE only 0.058).
 skip_grids = 0.125,0.029
 ; consecutive failed rounds for one source before an ntfy alert
 alert_after_failures = 3

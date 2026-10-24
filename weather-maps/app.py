@@ -56,7 +56,7 @@ def build_sources(cfg, names):
             out.append(Harmonie(key, int(cfgmod.get(cfg, 'maps', 'harmonie_run_every_hours', '3'))))
         else:
             log.error('unknown source %s', n)
-    # Deviation from the wo-ict.nl original: [maps] skip_grids drops grids (light set: 0.125,0.029)
+    # [maps] skip_grids drops grids (light set: 0.125,0.029)
     skip = {g.strip() for g in cfgmod.get(cfg, 'maps', 'skip_grids', '').split(',') if g.strip()}
     for s in out:
         s.grids = {g: st for g, st in s.grids.items() if g not in skip}

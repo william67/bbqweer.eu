@@ -22,7 +22,7 @@ class TaskStatus:
             port=int(cfg.get('mysql', 'port', fallback='3306')),
             user=cfg.get('mysql', 'user'),
             password=cfg.get('mysql', 'password'),
-            database=cfg.get('mysql', 'database_woict'),
+            database=cfg.get('mysql', 'database'),
             charset='utf8mb4', connect_timeout=5, read_timeout=10, write_timeout=10, autocommit=True,
         )
 
