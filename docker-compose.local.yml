@@ -2,6 +2,12 @@ services:
   redis:
     ports:
       - "6379:6379"   # expose for local dev (backend runs outside Docker)
+  mongodb:
+    ports:
+      - "127.0.0.1:27018:27017"   # loopback only, for the backend running outside Docker (27017 is wo-ict.nl's own Mongo)
+  weather-maps:
+    profiles:
+      - donotstart   # downloads GBs of model data; start explicitly with --profile donotstart
   nginx:
     ports:
       - "80:80"

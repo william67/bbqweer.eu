@@ -1,0 +1,8 @@
+# The deploy script copies the compose file from the infra repo into this folder on the server.
+# Keep it (and anything else that is not app code) out of the build context, otherwise every
+# deploy builds a different image and restarts the container even when nothing changed.
+docker-compose*.yml
+config.ini
+__pycache__
+.git
+*.log

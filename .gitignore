@@ -2,6 +2,7 @@
 .env
 backend/config.ini
 backend/config.local.ini
+weather-maps/config.ini
 
 # Dependencies
 backend/node_modules/

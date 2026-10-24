@@ -1,0 +1,45 @@
+[mongodb]
+host = mongodb
+port = 27017
+database = weathermaps
+
+[mysql]
+; only for the server-tasks status row of this service
+host = mysql
+port = 3306
+user = your_db_user
+password = your_db_password
+; historical key name (from the wo-ict.nl original); the value is the bbqweer database
+database_woict = bbqweer
+
+[ntfy]
+base_url = https://your-ntfy-server
+token = your_ntfy_token
+topic_suffix =
+
+[knmi]
+; KNMI Open Data API key (NOT the WMS key of the rain radar), only needed for the harmonie source.
+; Request at https://developer.dataplatform.knmi.nl/ -> API Catalog -> Open Data API. Never commit it.
+open_data_key = your_open_data_api_key
+
+[maps]
+; seconds between two checks for a new run
+check_seconds = 600
+; sources to sync: ecmwf, icon-eu, gfs, harmonie
+sources = ecmwf,icon-eu,gfs,harmonie
+; parallel downloads per source (2: the VPS has 3.8 GB RAM shared with MySQL)
+workers = 2
+; complete runs kept per model and grid (about 250 MB per run of every model; the short ICON-EU and ECMWF runs are merged
+; with the older long run into one timeline)
+keep_runs = 2
+; Europe box that is cut out of the global / large grids (ICON-EU is cut to it as well, HARMONIE is kept whole)
+lat_min = 35
+lat_max = 70
+lon_min = -25
+lon_max = 45
+; HARMONIE: only runs whose hour is a multiple of this (each tar is about 900 MB)
+harmonie_run_every_hours = 6
+; grids that are not stored (light set: ICON-EU only 0.25, HARMONIE only 0.058). Deviation from the wo-ict.nl original
+skip_grids = 0.125,0.029
+; consecutive failed rounds for one source before an ntfy alert
+alert_after_failures = 3
