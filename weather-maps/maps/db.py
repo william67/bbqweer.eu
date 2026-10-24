@@ -11,7 +11,7 @@ TASK_CODE = 'weather-maps-sync'
 class TaskStatus:
     """The server-tasks status row of this service (same columns the Node bridges use, seeded by
     database/updates/weather-maps-sync-task-20261024.sql). One short-lived connection per call: it is
-    written once per round, so no pool. A MySQL problem must never stop the sync, so every call swallows errors."""
+    written a few times per round, so no pool. A MySQL problem must never stop the sync, so every call swallows errors."""
 
     def __init__(self, cfg):
         if not cfg.has_section('mysql'):
@@ -48,3 +48,15 @@ class TaskStatus:
     def error(self):
         self._run('UPDATE `server-tasks` SET errorCount=errorCount+1, updatedAt=UTC_TIMESTAMP() WHERE taskCode=%s',
                   (TASK_CODE,))
+
+    def finish(self, status, message):
+        """End of a round: same columns as taskFinish() in the backend helper."""
+        self._run('UPDATE `server-tasks` SET isRunning=0, finishedAt=UTC_TIMESTAMP(), '
+                  'lastDurationSec=TIMESTAMPDIFF(SECOND, startedAt, UTC_TIMESTAMP()), currentProgress=progressTotal, '
+                  'lastStatus=%s, lastMessage=%s, updatedAt=UTC_TIMESTAMP() WHERE taskCode=%s',
+                  (status, message[:500], TASK_CODE))
+
+    def stopped(self):
+        """The service was stopped in the middle of a round (container restart): do not leave the row on running."""
+        self._run('UPDATE `server-tasks` SET isRunning=0, finishedAt=UTC_TIMESTAMP(), lastMessage=%s, '
+                  'updatedAt=UTC_TIMESTAMP() WHERE taskCode=%s', ('stopped (container restart)', TASK_CODE))

@@ -161,10 +161,10 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
 
     log.info('sources: %s, box %s, keep %d runs per model, check every %d s', [s.model for s in sources], box, keep, check_s)
-    status.start(len(sources))
 
     while not stop.is_set():
-        parts, ok = [], 0
+        parts, ok, done = [], 0, 0
+        status.start(len(sources))                   # one status entry per round, like the other tasks
         for src in sources:
             if stop.is_set():
                 break
@@ -186,7 +186,12 @@ def main():
                     ntfy.send(f'weather-maps-{src.model}', f'weather-maps-sync: {src.model} failed {failures[src.model]} rounds in a row: {e}')
             parts.append(f'{src.model}: {text}')
             log.info('%s: %s', src.model, text)
-        status.progress(ok, len(sources), ' | '.join(parts))
+            done += 1
+            status.progress(done, len(sources), ' | '.join(parts))
+        if stop.is_set() and done < len(sources):
+            status.stopped()
+            break
+        status.finish('success' if ok == len(sources) else 'error', ' | '.join(parts))
         if args.once:
             break
         stop.wait(check_s)
