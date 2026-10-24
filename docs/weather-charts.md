@@ -8,7 +8,7 @@ Public page `/#/weathercharts`: isobars (MSLP every 4 hPa, H/L marks), colour la
 |---|---|
 | `mongodb` + `weather-maps` containers | **in production** (2026-10-24), first full sync of all four models done |
 | Backend route `/api/weather-maps` | **in production** (public) |
-| Page `/weathercharts`, menu item, nginx rate limit | **in production**; the rate limit has not been load-tested |
+| Page `/weathercharts`, menu item, nginx rate limit | **in production**; rate limit tested 2026-10-24 |
 
 ## Architecture
 
@@ -174,6 +174,6 @@ Parameter names: ECMWF `msl` Pa, `10u`/`10v` m/s, `2t` K, `tp` **m**; ICON-EU `P
 ## Open points
 
 - **Memory margin:** with the bounded download window the sync stays around 100-140 MiB (GFS 12Z, measured on the VPS 2026-10-24), the host around 2.2 GB used of 3.7 GB. Keep an eye on it while the second run per model (`keep_runs = 2`) fills up; the per-container log shows it.
-- The rate limit in nginx (20 r/s per IP, burst 60) has not been load-tested.
+- Rate limit (nginx, 20 r/s per IP, burst 60), tested on production 2026-10-24: 200 requests with 40 in parallel gave 147 x 200 and 53 x 503, the next request and other APIs answered 200 straight away. A normal page view (the model list plus a few fields) stays far below it.
 - More layers (cloud cover, humidity, ...) exist in the sources but are not stored.
 - The temperature and rain colour scales are our own choice.
