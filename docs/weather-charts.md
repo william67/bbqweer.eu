@@ -6,9 +6,9 @@ Public page `/#/weathercharts`: isobars (MSLP every 4 hPa, H/L marks), colour la
 
 | Part | State |
 |---|---|
-| `mongodb` + `weather-maps` containers | **deployed on the VPS** (2026-10-24), first full sync running |
-| Backend route `/api/weather-maps` | written, tested locally, **not deployed yet** |
-| Page `/weathercharts`, menu item, nginx rate limit | written, tested locally, **not deployed yet** |
+| `mongodb` + `weather-maps` containers | **in production** (2026-10-24), first full sync of all four models done |
+| Backend route `/api/weather-maps` | **in production** (public) |
+| Page `/weathercharts`, menu item, nginx rate limit | **in production**; the rate limit has not been load-tested |
 
 ## Architecture
 
@@ -156,6 +156,8 @@ Parameter names: ECMWF `msl` Pa, `10u`/`10v` m/s, `2t` K, `tp` **m**; ICON-EU `P
 ## Operations
 
 - **Memory:** watch `free -m` and the server monitoring. If used memory goes above about 3.3 GB: first lower `keep_runs` or drop HARMONIE from `sources` (edit `config.ini`, then `docker compose up -d weather-maps`), and tell the owner. Beyond that: a smaller MySQL buffer (their decision) or a bigger VPS.
+- **Memory per container:** `scripts/container-mem-log.sh` writes one line per minute to `/var/log/container-mem.log` on the VPS (host used/available in MB plus the memory of every container; `/etc/cron.d/container-mem`, rotated daily for 14 days by `/etc/logrotate.d/container-mem`). Read it with `tail` or `grep 'T21:3' /var/log/container-mem.log` (times are UTC). The host history at a coarser 10 minutes is in `sar -r -f /var/log/sysstat/saDD`. An OOM kill of a container shows in `journalctl -k | grep -i "out of memory"`.
+- **When the runs arrive** (UTC, about): GFS 4 times a day, 3.7 h after the run hour (18Z at about 21:40); ICON-EU about 2.75 h after the run; ECMWF about 7.5 h after (00Z/12Z full runs, 06Z/18Z short ones); HARMONIE about 2.5 h after, every 6th hourly run.
 - **First full sync is slow** (2 workers, small VPS): count on 30-40 minutes for GFS. HARMONIE downloads a 900 MB tar per fetched run.
 - **Logs:** `docker compose logs -f weather-maps` on the VPS. Status also shows in the Taakstatus dialog (`weather-maps-sync`).
 - **Rollout order** (VPS, in `/opt/bbqweer`): `git pull --ff-only`, SQL seed, `weather-maps/config.ini` (no BOM), `docker compose up -d --build mongodb weather-maps`. The page needs `.\deploy-hetzner.ps1 -Service nodejs` and `-Service frontend`; `nginx.conf` is only picked up by the frontend deploy's nginx restart. The script does not cover `mongodb`/`weather-maps`.
@@ -171,6 +173,7 @@ Parameter names: ECMWF `msl` Pa, `10u`/`10v` m/s, `2t` K, `tp` **m**; ICON-EU `P
 
 ## Open points
 
-- Whether the memory margin on the VPS holds with all four models running (to be seen after the first full sync).
+- **Memory margin:** with the bounded download window the sync stays around 100-140 MiB (GFS 12Z, measured on the VPS 2026-10-24), the host around 2.2 GB used of 3.7 GB. Keep an eye on it while the second run per model (`keep_runs = 2`) fills up; the per-container log shows it.
+- The rate limit in nginx (20 r/s per IP, burst 60) has not been load-tested.
 - More layers (cloud cover, humidity, ...) exist in the sources but are not stored.
 - The temperature and rain colour scales are our own choice.
