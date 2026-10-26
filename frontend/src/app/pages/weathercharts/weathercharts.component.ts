@@ -333,7 +333,7 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         }
         const strip = (title: string, bands: RainBand[]) => `<b>${title}</b><br>`
             + bands.map(b => `<i style="background:rgb(${b.rgb.join(',')});width:22px;margin-right:2px"></i>`).join('')
-            + `<br><small>${bands.map(b => b.min).join(' · ')}+</small>`;
+            + `<br><small>${bands.map(b => b.min).join(' Â· ')}+</small>`;
         const note = classes.derived ? '<br><small>type afgeleid uit sneeuwsom en temperatuur</small>' : '';
         this.setLegendHtml([strip('Regen (mm/uur)', RAIN_BANDS), strip('Natte sneeuw (mm/uur)', MIX_BANDS),
             strip(`Sneeuw (cm/uur, ${SNOW_RATIO}:1)`, SNOW_BANDS), strip('IJzel (mm/uur)', FREEZING_BANDS)].join('<br>') + `<br><small>${footer}</small>${note}`);

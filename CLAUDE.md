@@ -159,6 +159,7 @@ On the VPS, MySQL is published as `127.0.0.1:3306` (changed 2026-10-05; was `0.0
 - Footer shows `bbqweer.eu v1.0009 — YYYY-MM-DD HH:MM:SS` (version/timestamp in smaller font)
 - `environment.production.ts` contains `buildTime: 'BUILD_TIME_PLACEHOLDER'`
 - The build command above injects the real timestamp before `ng build`, then restores the placeholder
+- Footer label is `v` + commit count (`git rev-list --count HEAD`, 4 digits) from `version.json`, which the frontend deploy writes into `dist/frontend/browser/`. `AppUpdateService` polls it every 60 s and shows a red "Nieuwe versie beschikbaar" bar when the deploy timestamp changes or a lazy chunk fails to load (dev-standards `frontend/version-check.md`). No `version.json` in local dev: no label, no bar. nginx already serves it `no-cache`.
 - **Never commit with a real timestamp** — always restore `BUILD_TIME_PLACEHOLDER` after building
 
 ## Config / Secrets

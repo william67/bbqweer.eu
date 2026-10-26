@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { environment } from 'src/environments/environment';
+import { AppUpdateService } from 'src/app/services/app-update.service';
 
 @Component({
     selector: 'app-footer',
@@ -8,4 +9,5 @@ import { environment } from 'src/environments/environment';
 })
 export class AppFooterComponent {
     buildTime = environment.buildTime;
+    updateService = inject(AppUpdateService);
 }

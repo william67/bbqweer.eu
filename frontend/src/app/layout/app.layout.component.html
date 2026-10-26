@@ -1,3 +1,6 @@
+@if (updateService.updateAvailable()) {
+    <div class="update-banner" (click)="updateService.reload()">Nieuwe versie beschikbaar — KLIK OM TE LADEN</div>
+}
 <div class="layout-wrapper">
     <app-topbar></app-topbar>
     <div class="layout-content-wrapper">

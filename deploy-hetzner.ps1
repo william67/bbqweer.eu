@@ -112,6 +112,12 @@ try {
         }
         Write-Log '  Build complete, placeholder restored' 'Green'
 
+        # version.json: polled by AppUpdateService; `version` (deploy timestamp) is what is compared, `build` is the label in the footer
+        $build = 'v' + (git -C $Repo rev-list --count HEAD).ToString().PadLeft(4, '0')
+        $versionJson = '{ "version": "' + (Get-Date -Format 'yyyy-MM-ddTHH:mm:ss') + '", "build": "' + $build + '", "date": "' + (Get-Date -Format 'yyyy-MM-dd') + '" }'
+        [System.IO.File]::WriteAllText((Join-Path $DistSrc 'browser/version.json'), $versionJson, $utf8NoBom)
+        Write-Log "  version.json written ($build)" 'Green'
+
         # -- 3. Upload as tarball (Windows tar.exe by full path: GNU tar from Git Bash reads C:\ as host:path)
         Write-Step "Uploading dist -> $DistDst"
         $tarFile = Join-Path $env:TEMP 'bbqweer-dist.tar.gz'
