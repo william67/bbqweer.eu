@@ -6,6 +6,7 @@
     right: 0;
     bottom: 0;
     overflow: hidden;
+    container: wc / inline-size;      /* the breakpoints below are on the width of this area: the side menu makes it narrower than the window */
 }
 
 .wc-map {
@@ -81,17 +82,23 @@
 .wc-tip-row { display: flex; justify-content: space-between; gap: 8px; color: #4b5563; }
 .wc-tip-row b { color: #0f172a; text-align: right; }
 
-/* next to the zoom buttons, level with the date; on a narrower window it would run under the date, so it drops below it */
+/* top left, next to the zoom buttons and level with the date. Two rows (model and run, then layer and labels), about 530 px wide.
+   On a very wide map area (about 2400 px and more) everything fits left of the date on one row; below about 1550 px the two rows
+   would run over the date (centred) and drop below it. Container queries on .wc-wrapper: a window query does not see the side menu. */
 .wc-toolbar {
     top: 10px;
     left: 54px;
-    right: 10px;
     width: fit-content;
     max-width: calc(100% - 64px);
     display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.wc-tb-row {
+    display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 10px 14px;
+    gap: 8px 14px;
 }
 
 .wc-info {
@@ -111,11 +118,15 @@
     gap: 14px;
 }
 
-@media (max-width: 1300px) {
+@container wc (min-width: 2400px) {
+    .wc-toolbar { flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 8px 14px; }
+}
+
+@container wc (max-width: 1550px) {
     .wc-toolbar { top: 70px; }
 }
 
-@media (max-width: 768px) {
+@container wc (max-width: 768px) {
     .wc-date-main { font-size: 1.2rem; }
     .wc-date { padding: 4px 14px; }
     .wc-toolbar { top: 60px; }

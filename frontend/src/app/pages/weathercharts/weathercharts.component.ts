@@ -37,7 +37,7 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
     frameIndex = 0;
     maxIndex = 0;
     showLabels = true;
-    layer: Layer = 'wind';                              // the colour layer under the isobars
+    layer: Layer = 'rain';                            // the colour layer under the isobars
     layerOptions = [{ label: 'Geen laag', value: 'none' }, { label: 'Wind', value: 'wind' },
         { label: 'Temperatuur 2 m', value: 'temp' }, { label: 'Neerslag', value: 'rain' }];
     windMode: 'mean' | 'gust' = 'mean';                 // what the wind colours show: the mean wind or the gusts

@@ -27,24 +27,28 @@
     </div>
   }
 
-  <!-- model, run, layer -->
+  <!-- model, run, layer: two rows, so the panel is flat -->
   <div class="wc-panel wc-toolbar">
-    <p-select [options]="modelOptions" [(ngModel)]="selectedId" (onChange)="onModelChange()"
-      optionLabel="label" optionValue="value" placeholder="Model" appendTo="body" [style]="{'min-width':'12rem'}" />
-    <p-select [options]="runOptions" [(ngModel)]="selectedRun" (onChange)="onRunChange()"
-      optionLabel="label" optionValue="value" placeholder="Run" appendTo="body" [style]="{'min-width':'14rem','max-width':'18rem'}" />
-    <div class="flex align-items-center gap-2">
-      <label for="wc-layer">Laag</label>
-      <p-select inputId="wc-layer" [options]="layerOptions" [(ngModel)]="layer" (onChange)="onLayerChange()"
-        optionLabel="label" optionValue="value" appendTo="body" [style]="{'min-width':'10rem'}" />
-      @if (layer === 'wind') {
-        <p-select [options]="windModeOptions" [(ngModel)]="windMode" (onChange)="onLayerChange()"
-          optionLabel="label" optionValue="value" appendTo="body" [style]="{'min-width':'8rem'}" />
-      }
+    <div class="wc-tb-row">
+      <p-select [options]="modelOptions" [(ngModel)]="selectedId" (onChange)="onModelChange()"
+        optionLabel="label" optionValue="value" placeholder="Model" appendTo="body" [style]="{'min-width':'12rem'}" />
+      <p-select [options]="runOptions" [(ngModel)]="selectedRun" (onChange)="onRunChange()"
+        optionLabel="label" optionValue="value" placeholder="Run" appendTo="body" [style]="{'min-width':'14rem','max-width':'18rem'}" />
     </div>
-    <div class="flex align-items-center gap-2">
-      <p-checkbox [(ngModel)]="showLabels" [binary]="true" inputId="wc-labels" (onChange)="draw()" />
-      <label for="wc-labels">Labels</label>
+    <div class="wc-tb-row">
+      <div class="flex align-items-center gap-2">
+        <label for="wc-layer">Laag</label>
+        <p-select inputId="wc-layer" [options]="layerOptions" [(ngModel)]="layer" (onChange)="onLayerChange()"
+          optionLabel="label" optionValue="value" appendTo="body" [style]="{'min-width':'10rem'}" />
+        @if (layer === 'wind') {
+          <p-select [options]="windModeOptions" [(ngModel)]="windMode" (onChange)="onLayerChange()"
+            optionLabel="label" optionValue="value" appendTo="body" [style]="{'min-width':'8rem'}" />
+        }
+      </div>
+      <div class="flex align-items-center gap-2">
+        <p-checkbox [(ngModel)]="showLabels" [binary]="true" inputId="wc-labels" (onChange)="draw()" />
+        <label for="wc-labels">Labels</label>
+      </div>
     </div>
   </div>
 
