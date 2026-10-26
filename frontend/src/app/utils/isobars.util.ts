@@ -28,12 +28,17 @@ export async function decodeGrid(f: GridField): Promise<Float32Array> {
     return v;
 }
 
+/** A part of the grid, as grid indices (inclusive). */
+export interface GridWindow { x0: number; x1: number; y0: number; y1: number; }
+
 /** Marching squares: the line segments of one level as a flat list x1, y1, x2, y2 (grid coordinates, x east, y south). */
-export function isoSegments(v: Float32Array, nx: number, ny: number, level: number): number[] {
+export function isoSegments(v: Float32Array, nx: number, ny: number, level: number, win?: GridWindow): number[] {
     const out: number[] = [];
     const lerp = (a: number, b: number) => (level - a) / (b - a);
-    for (let y = 0; y < ny - 1; y++) {
-        for (let x = 0; x < nx - 1; x++) {
+    const xFrom = win ? Math.max(0, win.x0) : 0, xTo = win ? Math.min(nx - 1, win.x1) : nx - 1;
+    const yFrom = win ? Math.max(0, win.y0) : 0, yTo = win ? Math.min(ny - 1, win.y1) : ny - 1;
+    for (let y = yFrom; y < yTo; y++) {
+        for (let x = xFrom; x < xTo; x++) {
             const a = v[y * nx + x], b = v[y * nx + x + 1], c = v[(y + 1) * nx + x + 1], d = v[(y + 1) * nx + x];
             const idx = (a >= level ? 8 : 0) | (b >= level ? 4 : 0) | (c >= level ? 2 : 0) | (d >= level ? 1 : 0);
             if (idx === 0 || idx === 15) continue;
@@ -62,32 +67,59 @@ export function isoSegments(v: Float32Array, nx: number, ny: number, level: numb
  * Per pressure area only the strongest point is kept: candidates are taken deepest/highest first and dropped when a
  * point of the same kind is already marked inside the window.
  */
+function slideExtreme(src: Float32Array, dst: Float32Array, len: number, start: number, step: number, r: number, max: boolean, queue: Int32Array): void {
+    let head = 0, tail = 0;
+    for (let i = 0; i < len + r; i++) {                            // i enters the window, the window of output i - r
+        if (i < len) {
+            const val = src[start + i * step];
+            while (tail > head) {
+                const last = src[start + queue[tail - 1] * step];
+                if (max ? last <= val : last >= val) tail--; else break;
+            }
+            queue[tail++] = i;
+        }
+        const o = i - r;
+        if (o >= 0) {
+            while (queue[head] < o - r) head++;
+            dst[start + o * step] = src[start + queue[head] * step];
+        }
+    }
+}
+
+function windowExtreme(src: Float32Array, nx: number, ny: number, rx: number, ry: number, max: boolean): Float32Array {
+    const tmp = new Float32Array(nx * ny), out = new Float32Array(nx * ny);
+    const queue = new Int32Array(Math.max(nx, ny));
+    for (let y = 0; y < ny; y++) slideExtreme(src, tmp, nx, y * nx, 1, rx, max, queue);
+    for (let x = 0; x < nx; x++) slideExtreme(tmp, out, ny, x, nx, ry, max, queue);
+    return out;
+}
+
 export function findExtremes(v: Float32Array, f: GridField, degrees = 4, minProminence = 2): Extreme[] {
     const rx = Math.max(2, Math.round(Math.min(degrees, 0.25 * (f.nx - 1) * f.dlon) / f.dlon));
     const ry = Math.max(2, Math.round(Math.min(degrees, 0.25 * (f.ny - 1) * f.dlat) / f.dlat));
+    const n = f.nx * f.ny;
+    let gaps = false;
+    const clean = new Float32Array(n), nan = new Float32Array(n);   // NaN becomes 0 in `clean`, `nan` marks where it was
+    for (let i = 0; i < n; i++) {
+        if (v[i] !== v[i]) { gaps = true; nan[i] = 1; } else clean[i] = v[i];
+    }
+    const lo = windowExtreme(clean, f.nx, f.ny, rx, ry, false), hi = windowExtreme(clean, f.nx, f.ny, rx, ry, true);
+    const bad = gaps ? windowExtreme(nan, f.nx, f.ny, rx, ry, true) : null;
     const cands: Extreme[] = [];
     for (let y = ry; y < f.ny - ry; y++) {
         for (let x = rx; x < f.nx - rx; x++) {
-            const val = v[y * f.nx + x];
-            let isMin = true, isMax = true;
-            for (let j = -ry; j <= ry && (isMin || isMax); j++) {
-                for (let i = -rx; i <= rx; i++) {
-                    if (!i && !j) continue;
-                    const o = v[(y + j) * f.nx + x + i];
-                    if (o < val) isMin = false;
-                    if (o > val) isMax = false;
-                    if (!isMin && !isMax) break;
-                }
-            }
+            const idx = y * f.nx + x, val = clean[idx];
+            if (bad && bad[idx] > 0) continue;
+            const isMin = val === lo[idx], isMax = val === hi[idx];
             if (!isMin && !isMax) continue;
-            let sum = 0, n = 0;                                  // the mean of the window's border
+            let sum = 0, cnt = 0;                                  // mean of the window's border (only for the few candidates)
             for (let j = -ry; j <= ry; j++) {
                 for (let i = -rx; i <= rx; i += (Math.abs(j) === ry ? 1 : 2 * rx)) {
-                    sum += v[(y + j) * f.nx + x + i];
-                    n++;
+                    sum += clean[(y + j) * f.nx + x + i];
+                    cnt++;
                 }
             }
-            const prominence = isMax ? val - sum / n : sum / n - val;
+            const prominence = isMax ? val - sum / cnt : sum / cnt - val;
             if (prominence >= minProminence) cands.push({ x, y, val, type: isMax ? 'H' : 'L' });
         }
     }

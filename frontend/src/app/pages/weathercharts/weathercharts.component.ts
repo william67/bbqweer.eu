@@ -3,7 +3,7 @@ import { firstValueFrom } from 'rxjs';
 import * as L from 'leaflet';
 import { WeatherMapsService } from 'src/app/services/weather-maps.service';
 import { WeatherMapModel, WeatherMapField, WeatherMapFrame } from 'src/app/api/weather-maps';
-import { decodeGrid, isoSegments, findExtremes } from 'src/app/utils/isobars.util';
+import { decodeGrid, isoSegments, findExtremes, GridWindow } from 'src/app/utils/isobars.util';
 import { WIND_BANDS, sampleBilinear, buildSpeedImage, buildColourImage } from 'src/app/utils/wind.util';
 import { TEMP_LEGEND, RAIN_BANDS, tempColour, tempRgb, rainColour } from 'src/app/utils/layers.util';
 import { LocalStorageService } from 'src/app/services/local-storage.service';
@@ -12,7 +12,7 @@ const MODEL_NAMES: Record<string, string> = { 'ecmwf': 'ECMWF IFS', 'gfs': 'NOAA
 const DEFAULT_ID = 'gfs/0.25';
 const REFRESH_MS = 5 * 60 * 1000;        // a new run is picked up by asking the model list again
 const PLAY_MS = 1200;
-const INTERVAL_HPA = 4;
+const intervalForZoom = (zoom: number) => zoom < 6 ? 4 : zoom < 7 ? 2 : 1;      // hPa between isobars: more lines when zoomed in
 const MAX_CACHE = 240;                   // decoded grids kept in the browser
 const VIEW_KEY = 'weathercharts_view';
 
@@ -48,10 +48,17 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
     validLabel = '';                                    // the valid time of the map on screen, big at the top
     runLabel = '';                                      // run and step of that map
     infoLine = '';
+    isoInterval = 4;                                    // hPa between the isobars on screen
     seamLine = '';
 
     private map!: L.Map;
-    private isoLayer = L.layerGroup();                  // the isobars, labels and highs/lows
+    private isoLayer = L.layerGroup();                  // the highs/lows and the outline of the model area
+    private lineLayer = L.layerGroup();                 // the isobars and their labels, redrawn per zoom level for the visible part only
+    private isoState: { cur: WeatherMapModel; f: WeatherMapField; v: Float32Array } | null = null;
+    private isoCover: GridWindow | null = null;         // the part of the grid the isobars on screen cover (with a margin)
+    private isoDrawnInterval = 0;
+    private isoTimer: any = null;
+    private infoBase = '';
     private svgRenderer = L.svg({ padding: 0.5 });          // one shared SVG renderer for all lines (project rule)
     private windLayer = L.layerGroup();                     // the wind arrows, redrawn when the map moves or zooms
     private colourImage: L.ImageOverlay | null = null;      // the colours of the chosen layer
@@ -96,9 +103,10 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Modeldata: ECMWF Open Data (CC BY 4.0), DWD ICON-EU, NOAA GFS, KNMI HARMONIE (CC BY 4.0)',
             maxZoom: 10
         }).addTo(this.map);
+        this.lineLayer.addTo(this.map);
         this.isoLayer.addTo(this.map);
         this.windLayer.addTo(this.map);
-        this.map.on('moveend', () => { this.drawArrows(); this.saveView(); });
+        this.map.on('moveend', () => { this.drawArrows(); this.saveView(); this.scheduleIsobars(); });
         // the values at a point: after the pointer rests for a moment, gone as soon as it moves, leaves, drags or zooms
         this.map.on('mousemove', (e: L.LeafletMouseEvent) => this.scheduleTip(e));
         this.map.on('mouseout mousedown movestart zoomstart', () => this.hideTip());
@@ -116,6 +124,7 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         if (this.refreshTimer) clearInterval(this.refreshTimer);
         this.resizeObserver?.disconnect();
         if (this.tipTimer) clearTimeout(this.tipTimer);
+        if (this.isoTimer) clearTimeout(this.isoTimer);
         if (this.layoutContent) {
             this.layoutContent.style.position = '';
             this.layoutContent.style.padding = '';
@@ -530,26 +539,9 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
 
     private render(cur: WeatherMapModel, frame: WeatherMapFrame, f: WeatherMapField, v: Float32Array): void {
         this.isoLayer.clearLayers();
+        this.isoState = { cur, f, v };
+        this.isoCover = null;                                  // a new field: the lines are drawn again
         const ll = (x: number, y: number): L.LatLngExpression => [f.lat0 - y * f.dlat, f.lon0 + x * f.dlon];
-        let nSeg = 0;
-        for (let lev = Math.ceil(f.min / INTERVAL_HPA) * INTERVAL_HPA; lev <= f.max; lev += INTERVAL_HPA) {
-            const flat = isoSegments(v, f.nx, f.ny, lev);
-            const n = flat.length / 4;
-            if (!n) continue;
-            nSeg += n;
-            const lines: L.LatLngExpression[][] = [];
-            for (let i = 0; i < flat.length; i += 4) lines.push([ll(flat[i], flat[i + 1]), ll(flat[i + 2], flat[i + 3])]);
-            L.polyline(lines, { renderer: this.svgRenderer, color: lev < 1013 ? '#1d4ed8' : '#b91c1c', weight: lev % 20 === 0 ? 2.4 : 1.2, opacity: 0.9, interactive: false }).addTo(this.isoLayer);
-            if (this.showLabels && lev % 8 === 0) {
-                const every = Math.max(1, Math.floor(n / 5));
-                for (let i = Math.floor(every / 2); i < n; i += every) {
-                    const o = i * 4;
-                    L.marker(ll((flat[o] + flat[o + 2]) / 2, (flat[o + 1] + flat[o + 3]) / 2), {
-                        interactive: false, icon: L.divIcon({ className: 'wc-lbl', html: String(lev), iconSize: [0, 0] })
-                    }).addTo(this.isoLayer);
-                }
-            }
-        }
         for (const e of findExtremes(v, f)) {
             const colour = e.type === 'H' ? '#b91c1c' : '#1d4ed8';
             L.marker(ll(e.x, e.y), {
@@ -565,6 +557,64 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         }
         this.validLabel = this.fmtLocal(frame.valid);
         this.runLabel = `run ${this.fmtRunHour(frame.run)} +${frame.step} uur`;
-        this.infoLine = `${MODEL_NAMES[cur.model] ?? cur.model} · ${cur.grid}° · ${f.nx}×${f.ny} punten · ${f.min.toFixed(0)}-${f.max.toFixed(0)} hPa · ${nSeg} lijnstukjes (tijden in lokale tijd, runs in UTC)`;
+        this.infoBase = `${MODEL_NAMES[cur.model] ?? cur.model} · ${cur.grid}° · ${f.nx}×${f.ny} punten · ${f.min.toFixed(0)}-${f.max.toFixed(0)} hPa`;
+        this.drawIsobars();
+    }
+
+    // the visible part of the map as grid indices, with `pad` extra around it (a fraction of the view)
+    private visibleWindow(f: WeatherMapField, pad: number): GridWindow {
+        const b = this.map.getBounds().pad(pad);
+        return {
+            x0: Math.max(0, Math.floor((b.getWest() - f.lon0) / f.dlon)), x1: Math.min(f.nx - 1, Math.ceil((b.getEast() - f.lon0) / f.dlon)),
+            y0: Math.max(0, Math.floor((f.lat0 - b.getNorth()) / f.dlat)), y1: Math.min(f.ny - 1, Math.ceil((f.lat0 - b.getSouth()) / f.dlat))
+        };
+    }
+
+    // after the map moved: draw the lines again only when the zoom level wants another interval or the view left what is drawn
+    private scheduleIsobars(): void {
+        if (!this.isoState) return;
+        if (this.isoTimer) clearTimeout(this.isoTimer);
+        this.isoTimer = setTimeout(() => {
+            const st = this.isoState, c = this.isoCover;
+            if (!st) return;
+            const vis = this.visibleWindow(st.f, 0);
+            const inside = c && vis.x0 >= c.x0 && vis.x1 <= c.x1 && vis.y0 >= c.y0 && vis.y1 <= c.y1;
+            if (intervalForZoom(this.map.getZoom()) !== this.isoDrawnInterval || !inside) this.drawIsobars();
+        }, 120);
+    }
+
+    // the isobars and labels of the visible part, at the interval of the zoom level
+    private drawIsobars(): void {
+        const st = this.isoState;
+        if (!st) return;
+        const { f, v } = st;
+        const interval = intervalForZoom(this.map.getZoom());
+        const win = this.visibleWindow(f, 0.25);
+        this.lineLayer.clearLayers();
+        const ll = (x: number, y: number): L.LatLngExpression => [f.lat0 - y * f.dlat, f.lon0 + x * f.dlon];
+        let nSeg = 0;
+        for (let lev = Math.ceil(f.min / interval) * interval; lev <= f.max; lev += interval) {
+            const flat = isoSegments(v, f.nx, f.ny, lev, win);
+            const n = flat.length / 4;
+            if (!n) continue;
+            nSeg += n;
+            const lines: L.LatLngExpression[][] = [];
+            for (let i = 0; i < flat.length; i += 4) lines.push([ll(flat[i], flat[i + 1]), ll(flat[i + 2], flat[i + 3])]);
+            const weight = lev % 20 === 0 ? 2.4 : interval < 4 && lev % 4 === 0 ? 1.8 : 1.2;
+            L.polyline(lines, { renderer: this.svgRenderer, color: lev < 1013 ? '#1d4ed8' : '#b91c1c', weight, opacity: 0.9, interactive: false }).addTo(this.lineLayer);
+            if (this.showLabels && lev % (interval * 2) === 0) {
+                const every = Math.max(1, Math.floor(n / 5));
+                for (let i = Math.floor(every / 2); i < n; i += every) {
+                    const o = i * 4;
+                    L.marker(ll((flat[o] + flat[o + 2]) / 2, (flat[o + 1] + flat[o + 3]) / 2), {
+                        interactive: false, icon: L.divIcon({ className: 'wc-lbl', html: String(lev), iconSize: [0, 0] })
+                    }).addTo(this.lineLayer);
+                }
+            }
+        }
+        this.isoCover = win;
+        this.isoDrawnInterval = interval;
+        this.isoInterval = interval;
+        this.infoLine = `${this.infoBase} · ${nSeg} lijnstukjes (tijden in lokale tijd, runs in UTC)`;
     }
 }

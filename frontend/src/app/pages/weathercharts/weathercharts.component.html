@@ -60,7 +60,7 @@
       }
       <div class="wc-info-line">
         {{ infoLine }}
-        @if (infoLine) { · isobaar elke 4 hPa, blauw onder 1013 hPa, rood erboven, dik elke 20 hPa }
+        @if (infoLine) { · isobaar elke {{ isoInterval }} hPa, blauw onder 1013 hPa, rood erboven, dik elke 20 hPa }
       </div>
       @if (seamLine) { <div class="wc-info-line">{{ seamLine }}</div> }
       @if (layerNote) { <div class="wc-info-line">{{ layerNote }}</div> }
