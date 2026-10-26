@@ -32,6 +32,14 @@ export function sampleBilinear(v: Float32Array, f: GridField, lat: number, lon: 
     return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
 }
 
+/** The value of the nearest grid point (for classes, which must not be averaged); null outside the grid or at a point without a value. */
+export function sampleNearest(v: Float32Array, f: GridField, lat: number, lon: number): number | null {
+    const x = Math.round((lon - f.lon0) / f.dlon), y = Math.round((f.lat0 - lat) / f.dlat);
+    if (x < 0 || y < 0 || x > f.nx - 1 || y > f.ny - 1) return null;
+    const r = v[y * f.nx + x];
+    return r === r ? r : null;
+}
+
 const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
 const latOfMercY = (y: number) => ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI;
 

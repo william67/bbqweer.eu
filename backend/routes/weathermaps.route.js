@@ -21,7 +21,7 @@ MongoClient.connect(uri)
   .catch(error => console.error(error));
 
 const MODEL_ORDER = ['ecmwf', 'gfs', 'icon-eu', 'harmonie'];
-const PARAMS = ['msl', 't2m', 'u10', 'v10', 'precip', 'gust', 'prate'];
+const PARAMS = ['msl', 't2m', 'u10', 'v10', 'precip', 'gust', 'prate', 'ptype', 'snow'];
 const SAFE = /^[a-z0-9.\-]+$/;
 
 // The complete runs of a weather_grid_runs document (newest first); a document of the first version has one run at the

@@ -34,7 +34,7 @@ log = logging.getLogger('maps')
 # precip accumulates since the run start; gust: ECMWF the maximum since the previous output step, ICON-EU and HARMONIE the
 # maximum of the last hour, GFS the gust at that step; prate (GFS and ECMWF only) is the precipitation rate at that step: the
 # totals of those two are packed too coarsely (GFS steps of 0.0625 mm, ECMWF 0.12 mm), so an hourly difference is blocky
-UNITS = {'msl': 'hPa', 't2m': '°C', 'u10': 'm/s', 'v10': 'm/s', 'precip': 'mm', 'gust': 'm/s', 'prate': 'mm/h'}
+UNITS = {'msl': 'hPa', 't2m': '°C', 'u10': 'm/s', 'v10': 'm/s', 'precip': 'mm', 'gust': 'm/s', 'prate': 'mm/h', 'ptype': 'klasse', 'snow': 'mm'}
 FILL_RETRY_S = 6 * 3600                  # a run that cannot be filled up (gone from the source) is tried again after this
 
 

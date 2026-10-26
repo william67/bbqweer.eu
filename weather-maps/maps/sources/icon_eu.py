@@ -2,6 +2,7 @@ import bz2
 import re
 from datetime import datetime
 
+from maps import grid
 from .base import Source, http_get, iter_tasks, only_params
 
 BASE = 'https://opendata.dwd.de/weather/nwp/icon-eu/grib'
@@ -15,6 +16,8 @@ PARAMS = {
     'tot_prec': ('TOT_PREC', 'precip', 1.0, 0.0),    # kg/m2 = mm, accumulated since the start of the run
     'vmax_10m': ('VMAX_10M', 'gust', 1.0, 0.0),      # m/s, the maximum 10 m gust of the last hour
 }
+# the snow that fell since the start of the run (water, mm): the grid-scale and the convective part, added up in _snow()
+SNOW = (('snow_gsp', 'SNOW_GSP'), ('snow_con', 'SNOW_CON'))
 NAME = re.compile(r'icon-eu_europe_regular-lat-lon_single-level_(\d{10})_(\d{3})_PMSL\.grib2\.bz2')
 
 
@@ -70,10 +73,19 @@ class IconEu(Source):
             raise RuntimeError(f'ICON-EU {part} step {step}: HTTP {r.status_code}')
         return bz2.decompress(r.content)
 
+    def _snow(self, run, step):
+        """SNOW_GSP + SNOW_CON as (lats, lons, mm of water accumulated since the start of the run)."""
+        total = None
+        for folder, part in SNOW:
+            lats, lons, v = grid.read_field(self._field(run, step, folder, part))
+            total = v if total is None else total + v
+        return lats, lons, total
+
     def param_names(self):
-        return [v[1] for v in PARAMS.values()]
+        return [v[1] for v in PARAMS.values()] + ['snow']
 
     def messages(self, run, only=None, steps=None):
         tasks = [(step, name, (lambda s=step, f=folder, p=part: self._field(run, s, f, p)), mult, add)
                  for step in self.steps(run) for folder, (part, name, mult, add) in PARAMS.items()]
+        tasks += [(step, 'snow', (lambda s=step: self._snow(run, s)), 1.0, 0.0) for step in self.steps(run)]
         yield from iter_tasks(only_params(tasks, only, steps), self.workers)

@@ -4,8 +4,8 @@ import * as L from 'leaflet';
 import { WeatherMapsService } from 'src/app/services/weather-maps.service';
 import { WeatherMapModel, WeatherMapField, WeatherMapFrame } from 'src/app/api/weather-maps';
 import { decodeGrid, isoSegments, findExtremes, GridWindow } from 'src/app/utils/isobars.util';
-import { WIND_BANDS, sampleBilinear, buildSpeedImage, buildColourImage } from 'src/app/utils/wind.util';
-import { TEMP_LEGEND, RAIN_BANDS, tempColour, tempRgb, rainColour } from 'src/app/utils/layers.util';
+import { WIND_BANDS, sampleBilinear, sampleNearest, buildSpeedImage, buildColourImage } from 'src/app/utils/wind.util';
+import { TEMP_LEGEND, RAIN_BANDS, RainBand, SNOW_BANDS, MIX_BANDS, FREEZING_BANDS, SNOW_RATIO, SNOW_CM_PER_MM, PRECIP_NAMES, tempColour, tempRgb, rainColour, precipColour, encodePrecip } from 'src/app/utils/layers.util';
 import { LocalStorageService } from 'src/app/services/local-storage.service';
 
 const MODEL_NAMES: Record<string, string> = { 'ecmwf': 'ECMWF IFS', 'gfs': 'NOAA GFS', 'icon-eu': 'DWD ICON-EU', 'harmonie': 'KNMI HARMONIE' };
@@ -310,15 +310,75 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
     }
 
     private setLegend(title: string, rows: { rgb: number[]; text: string }[], footer = ''): void {
+        this.setLegendHtml(`<b>${title}</b><br>` + rows.map(r => `<i style="background:rgb(${r.rgb.join(',')})"></i>${r.text}`).join('<br>')
+            + (footer ? `<br><small>${footer}</small>` : ''));
+    }
+
+    private setLegendHtml(html: string): void {
         if (this.legend) { this.legend.remove(); this.legend = null; }
         const legend = new L.Control({ position: 'bottomright' });
         legend.onAdd = () => {
             const div = L.DomUtil.create('div', 'wc-legend');
-            div.innerHTML = `<b>${title}</b><br>` + rows.map(r => `<i style="background:rgb(${r.rgb.join(',')})"></i>${r.text}`).join('<br>')
-                + (footer ? `<br><small>${footer}</small>` : '');
+            div.innerHTML = html;
             return div;
         };
         this.legend = legend.addTo(this.map);
+    }
+
+    // the legend of the precipitation layer: one list when the run has no type, else a strip of colours per type
+    private rainLegend(classes: { derived: boolean } | null, footer: string): void {
+        if (!classes) {
+            this.setLegend('Neerslag (mm/uur)', RAIN_BANDS.map((b, i) => ({ rgb: b.rgb, text: `${b.min}${RAIN_BANDS[i + 1] ? '-' + RAIN_BANDS[i + 1].min : '+'}` })), footer);
+            return;
+        }
+        const strip = (title: string, bands: RainBand[]) => `<b>${title}</b><br>`
+            + bands.map(b => `<i style="background:rgb(${b.rgb.join(',')});width:22px;margin-right:2px"></i>`).join('')
+            + `<br><small>${bands.map(b => b.min).join(' · ')}+</small>`;
+        const note = classes.derived ? '<br><small>type afgeleid uit sneeuwsom en temperatuur</small>' : '';
+        this.setLegendHtml([strip('Regen (mm/uur)', RAIN_BANDS), strip('Natte sneeuw (mm/uur)', MIX_BANDS),
+            strip(`Sneeuw (cm/uur, ${SNOW_RATIO}:1)`, SNOW_BANDS), strip('IJzel (mm/uur)', FREEZING_BANDS)].join('<br>') + `<br><small>${footer}</small>${note}`);
+    }
+
+    // The type of the precipitation at a point (0 none, 1 rain, 2 mix, 3 snow, 4 freezing rain) as a function of the point and the water
+    // (mm per hour); null when the run has no information on the type. A run with `ptype` (ECMWF, GFS) has it per point: the nearest
+    // grid point, a class must not be averaged. A run with the accumulated snow (`snow`: ICON-EU, HARMONIE) does not, so the type is
+    // DERIVED from the share of snow in the water of the interval (80 % and more is snow, 20 to 80 % mix) and, for the rest, the 2 m
+    // temperature (rain at 0 degrees or colder is freezing rain).
+    private async precipClasses(cur: WeatherMapModel, frame: WeatherMapFrame, prev: number | null):
+            Promise<{ at: (lat: number, lon: number, mm: number) => number; derived: boolean } | null> {
+        if (this.hasParam(cur, frame.run, 'ptype')) {
+            const g = await this.load(cur, frame, 'ptype');
+            return { derived: false, at: (lat, lon) => { const c = sampleNearest(g.values, g.field, lat, lon); return c === null ? 0 : Math.round(c); } };
+        }
+        if (prev !== null && ['snow', 'precip', 't2m'].every(p => this.hasParam(cur, frame.run, p))) {
+            const [s1, s0, p1, p0, t] = await Promise.all([this.load(cur, frame, 'snow'), this.load(cur, { run: frame.run, step: prev }, 'snow'),
+                this.load(cur, frame, 'precip'), this.load(cur, { run: frame.run, step: prev }, 'precip'), this.load(cur, frame, 't2m')]);
+            return {
+                derived: true,
+                at: (lat, lon) => {
+                    const sn = sampleBilinear(s1.values, s1.field, lat, lon), sb = sampleBilinear(s0.values, s0.field, lat, lon);
+                    const pn = sampleBilinear(p1.values, p1.field, lat, lon), pb = sampleBilinear(p0.values, p0.field, lat, lon);
+                    if (sn === null || sb === null || pn === null || pb === null || pn - pb <= 0) return 1;
+                    const share = Math.min(1, Math.max(0, sn - sb) / (pn - pb));
+                    if (share >= 0.8) return 3;
+                    if (share > 0.2) return 2;
+                    const t2 = sampleBilinear(t.values, t.field, lat, lon);
+                    return t2 !== null && t2 <= 0 ? 4 : 1;
+                }
+            };
+        }
+        return null;
+    }
+
+    // With a type: the value of a point becomes class and rate together (nothing where the type says no precipitation)
+    private typed(classes: { at: (lat: number, lon: number, mm: number) => number } | null, rate: (lat: number, lon: number) => number | null): (lat: number, lon: number) => number | null {
+        if (!classes) return rate;
+        return (lat, lon) => {
+            const mm = rate(lat, lon);
+            if (mm === null) return null;
+            const c = classes.at(lat, lon, mm);
+            return c < 1 ? null : encodePrecip(c, mm);
+        };
     }
 
     // does this run have the parameter? (a run from before a parameter was added does not, until the sync has filled it up)
@@ -378,15 +438,16 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
     // for a difference to be smooth), else the amount that fell since the previous step (the grids hold the total since the
     // start of the run), per hour
     private async updateRain(cur: WeatherMapModel, frame: WeatherMapFrame, seq: number): Promise<void> {
+        const classes = await this.precipClasses(cur, frame, this.prevStep(cur, frame.run, frame.step));
+        const colour = classes ? precipColour : rainColour;
         if (this.hasParam(cur, frame.run, 'prate')) {
             const r = await this.load(cur, frame, 'prate');
             if (seq !== this.drawSeq) return;
             this.windData = null;
             this.windLayer.clearLayers();
             const f = r.field;
-            this.setImage(buildColourImage(f, (lat, lon) => sampleBilinear(r.values, f, lat, lon), rainColour));
-            this.setLegend('Neerslag (mm/uur)', RAIN_BANDS.map((b, i) => ({ rgb: b.rgb, text: `${b.min}${RAIN_BANDS[i + 1] ? '-' + RAIN_BANDS[i + 1].min : '+'}` })),
-                'intensiteit op dit tijdstip');
+            this.setImage(buildColourImage(f, this.typed(classes, (lat, lon) => sampleBilinear(r.values, f, lat, lon)), colour));
+            this.rainLegend(classes, 'intensiteit op dit tijdstip');
             return;
         }
         if (!this.hasParam(cur, frame.run, 'precip')) { this.clearLayer(); this.layerNote = 'Neerslag is voor deze run niet beschikbaar.'; return; }
@@ -398,12 +459,11 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         this.windLayer.clearLayers();
         const hours = frame.step - prev;
         const f = a.field;
-        this.setImage(buildColourImage(f, (lat, lon) => {
+        this.setImage(buildColourImage(f, this.typed(classes, (lat, lon) => {
             const x = sampleBilinear(a.values, f, lat, lon), y = sampleBilinear(b.values, f, lat, lon);
             return x === null || y === null ? null : Math.max(0, x - y) / hours;
-        }, rainColour));
-        this.setLegend('Neerslag (mm/uur)', RAIN_BANDS.map((r, i) => ({ rgb: r.rgb, text: `${r.min}${RAIN_BANDS[i + 1] ? '-' + RAIN_BANDS[i + 1].min : '+'}` })),
-            `gemiddeld over de afgelopen ${hours} uur`);
+        }), colour));
+        this.rainLegend(classes, `gemiddeld over de afgelopen ${hours} uur`);
     }
 
     // the next frames are fetched ahead, with what the chosen layer needs
@@ -416,6 +476,12 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
             } else if (this.layer === 'temp') {
                 jobs.push([next, 't2m']);
             } else if (this.layer === 'rain') {
+                if (this.hasParam(cur, next.run, 'ptype')) jobs.push([next, 'ptype']);
+                else if (this.hasParam(cur, next.run, 'snow')) {                                  // the type is derived from the snow and the temperature
+                    const p = this.prevStep(cur, next.run, next.step);
+                    jobs.push([next, 'snow'], [next, 't2m']);
+                    if (p !== null) jobs.push([{ run: next.run, step: p }, 'snow']);
+                }
                 if (this.hasParam(cur, next.run, 'prate')) jobs.push([next, 'prate']);
                 else {
                     jobs.push([next, 'precip']);
@@ -507,6 +573,7 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
                 !useRate && has('precip') && prev !== null ? this.load(cur, { run: frame.run, step: prev }, 'precip') : null,
                 useRate ? this.load(cur, frame, 'prate') : null
             ]);
+            const classes = await this.precipClasses(cur, frame, prev);
             if (seq !== this.tipSeq) return;
             const s = (g: { field: WeatherMapField; values: Float32Array } | null) => g ? sampleBilinear(g.values, g.field, ll.lat, ll.lng) : null;
             const num = (x: number, d = 1) => x.toLocaleString('nl-NL', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -525,8 +592,15 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
             if (t !== null) rows.push({ label: 'Temperatuur', value: `${num(t)} Â°C` });
             const rr = s(rate);
             const a = s(p1), b = s(p0);
-            if (rr !== null) rows.push({ label: 'Neerslag', value: `${num(Math.max(0, rr), 2)} mm/uur` });
-            else if (a !== null && b !== null && prev !== null) rows.push({ label: 'Neerslag', value: `${num(Math.max(0, a - b) / (frame.step - prev), 2)} mm/uur` });
+            let mm: number | null = null;                                              // the water that falls, mm per hour
+            if (rr !== null) mm = Math.max(0, rr);
+            else if (a !== null && b !== null && prev !== null) mm = Math.max(0, a - b) / (frame.step - prev);
+            if (mm !== null) {
+                const c = classes ? classes.at(ll.lat, ll.lng, mm) : 0;
+                const from = classes?.derived ? ' (afgeleid)' : '';
+                if (c === 3) rows.push({ label: `Sneeuw${from}`, value: `${num(mm * SNOW_CM_PER_MM, 1)} cm/uur (${num(mm, 2)} mm water)` });
+                else rows.push({ label: c ? PRECIP_NAMES[c] + from : 'Neerslag', value: `${num(mm, 2)} mm/uur` });
+            }
             const size = this.map.getSize();
             this.tip = {
                 x: pt.x + 16 > size.x - 230 ? pt.x - 226 : pt.x + 16,           // flips to the other side near the edges

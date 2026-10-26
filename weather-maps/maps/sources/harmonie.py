@@ -21,6 +21,7 @@ PARAMS = {
     (33, 'heightAboveGround', 10): ('u10', 1.0, 0.0),
     (34, 'heightAboveGround', 10): ('v10', 1.0, 0.0),
     (61, 'heightAboveGround', 0): ('precip', 1.0, 0.0),      # kg/m2 = mm accumulated since the start of the run
+    (184, 'heightAboveGround', 0): ('snow', 1.0, 0.0),       # the snow part of that (kg/m2 of water, the 'cumulative sum' record; the plain 184 is the instant value)
 }
 GUST_U, GUST_V = 162, 163              # the 10 m gust as u and v components (the maximum of the last hour), m/s
 STEPS = list(range(0, 61))             # every forecast hour
@@ -78,7 +79,7 @@ class Harmonie(Source):
                             try:
                                 key = (ec.codes_get(gid, 'indicatorOfParameter'), ec.codes_get(gid, 'typeOfLevel'), ec.codes_get(gid, 'level'))
                                 hit = PARAMS.get(key)
-                                if hit and (only is None or hit[0] in only) and (hit[0] != 'precip' or ec.codes_get(gid, 'stepRange').startswith('0-')):
+                                if hit and (only is None or hit[0] in only) and (hit[0] not in ('precip', 'snow') or ec.codes_get(gid, 'stepRange').startswith('0-')):
                                     yield step, hit[0], ec.codes_get_message(gid), hit[1], hit[2]
                                 elif key[1:] == ('heightAboveGround', 10) and key[0] in (GUST_U, GUST_V) and (only is None or 'gust' in only):
                                     comps[key[0]] = grid.read_field(ec.codes_get_message(gid))

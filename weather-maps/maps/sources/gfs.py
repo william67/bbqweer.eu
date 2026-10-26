@@ -1,6 +1,9 @@
 import threading
 from datetime import datetime, timedelta
 
+import numpy as np
+
+from maps import grid
 from .base import Source, http_get, head_ok, iter_tasks, only_params
 
 BASE = 'https://noaa-gfs-bdp-pds.s3.amazonaws.com'
@@ -16,6 +19,8 @@ PARAMS = {
     ('PRATE', 'surface'): ('prate', 3600.0, 0.0),    # kg/m2/s -> mm/h, the rate at that step; ~20x finer than a difference of two APCP totals
 }
 LAST_STEP = 384
+# four categorical fields (0 or 1) with the type at the step; together they become our classes (see _ptype())
+FLAGS = ('CSNOW', 'CRAIN', 'CFRZR', 'CICEP')
 
 
 class Gfs(Source):
@@ -71,7 +76,7 @@ class Gfs(Source):
             if r['var'] == var and r['level'] == level:
                 if var == 'APCP' and not r['fcst'].startswith('0-'):       # several APCP records: take the 0-N hour accumulation
                     continue
-                if var == 'PRATE' and 'ave' in r['fcst']:                  # two PRATE records: the rate at the step, not the 4-6 hour average
+                if (var == 'PRATE' or var in FLAGS) and 'ave' in r['fcst']:   # two records: the value at the step, not the 4-6 hour average
                     continue
                 rng = f"bytes={r['start']}-{r['end']}" if r['end'] else f"bytes={r['start']}-"
                 resp = http_get(self._stem(run, step), headers={'Range': rng})
@@ -82,10 +87,25 @@ class Gfs(Source):
             return None
         raise RuntimeError(f'GFS {var} {level} not in the idx of step {step}')
 
+    def _ptype(self, run, step):
+        """The type at the step as (lats, lons, classes): 0 none, 1 rain, 2 mix (rain and snow or ice pellets at once), 3 snow
+        (incl. ice pellets), 4 freezing rain. The four fields are 0 or 1 per point."""
+        f = {v: grid.read_field(self._field(run, step, v, 'surface')) for v in FLAGS}
+        lats, lons, snow = f['CSNOW']
+        rain, frz, ice = f['CRAIN'][2] > 0.5, f['CFRZR'][2] > 0.5, f['CICEP'][2] > 0.5
+        solid = (snow > 0.5) | ice
+        cls = np.zeros(snow.shape, dtype=np.float64)
+        cls[rain] = 1
+        cls[solid] = 3
+        cls[rain & solid] = 2
+        cls[frz] = 4
+        return lats, lons, cls
+
     def param_names(self):
-        return [v[0] for v in PARAMS.values()]
+        return [v[0] for v in PARAMS.values()] + ['ptype']
 
     def messages(self, run, only=None, steps=None):
         tasks = [(step, name, (lambda s=step, v=var, l=lev: self._field(run, s, v, l)), mult, add)
                  for step in self.steps() for (var, lev), (name, mult, add) in PARAMS.items()]
+        tasks += [(step, 'ptype', (lambda s=step: self._ptype(run, s)), 1.0, 0.0) for step in self.steps()]
         yield from iter_tasks(only_params(tasks, only, steps), self.workers)

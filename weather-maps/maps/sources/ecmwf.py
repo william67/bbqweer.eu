@@ -2,6 +2,9 @@ import json
 import threading
 from datetime import datetime, timedelta
 
+import numpy as np
+
+from maps import grid
 from .base import Source, http_get, head_ok, iter_tasks, only_params
 
 BASE = 'https://data.ecmwf.int/forecasts'
@@ -16,7 +19,11 @@ PARAMS = {
     'tprate': ('prate', 3600.0, 0.0),   # kg/m2/s -> mm/h, the rate at that step; finer than a difference of two tp totals (0.12 mm steps)
     '10fg': ('gust', 1.0, 0.0),        # m/s, the maximum 10 m gust since the previous output step (3 h, 6 h after +144 h);
                                         # steps 93-144 carry it as 10fg3 (the maximum of the last 3 hours), see _field()
+    'ptype': ('ptype', 1.0, 0.0),      # the precipitation type at the step (code table 4.201), turned into our classes, see PTYPE_CLASS
 }
+# ECMWF's type -> our classes: 0 none, 1 rain (incl. thunderstorm and drizzle), 2 mix (mixed, wet snow, rain and snow),
+# 3 snow (incl. ice pellets, graupel and hail), 4 freezing rain and freezing drizzle
+PTYPE_CLASS = {1: 1, 2: 1, 11: 1, 4: 2, 6: 2, 7: 2, 5: 3, 8: 3, 9: 3, 10: 3, 3: 4, 12: 4}
 
 
 class Ecmwf(Source):
@@ -71,10 +78,22 @@ class Ecmwf(Source):
                 r = http_get(self._stem(run, step) + '.grib2', headers={'Range': rng})
                 if r.status_code not in (200, 206):
                     raise RuntimeError(f'ECMWF {short} step {step}: HTTP {r.status_code}')
+                if short == 'ptype':
+                    return self._classes(r.content)
                 return r.content
         if short in ('tp', 'tprate', '10fg') and step == 0:   # accumulated precipitation and the gust since the previous step do not exist at step 0
             return None
         raise RuntimeError(f'ECMWF {short} not in the index of step {step}')
+
+    @staticmethod
+    def _classes(msg):
+        """The type field as (lats, lons, classes); every stride of the grid keeps a point's own class, nothing is averaged."""
+        lats, lons, v = grid.read_field(msg)
+        raw = np.rint(v)
+        cls = np.zeros(v.shape, dtype=np.float64)
+        for src, dst in PTYPE_CLASS.items():
+            cls[raw == src] = dst
+        return lats, lons, cls
 
     def param_names(self):
         return [v[0] for v in PARAMS.values()]

@@ -177,3 +177,15 @@ Parameter names: ECMWF `msl` Pa, `10u`/`10v` m/s, `2t` K, `tp` **m**; ICON-EU `P
 - Rate limit (nginx, 20 r/s per IP, burst 60), tested on production 2026-10-24: 200 requests with 40 in parallel gave 147 x 200 and 53 x 503, the next request and other APIs answered 200 straight away. A normal page view (the model list plus a few fields) stays far below it.
 - More layers (cloud cover, humidity, ...) exist in the sources but are not stored.
 - The temperature and rain colour scales are our own choice.
+
+## Sneeuw en neerslagtype (toegevoegd 2026-10-26, overgenomen van wo-ict.nl)
+De totale neerslag is het waterequivalent van alles (regen, sneeuw, ijsregen, hagel). Elke bron levert nu een type; de laag kleurt per type.
+Klassen (alle bronnen gelijk): 0 geen, 1 regen, 2 natte sneeuw/mix, 3 sneeuw (incl. ice pellets, graupel, hagel), 4 ijzel.
+- **ECMWF, GFS**: parameter `ptype` (klasse per stap), gemaakt in de sync. GFS: vlaggen CSNOW/CRAIN/CFRZR/CICEP, dus klasse 2 komt daar niet voor.
+- **ICON-EU, HARMONIE**: parameter `snow` (mm water, opgeteld sinds de start van de run). De pagina leidt het type af uit het sneeuwaandeel
+  van het interval (>= 80 % sneeuw, > 20 % mix) en de 2 m-temperatuur (regen bij <= 0 graden is ijzel); "(afgeleid)" in legenda en tooltip.
+- **GFS-belasting**: een run is nu ca. 1.700 velden (was ca. 1.000). Verwacht 10-15 min per run met 2 workers. De container heeft `mem_limit: 1g`:
+  meet met `docker stats` tijdens de eerste GFS-ronde en zet `workers` omlaag als het krap wordt.
+- **Eerste ronde na uitrol**: `fill_gaps()` vult de nieuwe parameter aan bij elke bewaarde run. HARMONIE leest daarvoor de hele tar van elke
+  bewaarde run opnieuw (ca. 0,9 GB per run). Opslag: minder dan 1 MB extra per run.
+- Uitrolvolgorde: backend (`PARAMS` in `weathermaps.route.js`) -> sync -> frontend. Zonder het veld toont de pagina gewone regen (in radarkleuren).
