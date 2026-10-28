@@ -21,6 +21,7 @@ PARAMS = {
 LAST_STEP = 384
 # four categorical fields (0 or 1) with the type at the step; together they become our classes (see _ptype())
 FLAGS = ('CSNOW', 'CRAIN', 'CFRZR', 'CICEP')
+WANTED_VARS = {v for v, _ in PARAMS} | set(FLAGS)
 
 
 class Gfs(Source):
@@ -65,9 +66,13 @@ class Gfs(Source):
             p = line.split(':')
             if len(p) < 6 or (i + 1 < len(lines) and len(lines[i + 1].split(':')) < 6):
                 raise RuntimeError(f'GFS idx of step {step} is incomplete (the run is still being uploaded)')
+            if p[3] not in WANTED_VARS:                       # ~743 records per step, we use ~11: caching them all costs ~56 MiB per run
+                continue
             end = int(lines[i + 1].split(':')[1]) - 1 if i + 1 < len(lines) else None
             recs.append({'var': p[3], 'level': p[4], 'fcst': p[5], 'start': int(p[1]), 'end': end})
         with self._lock:
+            for key in [k for k in self._idx if k[0] != run]:     # an older run is never asked for again: do not keep it
+                del self._idx[key]
             self._idx[(run, step)] = recs
         return recs
 
