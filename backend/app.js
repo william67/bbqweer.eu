@@ -74,8 +74,10 @@ if (!fs.existsSync('config.local.ini')) {
     const satellitesSync = require('./tasks/satellites-sync');
     const energieSync    = require('./tasks/energy-prices-sync');
 
+    // Hourly incremental; the run at 00:00 (container time, UTC) is a full re-sync, like wo-ict.nl
     cron.schedule('0 * * * *', () => {
-        knmiDataSync().catch(err => console.error('knmidata-v3 cron error:', err));
+        const fullSync = new Date().getHours() === 0;
+        knmiDataSync(fullSync).catch(err => console.error('knmidata-v4 cron error:', err));
     });
 
     cron.schedule('30 * * * *', () => {
@@ -86,7 +88,7 @@ if (!fs.existsSync('config.local.ini')) {
         energieSync().catch(err => console.error('energy-prices-sync cron error:', err));
     });
 
-    console.log('Cron tasks scheduled: knmidata-v3 (0 * * * *), satellites-sync (30 * * * *), energy-prices-sync (0 13-17 * * *)');
+    console.log('Cron tasks scheduled: knmidata-v4 (0 * * * *, full at 00:00), satellites-sync (30 * * * *), energy-prices-sync (0 13-17 * * *)');
 } else {
     console.log('Cron tasks disabled (local dev)');
 }

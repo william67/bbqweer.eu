@@ -92,6 +92,19 @@ function dedupeRows(rows) {
     return [...map.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
+// First and last year in the parsed CSV rows (keyVals[1] is the year). A file covers one decade, the view holds
+// every year since 1951: only load the database rows of the same years, otherwise a 90,000-row file is compared
+// with 660,000 rows per station and the full sync runs out of heap (wo-ict.nl, 2026-10-29).
+function yearRange(rows) {
+    let min = Infinity, max = -Infinity;
+    for (const r of rows) {
+        const y = r.keyVals[1];
+        if (y < min) min = y;
+        if (y > max) max = y;
+    }
+    return [min, max];
+}
+
 // ─── Two-pointer merge ────────────────────────────────────────────────────────
 
 async function mergeSync(rowsA, rowsB, insertSql, updateSql) {
@@ -204,8 +217,8 @@ async function syncEtmgeg(station, csvText) {
     const rowsA = dedupeRows(parseEtmgegRows(csvText));
     if (rowsA.length === 0) return { inserted: 0, updated: 0, unchanged: 0 };
     const [rowsB] = await db.query(
-        `SELECT SYNC_KEY, ${ETMGEG_NAMES.join(',')} FROM v_etmgeg WHERE STATION=? ORDER BY SYNC_KEY`,
-        [station]
+        `SELECT SYNC_KEY, ${ETMGEG_NAMES.join(',')} FROM v_etmgeg WHERE STATION=? AND JAAR BETWEEN ? AND ? ORDER BY SYNC_KEY`,
+        [station, ...yearRange(rowsA)]
     );
     return mergeSync(rowsA, rowsB, ETMGEG_INSERT, ETMGEG_UPDATE);
 }
@@ -276,8 +289,8 @@ async function syncUurgeg(station, csvText) {
     const rowsA = dedupeRows(parseUurgegRows(csvText));
     if (rowsA.length === 0) return { inserted: 0, updated: 0, unchanged: 0 };
     const [rowsB] = await db.query(
-        `SELECT SYNC_KEY, ${UURGEG_NAMES.join(',')} FROM v_uurgeg WHERE STATION=? ORDER BY SYNC_KEY`,
-        [station]
+        `SELECT SYNC_KEY, ${UURGEG_NAMES.join(',')} FROM v_uurgeg WHERE STATION=? AND JAAR BETWEEN ? AND ? ORDER BY SYNC_KEY`,
+        [station, ...yearRange(rowsA)]
     );
     return mergeSync(rowsA, rowsB, UURGEG_INSERT, UURGEG_UPDATE);
 }
@@ -331,8 +344,8 @@ async function syncNeerslaggeg(station, csvText) {
     const rowsA = dedupeRows(parseNeerslaggegRows(csvText));
     if (rowsA.length === 0) return { inserted: 0, updated: 0, unchanged: 0 };
     const [rowsB] = await db.query(
-        `SELECT SYNC_KEY, ${NEERS_NAMES.join(',')} FROM v_neerslaggeg WHERE STATION=? ORDER BY SYNC_KEY`,
-        [station]
+        `SELECT SYNC_KEY, ${NEERS_NAMES.join(',')} FROM v_neerslaggeg WHERE STATION=? AND JAAR BETWEEN ? AND ? ORDER BY SYNC_KEY`,
+        [station, ...yearRange(rowsA)]
     );
     return mergeSync(rowsA, rowsB, NEERS_INSERT, NEERS_UPDATE);
 }
