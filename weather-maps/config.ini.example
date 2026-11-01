@@ -24,7 +24,7 @@ open_data_key = your_open_data_api_key
 [maps]
 ; seconds between two checks for a new run
 check_seconds = 600
-; sources to sync: ecmwf, icon-eu, gfs, harmonie
+; sources to sync: ecmwf, icon-eu, gfs, harmonie, radar (the radar is no model run: its own thread, see [radar])
 sources = ecmwf,icon-eu,gfs,harmonie
 ; parallel downloads per source (2: the VPS has 3.8 GB RAM shared with MySQL)
 workers = 2
@@ -42,3 +42,19 @@ harmonie_run_every_hours = 6
 skip_grids = 0.125,0.029
 ; consecutive failed rounds for one source before an ntfy alert
 alert_after_failures = 3
+
+; The radar frames (precipitation, echo top, hail probability, KNMI Open Data API) in MongoDB: 'radar' in [maps] sources switches it on.
+; The Open Data key is SHARED with wo-ict.nl (1000 calls an hour for both): the steady state is about 135 calls an hour.
+; Fill the days FIRST by copying radar_grids / radar_grid_days / radar_forecast from wo-ict.nl (docs/radar-grids.md there), so the
+; back-fill finds every day done and only the live pass runs.
+[radar]
+; days of frames kept (about 7 MB a day)
+keep_days = 14
+; seconds between two looks for new frames
+check_seconds = 120
+max_requests_per_hour = 600
+; the back-fill only runs while the API reports more calls than this left, so wo-ict.nl always keeps its share
+reserve_requests = 700
+; the live pass stops when the API reports this many calls or fewer left
+live_floor = 25
+live_pass = 1

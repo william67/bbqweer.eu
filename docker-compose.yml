@@ -37,7 +37,7 @@ services:
     container_name: bbqweer-mongodb
     restart: unless-stopped
     # No ports: only reachable on the compose network (the database has no password). Holds the weather-maps grids.
-    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5"]
     mem_limit: 768m
     volumes:
       - mongodb_data:/data/db

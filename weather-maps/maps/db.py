@@ -13,7 +13,8 @@ class TaskStatus:
     database/updates/weather-maps-sync-task-20261024.sql). One short-lived connection per call: it is
     written a few times per round, so no pool. A MySQL problem must never stop the sync, so every call swallows errors."""
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, task_code=TASK_CODE):
+        self.code = task_code
         if not cfg.has_section('mysql'):
             self.params = None
             return
@@ -39,24 +40,24 @@ class TaskStatus:
     def start(self, total):
         self._run('UPDATE `server-tasks` SET isRunning=1, startedAt=UTC_TIMESTAMP(), finishedAt=NULL, currentProgress=0, '
                   'progressTotal=%s, errorCount=0, lastStatus=NULL, lastMessage=NULL, updatedAt=UTC_TIMESTAMP() '
-                  'WHERE taskCode=%s', (total, TASK_CODE))
+                  'WHERE taskCode=%s', (total, self.code))
 
     def progress(self, current, total, message):
         self._run('UPDATE `server-tasks` SET currentProgress=%s, progressTotal=%s, lastMessage=%s, updatedAt=UTC_TIMESTAMP() '
-                  'WHERE taskCode=%s', (current, total, message[:500], TASK_CODE))
+                  'WHERE taskCode=%s', (current, total, message[:500], self.code))
 
-    def error(self):
-        self._run('UPDATE `server-tasks` SET errorCount=errorCount+1, updatedAt=UTC_TIMESTAMP() WHERE taskCode=%s',
-                  (TASK_CODE,))
+    def error(self, message):
+        self._run('UPDATE `server-tasks` SET errorCount=errorCount+1, lastErrorAt=UTC_TIMESTAMP(), lastErrorMessage=%s, '
+                  'updatedAt=UTC_TIMESTAMP() WHERE taskCode=%s', (message[:500], self.code))
 
     def finish(self, status, message):
         """End of a round: same columns as taskFinish() in the backend helper."""
         self._run('UPDATE `server-tasks` SET isRunning=0, finishedAt=UTC_TIMESTAMP(), '
                   'lastDurationSec=TIMESTAMPDIFF(SECOND, startedAt, UTC_TIMESTAMP()), currentProgress=progressTotal, '
                   'lastStatus=%s, lastMessage=%s, updatedAt=UTC_TIMESTAMP() WHERE taskCode=%s',
-                  (status, message[:500], TASK_CODE))
+                  (status, message[:500], self.code))
 
     def stopped(self):
         """The service was stopped in the middle of a round (container restart): do not leave the row on running."""
         self._run('UPDATE `server-tasks` SET isRunning=0, finishedAt=UTC_TIMESTAMP(), lastMessage=%s, '
-                  'updatedAt=UTC_TIMESTAMP() WHERE taskCode=%s', ('stopped (container restart)', TASK_CODE))
+                  'updatedAt=UTC_TIMESTAMP() WHERE taskCode=%s', ('stopped (container restart)', self.code))

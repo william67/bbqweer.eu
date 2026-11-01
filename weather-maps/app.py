@@ -19,9 +19,11 @@ import time
 from datetime import datetime
 
 from maps import config as cfgmod
-from maps import grid
+from maps import grid, quota
 from maps.db import TaskStatus
 from maps.ntfy import Ntfy
+from maps.radar import Radar, radar_loop
+from maps.radar_store import RadarStore
 from maps.sources.ecmwf import Ecmwf
 from maps.sources.gfs import Gfs
 from maps.sources.harmonie import Harmonie
@@ -61,6 +63,23 @@ def build_sources(cfg, names):
     for s in out:
         s.grids = {g: st for g, st in s.grids.items() if g not in skip}
     return out
+
+
+def build_radar(cfg, store, stop, args):
+    key = cfgmod.get(cfg, 'knmi', 'open_data_key')
+    if not key:
+        log.error('radar needs [knmi] open_data_key, source skipped')
+        return None
+    sets = [s.strip() for s in args.radar_sets.split(',') if s.strip()] if args.radar_sets else None
+    from_day = datetime.strptime(args.radar_from, '%Y-%m-%d') if args.radar_from else None
+    return Radar(key, RadarStore(store.db), stop,
+                 keep_days=int(cfgmod.get(cfg, 'radar', 'keep_days', '14')),
+                 max_per_hour=int(cfgmod.get(cfg, 'radar', 'max_requests_per_hour', '600')),
+                 reserve=int(cfgmod.get(cfg, 'radar', 'reserve_requests', '700')),
+                 live=str(cfgmod.get(cfg, 'radar', 'live_pass', '1')).strip().lower() not in ('0', 'false', 'no', 'off'),
+                 live_floor=int(cfgmod.get(cfg, 'radar', 'live_floor', '25')),
+                 own_reserve=int(cfgmod.get(cfg, 'radar', 'own_reserve')) if cfgmod.get(cfg, 'radar', 'own_reserve') else None,
+                 workers=int(cfgmod.get(cfg, 'maps', 'workers', '2')), sets=sets, from_day=from_day)
 
 
 def write_run(src, store, box, keep, run, only=None, steps=None):
@@ -135,6 +154,8 @@ def main():
     ap.add_argument('--config', default='config.ini')
     ap.add_argument('--runs', help='comma separated runs (yyyymmddhh) to fetch instead of the newest one')
     ap.add_argument('--params', help='comma separated parameters to add to stored runs (only these are fetched)')
+    ap.add_argument('--radar-from', help='yyyy-mm-dd: fill the radar frames from this day on (widens the keep window)')
+    ap.add_argument('--radar-sets', help='comma separated radar sets (precip, echotop, hail), default all')
     args = ap.parse_args()
 
     cfg = cfgmod.load(args.config)
@@ -142,7 +163,8 @@ def main():
     status = TaskStatus(cfg)
     ntfy = Ntfy(cfg)
     names = [s.strip() for s in (args.sources or cfgmod.get(cfg, 'maps', 'sources', 'ecmwf,icon-eu,gfs,harmonie')).split(',') if s.strip()]
-    sources = build_sources(cfg, names)
+    want_radar = 'radar' in names                        # the radar frames are no model runs: a thread of their own below
+    sources = build_sources(cfg, [n for n in names if n != 'radar'])
     box = cfgmod.box(cfg)
     check_s = int(cfgmod.get(cfg, 'maps', 'check_seconds', '600'))
     alert_after = int(cfgmod.get(cfg, 'maps', 'alert_after_failures', '3'))
@@ -161,6 +183,23 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
 
     log.info('sources: %s, box %s, keep %d runs per model, check every %d s', [s.model for s in sources], box, keep, check_s)
+
+    radar = None
+    if want_radar:
+        try:
+            radar = build_radar(cfg, store, stop, args)
+        except Exception:                                # the radar must never stop the model sources
+            log.exception('radar could not be started, the other sources go on')
+    if radar and args.once:
+        log.info(radar.run_once())
+    elif radar:
+        threading.Thread(target=radar_loop, name='radar', daemon=True,
+                         args=(radar, stop, int(cfgmod.get(cfg, 'radar', 'check_seconds', '120')), alert_after, ntfy,
+                               TaskStatus(cfg, 'radar-maps-sync'))).start()
+    if not sources:                                      # radar only: the thread does the work
+        if not args.once:
+            stop.wait()
+        return
 
     while not stop.is_set():
         parts, ok, done = [], 0, 0
@@ -181,17 +220,18 @@ def main():
                 failures[src.model] += 1
                 text = f'ERROR {e}'
                 log.exception('%s failed (%d in a row)', src.model, failures[src.model])
-                status.error()
+                status.error(f'{src.model}: {e}')
                 if failures[src.model] >= alert_after:
                     ntfy.send(f'weather-maps-{src.model}', f'weather-maps-sync: {src.model} failed {failures[src.model]} rounds in a row: {e}')
             parts.append(f'{src.model}: {text}')
             log.info('%s: %s', src.model, text)
             done += 1
-            status.progress(done, len(sources), ' | '.join(parts))
+            status.progress(done, len(sources), ' | '.join(parts + [quota.text()] if quota.text() else parts))
         if stop.is_set() and done < len(sources):
             status.stopped()
             break
-        status.finish('success' if ok == len(sources) else 'error', ' | '.join(parts))
+        quota.warn(ntfy)
+        status.finish('success' if ok == len(sources) else 'error', ' | '.join(parts + [quota.text()] if quota.text() else parts))
         if args.once:
             break
         stop.wait(check_s)

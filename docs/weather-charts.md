@@ -20,7 +20,7 @@ KNMI / ECMWF / DWD / NOAA  -->  weather-maps (Python, eccodes)  -->  MongoDB `we
 
 - The sync is its own container (`weather-maps/`, `build: ./weather-maps`), the database a second container (`mongodb`, image `mongo:7.0.16`). **Mongo has no `ports:`** and no password: it is only reachable on the compose network. Locally `docker-compose.local.yml` publishes it on `127.0.0.1:27018` only (27017 is taken by another project's Mongo on the dev PC).
 - The backend serves the grids, the browser does the rest: **the isobars, wind arrows and colour images are computed in the browser** from the stored grid, so intervals and layers need no server work.
-- Limits (compose): sync `cpus: 1.0`, `cpu_shares: 128`, `mem_limit: 1g`, `workers = 2`; Mongo `mem_limit: 768m` and `--wiredTigerCacheSizeGB 0.25`. Reason: the VPS has 3.8 GB RAM, MySQL already uses about 1.45 GB. **Memory is the bottleneck**, see "Operations".
+- Limits (compose): sync `cpus: 1.0`, `cpu_shares: 128`, `mem_limit: 1g`, `workers = 2`; Mongo `mem_limit: 768m` and `--wiredTigerCacheSizeGB 0.5` (doubled 2026-11-01 for the radar grids). Reason: the VPS has 3.8 GB RAM, MySQL already uses about 1.45 GB. **Memory is the bottleneck**, see "Operations".
 
 ## The light set
 

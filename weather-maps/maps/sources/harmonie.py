@@ -7,7 +7,7 @@ from datetime import datetime
 import eccodes as ec
 import numpy as np
 
-from maps import grid
+from maps import grid, quota
 from .base import Source, http_get
 
 log = logging.getLogger('maps.harmonie')
@@ -41,6 +41,7 @@ class Harmonie(Source):
 
     def latest_run(self):
         r = http_get(API + '?maxKeys=48&orderBy=created&sorting=desc', headers={'Authorization': self.key}, timeout=60)
+        quota.update(r.headers)
         if r.status_code != 200:
             raise RuntimeError(f'KNMI file list: HTTP {r.status_code}')
         files = r.json().get('files', [])
@@ -58,6 +59,7 @@ class Harmonie(Source):
     def messages(self, run, only=None, steps=None):
         filename = f'HARM43_V1_P1_{run.strftime("%Y%m%d%H")}.tar'
         meta = http_get(f'{API}/{filename}/url', headers={'Authorization': self.key}, timeout=60)
+        quota.update(meta.headers)
         if meta.status_code != 200:
             raise RuntimeError(f'KNMI download url: HTTP {meta.status_code}')
         with http_get(meta.json()['temporaryDownloadUrl'], stream=True, timeout=300) as resp, \
