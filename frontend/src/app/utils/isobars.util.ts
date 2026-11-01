@@ -7,6 +7,7 @@ export interface GridField {
     lat0: number; lon0: number;          // north-west corner (grid point centre)
     dlat: number; dlon: number;          // positive spacing in degrees
     min: number; max: number;
+    nodata?: number;                     // the q value that means no value: those points decode as NaN (scale 65534 then)
     packed: string;                      // base64
 }
 
@@ -18,20 +19,27 @@ async function inflate(b64: string): Promise<Uint8Array> {
     return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/** The values of a stored grid, row by row from the north, in the unit of the parameter (hPa, degrees C, ...). */
+/** The values of a stored grid, row by row from the north, in the unit of the parameter (hPa, degrees C, ...); NaN where it has no value. */
 export async function decodeGrid(f: GridField): Promise<Float32Array> {
     const raw = await inflate(f.packed);
     const n = f.nx * f.ny;
-    const k = (f.max - f.min) / 65535;
+    const nodata = f.nodata;
+    const k = (f.max - f.min) / (nodata !== undefined ? 65534 : 65535);
     const v = new Float32Array(n);
-    for (let i = 0; i < n; i++) v[i] = f.min + ((raw[i] << 8) | raw[n + i]) * k;
+    for (let i = 0; i < n; i++) {
+        const q = (raw[i] << 8) | raw[n + i];
+        v[i] = nodata !== undefined && q === nodata ? NaN : f.min + q * k;
+    }
     return v;
 }
 
-/** A part of the grid, as grid indices (inclusive). */
+/** A part of a grid, in grid indices (inclusive). */
 export interface GridWindow { x0: number; x1: number; y0: number; y1: number; }
 
-/** Marching squares: the line segments of one level as a flat list x1, y1, x2, y2 (grid coordinates, x east, y south). */
+/**
+ * Marching squares: the line segments of one level as a flat list x1, y1, x2, y2 (grid coordinates, x east, y south).
+ * With `win` only the cells inside that window are walked: zoomed in, the visible part is a small part of the grid.
+ */
 export function isoSegments(v: Float32Array, nx: number, ny: number, level: number, win?: GridWindow): number[] {
     const out: number[] = [];
     const lerp = (a: number, b: number) => (level - a) / (b - a);
@@ -40,6 +48,7 @@ export function isoSegments(v: Float32Array, nx: number, ny: number, level: numb
     for (let y = yFrom; y < yTo; y++) {
         for (let x = xFrom; x < xTo; x++) {
             const a = v[y * nx + x], b = v[y * nx + x + 1], c = v[(y + 1) * nx + x + 1], d = v[(y + 1) * nx + x];
+            if (a !== a || b !== b || c !== c || d !== d) continue;     // a cell with a point without a value (outside the DMI grid) has no line
             const idx = (a >= level ? 8 : 0) | (b >= level ? 4 : 0) | (c >= level ? 2 : 0) | (d >= level ? 1 : 0);
             if (idx === 0 || idx === 15) continue;
             const top: [number, number] = [x + lerp(a, b), y], right: [number, number] = [x + 1, y + lerp(b, c)];
@@ -61,15 +70,12 @@ export function isoSegments(v: Float32Array, nx: number, ny: number, level: numb
 }
 
 /**
- * Highs and lows: a grid point that is the lowest (L) or highest (H) value of the whole window of about `degrees` around it
- * (the window shrinks on a small domain: at most a quarter of its width and height), and that differs at least
- * `minProminence` from the mean of the window's border, so weak bumps (sea level pressure over mountains) are left out.
- * Per pressure area only the strongest point is kept: candidates are taken deepest/highest first and dropped when a
- * point of the same kind is already marked inside the window.
+ * The minimum (or maximum) of every window of 2r + 1 values along one line of a grid (the window is cut at the line's ends):
+ * a monotonic queue, so the work is linear in the length of the line however wide the window is.
  */
 function slideExtreme(src: Float32Array, dst: Float32Array, len: number, start: number, step: number, r: number, max: boolean, queue: Int32Array): void {
     let head = 0, tail = 0;
-    for (let i = 0; i < len + r; i++) {                            // i enters the window, the window of output i - r
+    for (let i = 0; i < len + r; i++) {                            // i is the value entering the window, the window of output i - r
         if (i < len) {
             const val = src[start + i * step];
             while (tail > head) {
@@ -86,6 +92,7 @@ function slideExtreme(src: Float32Array, dst: Float32Array, len: number, start: 
     }
 }
 
+/** The minimum or maximum of every (2rx + 1) x (2ry + 1) window of a grid: first along the rows, then along the columns. */
 function windowExtreme(src: Float32Array, nx: number, ny: number, rx: number, ry: number, max: boolean): Float32Array {
     const tmp = new Float32Array(nx * ny), out = new Float32Array(nx * ny);
     const queue = new Int32Array(Math.max(nx, ny));
@@ -94,6 +101,15 @@ function windowExtreme(src: Float32Array, nx: number, ny: number, rx: number, ry
     return out;
 }
 
+/**
+ * Highs and lows: a grid point that is the lowest (L) or highest (H) value of the whole window of about `degrees` around it
+ * (the window shrinks on a small domain: at most a quarter of its width and height), and that differs at least
+ * `minProminence` from the mean of the window's border, so weak bumps (sea level pressure over mountains) are left out.
+ * Per pressure area only the strongest point is kept: candidates are taken deepest/highest first and dropped when a
+ * point of the same kind is already marked inside the window. A window that reaches a point without a value holds no extreme.
+ * The lowest and highest value of every window come from two sliding passes (linear), instead of comparing every point with
+ * every point of its window, which took a second for the 390 x 390 points of the KNMI grid.
+ */
 export function findExtremes(v: Float32Array, f: GridField, degrees = 4, minProminence = 2): Extreme[] {
     const rx = Math.max(2, Math.round(Math.min(degrees, 0.25 * (f.nx - 1) * f.dlon) / f.dlon));
     const ry = Math.max(2, Math.round(Math.min(degrees, 0.25 * (f.ny - 1) * f.dlat) / f.dlat));
@@ -112,7 +128,7 @@ export function findExtremes(v: Float32Array, f: GridField, degrees = 4, minProm
             if (bad && bad[idx] > 0) continue;
             const isMin = val === lo[idx], isMax = val === hi[idx];
             if (!isMin && !isMax) continue;
-            let sum = 0, cnt = 0;                                  // mean of the window's border (only for the few candidates)
+            let sum = 0, cnt = 0;                                // the mean of the window's border
             for (let j = -ry; j <= ry; j++) {
                 for (let i = -rx; i <= rx; i += (Math.abs(j) === ry ? 1 : 2 * rx)) {
                     sum += clean[(y + j) * f.nx + x + i];

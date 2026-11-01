@@ -59,7 +59,13 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
+    padding: 0;                                      /* the browser's own button padding made the icon not fit */
+    line-height: 1;
+    outline: none;                                   /* no dark focus border after a click; the keyboard ring is below */
 }
+.wc-nav i { font-size: 1rem; line-height: 1; }
+.wc-nav:focus-visible { box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.35); }
 .wc-nav:hover:not(:disabled) { background: #e0e7ff; border-color: #6366f1; }
 .wc-nav:disabled { opacity: 0.35; cursor: default; }
 .wc-date-main { font-size: 1.7rem; font-weight: 800; line-height: 1.2; color: #0f172a; }
@@ -82,9 +88,10 @@
 .wc-tip-row { display: flex; justify-content: space-between; gap: 8px; color: #4b5563; }
 .wc-tip-row b { color: #0f172a; text-align: right; }
 
-/* top left, next to the zoom buttons and level with the date. Two rows (model and run, then layer and labels), about 530 px wide.
-   On a very wide map area (about 2400 px and more) everything fits left of the date on one row; below about 1550 px the two rows
-   would run over the date (centred) and drop below it. Container queries on .wc-wrapper: a window query does not see the side menu. */
+/* top left, next to the zoom buttons and level with the date. The panel has two rows (model and run, then layer and labels), about 530 px
+   wide. On a very wide map area (about 2400 px and more; the single row is about 900 px, the date about 380 px) there is room left of the date for everything on one row, which is flatter;
+   below about 1550 px the two rows would run over the date (centred, about 360 px wide) and drop below it. Container queries on
+   .wc-wrapper: a window query does not see the side menu that takes room from the map. */
 .wc-toolbar {
     top: 10px;
     left: 54px;
@@ -93,6 +100,19 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+/* no common white panel: every dropdown and the Settings button float on the map on their own (like the toolbar of the rain radar) */
+.wc-toolbar {
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+}
+:host ::ng-deep .wc-toolbar .p-select,
+:host ::ng-deep .wc-toolbar .p-button {
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    height: 2.25rem;                                 /* flat: the dropdowns and the Settings button are equally high */
+    box-sizing: border-box;
 }
 .wc-tb-row {
     display: flex;
@@ -108,21 +128,23 @@
 }
 .wc-info-line { font-size: 0.72rem; color: #4b5563; }
 
+/* the player lives in a dialog in the body, so ::ng-deep is not needed: the markup is in this template */
 .wc-player {
-    bottom: 30px;
-    left: 54px;
-    right: 200px;
-    max-width: 900px;
     display: flex;
     align-items: center;
     gap: 14px;
 }
+.wc-date-click { cursor: pointer; border-radius: 6px; padding: 0 4px; }
+.wc-date-click:hover { background: #eef2ff; }
+.wc-nav-stop { background: #6366f1; border-color: #6366f1; color: #fff; }
+.wc-nav-stop:hover { background: #4f46e5 !important; border-color: #4f46e5 !important; }
 
-@container wc (min-width: 2400px) {
-    .wc-toolbar { flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 8px 14px; }
-}
+/* the run dropdown: a short name, the explanation under it in the list */
+::ng-deep .wc-run-opt { display: flex; flex-direction: column; }
+::ng-deep .wc-run-tip { color: #6b7280; font-size: 0.75rem; }
 
-@container wc (max-width: 1550px) {
+/* the toolbar is one row now (about 600 px, with the wind mode about 700); next to the centred date it needs a map area of about 1600 px */
+@container wc (max-width: 1600px) {
     .wc-toolbar { top: 70px; }
 }
 
@@ -131,7 +153,6 @@
     .wc-date { padding: 4px 14px; }
     .wc-toolbar { top: 60px; }
     .wc-info { display: none; }
-    .wc-player { right: 10px; left: 10px; }
 }
 
 /* the labels and the highs/lows are Leaflet divIcons, created outside the component's view: ::ng-deep */
@@ -160,4 +181,10 @@
     line-height: 1.5;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
+/* a colour strip with each number under its own colour */
+::ng-deep .wc-strip { display: flex; gap: 2px; margin: 0 0 3px; }
+::ng-deep .wc-legend b { display: block; line-height: 1.25; }
+::ng-deep .wc-cell { display: flex; flex-direction: column; align-items: center; width: 30px; }
+::ng-deep .wc-legend .wc-cell i { width: 100%; height: 10px; margin: 0; }
+::ng-deep .wc-cell small { font-size: 10px; line-height: 1.1; white-space: nowrap; }
 ::ng-deep .wc-legend i { display: inline-block; width: 16px; height: 10px; margin-right: 6px; vertical-align: middle; opacity: 0.8; }

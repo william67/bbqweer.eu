@@ -13,47 +13,66 @@
 
   <!-- the valid time of the map on screen, straight at the top -->
   @if (validLabel) {
-    <div class="wc-date">
+    <div #dateEl class="wc-date">
       <button type="button" class="wc-nav" (click)="stepBy(-1)" [disabled]="frameIndex <= 0" aria-label="Eén stap terug">
         <i class="pi pi-chevron-left"></i>
       </button>
-      <div>
+      <!-- a click on the time opens the player (play and slider) -->
+      <div class="wc-date-click" (click)="openPlayer()" title="Klik voor afspelen en schuifbalk">
         <div class="wc-date-main">{{ validLabel }}</div>
         <div class="wc-date-sub">{{ runLabel }}</div>
       </div>
       <button type="button" class="wc-nav" (click)="stepBy(1)" [disabled]="frameIndex >= maxIndex" aria-label="Eén stap vooruit">
         <i class="pi pi-chevron-right"></i>
       </button>
+      @if (playing) {
+        <button type="button" class="wc-nav wc-nav-stop" (click)="togglePlay()" aria-label="Stop met afspelen" title="Stop met afspelen">
+          <i class="pi pi-pause"></i>
+        </button>
+      } @else {
+        <button type="button" class="wc-nav" (click)="togglePlay()" [disabled]="maxIndex <= 0" aria-label="Afspelen" title="Afspelen">
+          <i class="pi pi-play"></i>
+        </button>
+      }
     </div>
   }
 
-  <!-- model, run, layer: two rows, so the panel is flat -->
+  <!-- model, run, layer and the settings: one flat row -->
   <div class="wc-panel wc-toolbar">
     <div class="wc-tb-row">
       <p-select [options]="modelOptions" [(ngModel)]="selectedId" (onChange)="onModelChange()"
-        optionLabel="label" optionValue="value" placeholder="Model" appendTo="body" [style]="{'min-width':'12rem'}" />
+        optionLabel="label" optionValue="value" placeholder="Model" appendTo="body" [style]="{'min-width':'9.5rem'}" />
       <p-select [options]="runOptions" [(ngModel)]="selectedRun" (onChange)="onRunChange()"
-        optionLabel="label" optionValue="value" placeholder="Run" appendTo="body" [style]="{'min-width':'14rem','max-width':'18rem'}" />
-    </div>
-    <div class="wc-tb-row">
-      <div class="flex align-items-center gap-2">
-        <label for="wc-layer">Laag</label>
-        <p-select inputId="wc-layer" [options]="layerOptions" [(ngModel)]="layer" (onChange)="onLayerChange()"
-          optionLabel="label" optionValue="value" appendTo="body" [style]="{'min-width':'10rem'}" />
-        @if (layer === 'wind') {
-          <p-select [options]="windModeOptions" [(ngModel)]="windMode" (onChange)="onLayerChange()"
-            optionLabel="label" optionValue="value" appendTo="body" [style]="{'min-width':'8rem'}" />
-        }
-      </div>
-      <div class="flex align-items-center gap-2">
-        <p-checkbox [(ngModel)]="showLabels" [binary]="true" inputId="wc-labels" (onChange)="draw()" />
-        <label for="wc-labels">Labels</label>
-      </div>
+        optionLabel="label" optionValue="value" placeholder="Run" appendTo="body" [style]="{'min-width':'9.5rem'}">
+        <ng-template #item let-o>
+          <div class="wc-run-opt">
+            <span>{{ o.label }}</span>
+            @if (o.tip) { <small class="wc-run-tip">{{ o.tip }}</small> }
+          </div>
+        </ng-template>
+      </p-select>
+      <p-select [options]="layerOptions" [(ngModel)]="layer" (onChange)="onLayerChange()"
+        optionLabel="label" optionValue="value" placeholder="Layer" appendTo="body" [style]="{'min-width':'8.5rem'}" />
+      @if (layer === 'wind') {
+        <p-select [options]="windModeOptions" [(ngModel)]="windMode" (onChange)="onLayerChange()"
+          optionLabel="label" optionValue="value" appendTo="body" [style]="{'min-width':'8rem'}" />
+      }
+      <app-my-map-settings [map]="settingsMap" storageKey="weathercharts_settings" [showOpacity]="true" [defaultOpacity]="0.6"
+        (opacityChange)="onOpacityChange($event)">
+        <div class="ms-setting">
+          <label>Labels <span class="ms-value">{{ showLabels ? 'on' : 'off' }}</span></label>
+          <div class="ms-choices">
+            <p-button label="On" size="small" (click)="setLabels(true)" [severity]="showLabels ? 'primary' : 'secondary'"></p-button>
+            <p-button label="Off" size="small" (click)="setLabels(false)" [severity]="showLabels ? 'secondary' : 'primary'"></p-button>
+          </div>
+          <small class="ms-hint">The pressure values on the isobars and the highs and lows on the map.</small>
+        </div>
+      </app-my-map-settings>
     </div>
   </div>
 
   <!-- run info, notes and errors -->
-  @if (errorMessage || layerNote || seamLine || infoLine) {
+  @if (errorMessage || layerNote || seamLine || infoLine || timingLine) {
     <div class="wc-panel wc-info">
       @if (errorMessage) {
         <p-message severity="error" styleClass="mb-2">{{ errorMessage }}</p-message>
@@ -64,15 +83,19 @@
       </div>
       @if (seamLine) { <div class="wc-info-line">{{ seamLine }}</div> }
       @if (layerNote) { <div class="wc-info-line">{{ layerNote }}</div> }
+      @if (timingLine) { <div class="wc-info-line wc-timing">{{ timingLine }}</div> }
     </div>
   }
 
-  <!-- slider and play, at the bottom (the legend sits in the bottom right corner) -->
-  <div class="wc-panel wc-player">
-    <p-button [label]="playing ? 'Stop' : 'Afspelen'" [icon]="playing ? 'pi pi-pause' : 'pi pi-play'"
-      severity="secondary" size="small" (onClick)="togglePlay()" />
-    <div class="flex-1" style="min-width:150px">
-      <p-slider [(ngModel)]="frameIndex" [min]="0" [max]="maxIndex" (onChange)="onStepChange()" styleClass="w-full" />
+  <!-- play and slider: not modal, so the map stays visible; closing it does not stop a running play -->
+  <p-dialog header="Afspelen" styleClass="map-dialog" [(visible)]="playerVisible" [modal]="false" [focusOnShow]="false" [draggable]="true" [resizable]="false"
+    [style]="{width: '30rem', 'max-width': '95vw', 'margin-top': playerTop + 'px'}" position="top" appendTo="body">
+    <div class="wc-player">
+      <p-button [label]="playing ? 'Stop' : 'Afspelen'" [icon]="playing ? 'pi pi-pause' : 'pi pi-play'"
+        severity="secondary" size="small" (onClick)="togglePlay()" />
+      <div class="flex-1" style="min-width:150px">
+        <p-slider [(ngModel)]="frameIndex" [min]="0" [max]="maxIndex" (onChange)="onStepChange()" styleClass="w-full" />
+      </div>
     </div>
-  </div>
+  </p-dialog>
 </div>

@@ -22,14 +22,15 @@ export function windBand(kmh: number): WindBand | null {
     return hit;
 }
 
-/** Bilinear value of a grid at a latitude and longitude; null outside the grid. */
+/** Bilinear value of a grid at a latitude and longitude; null outside the grid or next to a point without a value. */
 export function sampleBilinear(v: Float32Array, f: GridField, lat: number, lon: number): number | null {
     const fx = (lon - f.lon0) / f.dlon, fy = (f.lat0 - lat) / f.dlat;
     if (fx < 0 || fy < 0 || fx > f.nx - 1 || fy > f.ny - 1) return null;
     const x0 = Math.min(Math.floor(fx), f.nx - 2), y0 = Math.min(Math.floor(fy), f.ny - 2);
     const tx = fx - x0, ty = fy - y0;
     const a = v[y0 * f.nx + x0], b = v[y0 * f.nx + x0 + 1], c = v[(y0 + 1) * f.nx + x0], d = v[(y0 + 1) * f.nx + x0 + 1];
-    return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
+    const r = (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
+    return r === r ? r : null;                       // NaN: a corner without a value (outside the DMI grid)
 }
 
 /** The value of the nearest grid point (for classes, which must not be averaged); null outside the grid or at a point without a value. */

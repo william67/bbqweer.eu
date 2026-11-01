@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import * as L from 'leaflet';
 import { WeatherMapsService } from 'src/app/services/weather-maps.service';
@@ -7,12 +7,15 @@ import { decodeGrid, isoSegments, findExtremes, GridWindow } from 'src/app/utils
 import { WIND_BANDS, sampleBilinear, sampleNearest, buildSpeedImage, buildColourImage } from 'src/app/utils/wind.util';
 import { TEMP_LEGEND, RAIN_BANDS, RainBand, SNOW_BANDS, MIX_BANDS, FREEZING_BANDS, SNOW_RATIO, SNOW_CM_PER_MM, PRECIP_NAMES, tempColour, tempRgb, rainColour, precipColour, encodePrecip } from 'src/app/utils/layers.util';
 import { LocalStorageService } from 'src/app/services/local-storage.service';
+import { SavedView, loadView as loadSavedView, saveView as saveSavedView, pickExtra, watchResize } from 'src/app/utils/map-view.util';
 
-const MODEL_NAMES: Record<string, string> = { 'ecmwf': 'ECMWF IFS', 'gfs': 'NOAA GFS', 'icon-eu': 'DWD ICON-EU', 'harmonie': 'KNMI HARMONIE' };
+const MODEL_NAMES: Record<string, string> = { 'ecmwf': 'ECMWF IFS', 'gfs': 'NOAA GFS', 'icon-eu': 'DWD ICON-EU', 'harmonie': 'KNMI HARMONIE', 'dmi': 'DMI HARMONIE DINI' };
 const DEFAULT_ID = 'gfs/0.25';
 const REFRESH_MS = 5 * 60 * 1000;        // a new run is picked up by asking the model list again
 const PLAY_MS = 1200;
-const intervalForZoom = (zoom: number) => zoom < 6 ? 4 : zoom < 7 ? 2 : 1;      // hPa between isobars: more lines when zoomed in
+// the isobar interval follows the zoom: coarse over the whole of Europe, finer when zoomed in (zoom 8 is about 180 px a degree);
+// the extra lines come late, so the map stays calm while zooming
+const intervalForZoom = (zoom: number): number => zoom < 7 ? 4 : zoom < 8 ? 2 : 1;
 const MAX_CACHE = 240;                   // decoded grids kept in the browser
 const VIEW_KEY = 'weathercharts_view';
 
@@ -27,44 +30,46 @@ type Layer = 'none' | 'wind' | 'temp' | 'rain';
 export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy {
 
     @ViewChild('mapEl', { static: true }) mapEl!: ElementRef<HTMLDivElement>;
+    @ViewChild('dateEl') dateEl?: ElementRef<HTMLDivElement>;     // the time at the top: the player opens just below it
 
     models: WeatherMapModel[] = [];
     modelOptions: { label: string; value: string }[] = [];
-    runOptions: { label: string; value: string | null }[] = [];
+    runOptions: { label: string; value: string | null; tip?: string }[] = [];
     selectedId: string | null = null;
     selectedRun: string | null = null;                  // null = the merged timeline, else one run on its own
     frames: WeatherMapFrame[] = [];                     // what the slider runs over: valid time, run and step
     frameIndex = 0;
     maxIndex = 0;
     showLabels = true;
-    layer: Layer = 'rain';                            // the colour layer under the isobars
+    layer: Layer = 'rain';                              // the colour layer under the isobars (rain when the page opens)
     layerOptions = [{ label: 'Geen laag', value: 'none' }, { label: 'Wind', value: 'wind' },
         { label: 'Temperatuur 2 m', value: 'temp' }, { label: 'Neerslag', value: 'rain' }];
     windMode: 'mean' | 'gust' = 'mean';                 // what the wind colours show: the mean wind or the gusts
     windModeOptions = [{ label: 'gemiddeld', value: 'mean' }, { label: 'windstoten', value: 'gust' }];
     layerNote = '';
     playing = false;
+    playerVisible = false;                              // the dialog with play and the slider (opened by a click on the time)
+    playerTop = 90;                                     // px from the top of the window: just below the time
     errorMessage: string | null = null;
     validLabel = '';                                    // the valid time of the map on screen, big at the top
     runLabel = '';                                      // run and step of that map
     infoLine = '';
-    isoInterval = 4;                                    // hPa between the isobars on screen
+    timingLine = '';                                    // how long the last draw took, per step
+    isoInterval = 4;                                    // hPa between the isobars at the current zoom
     seamLine = '';
 
     private map!: L.Map;
-    private isoLayer = L.layerGroup();                  // the highs/lows and the outline of the model area
-    private lineLayer = L.layerGroup();                 // the isobars and their labels, redrawn per zoom level for the visible part only
-    private isoState: { cur: WeatherMapModel; f: WeatherMapField; v: Float32Array } | null = null;
-    private isoCover: GridWindow | null = null;         // the part of the grid the isobars on screen cover (with a margin)
-    private isoDrawnInterval = 0;
-    private isoTimer: any = null;
-    private infoBase = '';
+    private isoLayer = L.layerGroup();                  // the highs/lows and the grid outline
+    private lineLayer = L.layerGroup();                 // the isobars and their labels: redrawn when the zoom changes the interval
     private svgRenderer = L.svg({ padding: 0.5 });          // one shared SVG renderer for all lines (project rule)
     private windLayer = L.layerGroup();                     // the wind arrows, redrawn when the map moves or zooms
     private colourImage: L.ImageOverlay | null = null;      // the colours of the chosen layer
     private legend: L.Control | null = null;
     private windData: { u: Float32Array; v: Float32Array; f: WeatherMapField } | null = null;    // the arrows always show the mean wind
     private mapReady = false;
+    settingsMap: L.Map | null = null;                    // handed to the settings button once the map exists
+    mapOpacity = 0.6;                                    // the opacity of the colour layer, from the settings
+    private savedView: SavedView | null = null;          // the position and the choices of the last visit
     private fitted = false;                                // the map is fitted to the data once, then position and zoom stay as they are
     private drawSeq = 0;                                    // a slow draw must not overwrite a newer one
     private playTimer: any = null;
@@ -75,10 +80,27 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
     private tipTimer: any = null;
     private tipSeq = 0;                                     // a slow tooltip must not appear after the pointer moved on
     private layoutContent: HTMLElement | null = null;
-    private resizeObserver: ResizeObserver | null = null;
+    private stopResizeWatch: (() => void) | null = null;
     private validNow: string | null = null;               // the valid time on screen, kept when the model or run changes
+    private isoState: { f: WeatherMapField; v: Float32Array } | null = null;     // the field the isobars on screen come from
+    private isoCover: GridWindow | null = null;             // the part of the grid the isobars on screen were computed for
+    private isoTimer: any = null;
+    private infoBase = '';
+    // the time of the last draw, per step (ms); loads that run side by side are added up
+    private stat = { n: 0, fetch: 0, decode: 0, image: 0, arrows: 0, hl: 0, iso: 0, lines: 0, segments: 0 };
 
-    constructor(private svc: WeatherMapsService, private storage: LocalStorageService) {}
+    constructor(private svc: WeatherMapsService, private storage: LocalStorageService, private cdr: ChangeDetectorRef) {
+        // the position and the choices of the last visit (not the model and the run: a saved run may have been replaced since)
+        this.savedView = loadSavedView(this.storage, VIEW_KEY);
+        const e = pickExtra(this.savedView, {
+            layer: x => ['none', 'wind', 'temp', 'rain'].includes(x),
+            windMode: x => x === 'mean' || x === 'gust',
+            showLabels: x => typeof x === 'boolean'
+        });
+        if (e.layer) this.layer = e.layer;
+        if (e.windMode) this.windMode = e.windMode;
+        if (e.showLabels !== undefined) this.showLabels = e.showLabels;
+    }
 
     private get current(): WeatherMapModel | undefined {
         return this.models.find(m => m.id === this.selectedId);
@@ -96,7 +118,7 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
     }
 
     ngAfterViewInit(): void {
-        const saved = this.loadView();
+        const saved = this.savedView;
         this.map = L.map(this.mapEl.nativeElement, { center: saved ? [saved.lat, saved.lng] : [52, 8], zoom: saved ? saved.zoom : 5, zoomSnap: 0.25 });
         if (saved) this.fitted = true;                  // the user's position and zoom win over fitting to the data
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -111,20 +133,20 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         this.map.on('mousemove', (e: L.LeafletMouseEvent) => this.scheduleTip(e));
         this.map.on('mouseout mousedown movestart zoomstart', () => this.hideTip());
         this.mapReady = true;
-        setTimeout(() => this.map.invalidateSize(), 0);
         // the container gets its final size after the first render (padding removed, sidebar, window resize): without
-        // this Leaflet keeps loading tiles for the old size and parts of the map stay empty
-        this.resizeObserver = new ResizeObserver(() => this.map.invalidateSize());
-        this.resizeObserver.observe(this.mapEl.nativeElement);
+        // this Leaflet keeps loading tiles for the old size and parts of the map stay empty (utils/map-view.util.ts)
+        this.stopResizeWatch = watchResize(this.map, this.mapEl.nativeElement);
         this.draw();
+        this.settingsMap = this.map;
+        this.cdr.detectChanges();                       // the settings button gets the map in the same pass (no ExpressionChanged error)
     }
 
     ngOnDestroy(): void {
         if (this.playTimer) clearInterval(this.playTimer);
         if (this.refreshTimer) clearInterval(this.refreshTimer);
-        this.resizeObserver?.disconnect();
-        if (this.tipTimer) clearTimeout(this.tipTimer);
         if (this.isoTimer) clearTimeout(this.isoTimer);
+        this.stopResizeWatch?.();
+        if (this.tipTimer) clearTimeout(this.tipTimer);
         if (this.layoutContent) {
             this.layoutContent.style.position = '';
             this.layoutContent.style.padding = '';
@@ -154,7 +176,8 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
     // the run dropdown and the frames of the slider for the chosen model and run; keeps the valid time on screen
     private setupRuns(): void {
         const cur = this.current;
-        this.runOptions = [{ label: 'Samengesteld (nieuwste run per tijdstip)', value: null },
+        // a short name, so the dropdown stays narrow; the explanation is shown under it in the list
+        this.runOptions = [{ label: 'Default', value: null, tip: 'Samengesteld: de nieuwste run per tijdstip' },
             ...(cur?.runs ?? []).map((r, i) => ({ label: `Run ${this.fmtLocal(r.run)}${i === 0 ? ' (nieuwste)' : ''}`, value: r.run }))];
         if (this.selectedRun && !cur?.runs.some(r => r.run === this.selectedRun)) this.selectedRun = null;   // that run has gone
 
@@ -219,6 +242,12 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         this.draw();
     }
 
+    openPlayer(): void {
+        const r = this.dateEl?.nativeElement.getBoundingClientRect();
+        if (r) this.playerTop = Math.round(r.bottom + 8);
+        this.playerVisible = true;
+    }
+
     togglePlay(): void {
         if (this.playTimer) {
             clearInterval(this.playTimer);
@@ -227,6 +256,7 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
             return;
         }
         this.playing = true;
+        this.playerVisible = false;                     // starting closes the player, so the map is free to watch
         this.playTimer = setInterval(() => {
             this.frameIndex = this.frameIndex >= this.maxIndex ? 0 : this.frameIndex + 1;
             this.draw();
@@ -248,8 +278,13 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         let field = this.fields.get(key);
         let values = this.grids.get(key);
         if (!field || !values) {
+            const t0 = performance.now();
             field = await firstValueFrom(this.svc.getField(m.model, m.grid, f.run, f.step, param));
+            const t1 = performance.now();
             values = await decodeGrid(field);
+            this.stat.fetch += t1 - t0;
+            this.stat.decode += performance.now() - t1;
+            this.stat.n++;
             this.fields.set(key, field);
             this.grids.set(key, values);
             this.trimCache();
@@ -275,12 +310,15 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         if (!frame) return;
         const seq = ++this.drawSeq;
         this.hideTip();
+        const t0 = performance.now();
+        this.stat = { n: 0, fetch: 0, decode: 0, image: 0, arrows: 0, hl: 0, iso: 0, lines: 0, segments: 0 };
         try {
             const { field, values } = await this.load(cur, frame);
             if (seq !== this.drawSeq) return;
             this.validNow = frame.valid;
             this.render(cur, frame, field, values);
             await this.updateLayer(cur, frame, seq);
+            if (seq === this.drawSeq) this.showTiming(performance.now() - t0, seq);
             this.errorMessage = null;
             this.prefetch(cur);
         } catch (err: any) {
@@ -290,9 +328,38 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         }
     }
 
+    // how long the last draw took: loads (several side by side are added up), highs and lows, the isobars computed and drawn, the
+    // colour layer and the arrows, the total, and the time until the browser has painted the next frame
+    private showTiming(total: number, seq: number): void {
+        const s = this.stat, r = (x: number) => Math.round(x);
+        const parts = [s.n ? `laden ${s.n}× ${r(s.fetch + s.decode)} ms (uitpakken ${r(s.decode)})` : 'laden: uit cache',
+            `H/L ${r(s.hl)} ms`, `isobaren ${r(s.iso)} ms`, `tekenen ${r(s.lines)} ms`];
+        if (this.layer !== 'none') parts.push(`laag ${r(s.image)} ms`);
+        if (this.layer === 'wind') parts.push(`pijlen ${r(s.arrows)} ms`);
+        parts.push(`totaal ${r(total)} ms`);
+        this.timingLine = parts.join(' · ');
+        const t = performance.now();
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (seq === this.drawSeq) this.timingLine += ` · beeld +${r(performance.now() - t)} ms`;
+        }));
+    }
+
+    private timed<T>(key: 'image' | 'arrows', fn: () => T): T {
+        const t = performance.now();
+        try { return fn(); } finally { this.stat[key] += performance.now() - t; }
+    }
+
     onLayerChange(): void {
+        this.saveView();
         if (this.layer === 'none') this.clearLayer();
         else this.draw();
+    }
+
+    setLabels(on: boolean): void {
+        if (on === this.showLabels) return;
+        this.showLabels = on;
+        this.saveView();
+        this.draw();
     }
 
     private clearLayer(): void {
@@ -306,7 +373,13 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
     // the colour image of the layer goes under the isobars (tile pane)
     private setImage(img: { url: string; bounds: [[number, number], [number, number]] }): void {
         if (this.colourImage) this.colourImage.remove();
-        this.colourImage = L.imageOverlay(img.url, img.bounds, { opacity: 0.6, interactive: false, pane: 'tilePane' }).addTo(this.map);
+        this.colourImage = L.imageOverlay(img.url, img.bounds, { opacity: this.mapOpacity, interactive: false, pane: 'tilePane' }).addTo(this.map);
+    }
+
+    // the opacity of the colour layer comes from the settings (also once at the start, with the saved value)
+    onOpacityChange(value: number): void {
+        this.mapOpacity = value;
+        this.colourImage?.setOpacity(value);
     }
 
     private setLegend(title: string, rows: { rgb: number[]; text: string }[], footer = ''): void {
@@ -331,16 +404,17 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
             this.setLegend('Neerslag (mm/uur)', RAIN_BANDS.map((b, i) => ({ rgb: b.rgb, text: `${b.min}${RAIN_BANDS[i + 1] ? '-' + RAIN_BANDS[i + 1].min : '+'}` })), footer);
             return;
         }
-        const strip = (title: string, bands: RainBand[]) => `<b>${title}</b><br>`
-            + bands.map(b => `<i style="background:rgb(${b.rgb.join(',')});width:22px;margin-right:2px"></i>`).join('')
-            + `<br><small>${bands.map(b => b.min).join(' · ')}+</small>`;
+        // every number stands under its own colour: the start of that class (the last one with a +)
+        const strip = (title: string, bands: RainBand[]) => `<b>${title}</b>`
+            + `<div class="wc-strip">${bands.map((b, i) => `<span class="wc-cell"><i style="background:rgb(${b.rgb.join(',')})"></i>`
+                + `<small>${b.min}${i === bands.length - 1 ? '+' : ''}</small></span>`).join('')}</div>`;
         const note = classes.derived ? '<br><small>type afgeleid uit sneeuwsom en temperatuur</small>' : '';
         this.setLegendHtml([strip('Regen (mm/uur)', RAIN_BANDS), strip('Natte sneeuw (mm/uur)', MIX_BANDS),
-            strip(`Sneeuw (cm/uur, ${SNOW_RATIO}:1)`, SNOW_BANDS), strip('IJzel (mm/uur)', FREEZING_BANDS)].join('<br>') + `<br><small>${footer}</small>${note}`);
+            strip(`Sneeuw (cm/uur, ${SNOW_RATIO}:1)`, SNOW_BANDS), strip('IJzel (mm/uur)', FREEZING_BANDS)].join('') + `<small>${footer}</small>${note}`);
     }
 
     // The type of the precipitation at a point (0 none, 1 rain, 2 mix, 3 snow, 4 freezing rain) as a function of the point and the water
-    // (mm per hour); null when the run has no information on the type. A run with `ptype` (ECMWF, GFS) has it per point: the nearest
+    // (mm per hour); null when the run has no information on the type. A run with `ptype` (DMI, ECMWF, GFS) has it per point: the nearest
     // grid point, a class must not be averaged. A run with the accumulated snow (`snow`: ICON-EU, HARMONIE) does not, so the type is
     // DERIVED from the share of snow in the water of the interval (80 % and more is snow, 20 to 80 % mix) and, for the rest, the 2 m
     // temperature (rain at 0 degrees or colder is freezing rain).
@@ -416,11 +490,11 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
                 const a = sampleBilinear(fu.values, f, lat, lon), b = sampleBilinear(fv.values, f, lat, lon);
                 return a === null || b === null ? null : Math.hypot(a, b) * 3.6;
             };
-        this.setImage(buildSpeedImage(f, kmh));
+        this.setImage(this.timed('image', () => buildSpeedImage(f, kmh)));
         this.setLegend(`${fg ? 'Windstoten' : 'Wind'} (km/h)`,
             WIND_BANDS.map((b, i) => ({ rgb: b.rgb, text: `${b.min}${WIND_BANDS[i + 1] ? '-' + WIND_BANDS[i + 1].min : '+'}` })),
             'pijl: richting, gemiddelde wind 10 m');
-        this.drawArrows();
+        this.timed('arrows', () => this.drawArrows());
     }
 
     private async updateTemp(cur: WeatherMapModel, frame: WeatherMapFrame, seq: number): Promise<void> {
@@ -430,13 +504,14 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         this.windData = null;
         this.windLayer.clearLayers();
         const f = t.field;
-        this.setImage(buildColourImage(f, (lat, lon) => sampleBilinear(t.values, f, lat, lon), tempColour));
+        this.setImage(this.timed('image', () => buildColourImage(f, (lat, lon) => sampleBilinear(t.values, f, lat, lon), tempColour)));
         this.setLegend('Temperatuur 2 m (°C)', TEMP_LEGEND.map(c => ({ rgb: tempRgb(c), text: String(c) })));
     }
 
-    // rain per hour: the precipitation rate at the step when the run has it (GFS and ECMWF: their totals are packed too coarsely
-    // for a difference to be smooth), else the amount that fell since the previous step (the grids hold the total since the
-    // start of the run), per hour
+    // Precipitation per hour: the precipitation rate at the step when the run has it (GFS and ECMWF: their totals are packed too
+    // coarsely for a difference to be smooth), else the amount that fell since the previous step (the grids hold the total since the
+    // start of the run), per hour. When the run has the precipitation type (`ptype`: 1 rain, 2 mix, 3 snow, 4 freezing rain) the
+    // colours follow the type: snow in cm per hour (the water of the model x 10), the other types in mm per hour.
     private async updateRain(cur: WeatherMapModel, frame: WeatherMapFrame, seq: number): Promise<void> {
         const classes = await this.precipClasses(cur, frame, this.prevStep(cur, frame.run, frame.step));
         const colour = classes ? precipColour : rainColour;
@@ -446,7 +521,7 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
             this.windData = null;
             this.windLayer.clearLayers();
             const f = r.field;
-            this.setImage(buildColourImage(f, this.typed(classes, (lat, lon) => sampleBilinear(r.values, f, lat, lon)), colour));
+            this.setImage(this.timed('image', () => buildColourImage(f, this.typed(classes, (lat, lon) => sampleBilinear(r.values, f, lat, lon)), colour)));
             this.rainLegend(classes, 'intensiteit op dit tijdstip');
             return;
         }
@@ -459,10 +534,10 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         this.windLayer.clearLayers();
         const hours = frame.step - prev;
         const f = a.field;
-        this.setImage(buildColourImage(f, this.typed(classes, (lat, lon) => {
+        this.setImage(this.timed('image', () => buildColourImage(f, this.typed(classes, (lat, lon) => {
             const x = sampleBilinear(a.values, f, lat, lon), y = sampleBilinear(b.values, f, lat, lon);
             return x === null || y === null ? null : Math.max(0, x - y) / hours;
-        }), colour));
+        }), colour)));
         this.rainLegend(classes, `gemiddeld over de afgelopen ${hours} uur`);
     }
 
@@ -526,21 +601,9 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         L.polyline(lines, { renderer: this.svgRenderer, color: '#0f172a', weight: 1.6, opacity: 0.85, interactive: false }).addTo(this.windLayer);
     }
 
-    // the map position and zoom are remembered in the browser (like the location of the forecast page)
-    private loadView(): { lat: number; lng: number; zoom: number } | null {
-        try {
-            const raw = this.storage.getData(VIEW_KEY);
-            if (!raw) return null;
-            const v = JSON.parse(raw);
-            return [v.lat, v.lng, v.zoom].every(x => typeof x === 'number' && isFinite(x)) ? v : null;
-        } catch { return null; }
-    }
-
+    // the map position and zoom, and the choices that go with it, are remembered in the browser (utils/map-view.util.ts)
     private saveView(): void {
-        try {
-            const c = this.map.getCenter();
-            this.storage.saveData(VIEW_KEY, JSON.stringify({ lat: +c.lat.toFixed(4), lng: +c.lng.toFixed(4), zoom: this.map.getZoom() }));
-        } catch { /* storage may be blocked: the map just starts fitted again next time */ }
+        if (this.map) saveSavedView(this.storage, VIEW_KEY, this.map, { layer: this.layer, windMode: this.windMode, showLabels: this.showLabels });
     }
 
     private hideTip(): void {
@@ -613,9 +676,8 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
 
     private render(cur: WeatherMapModel, frame: WeatherMapFrame, f: WeatherMapField, v: Float32Array): void {
         this.isoLayer.clearLayers();
-        this.isoState = { cur, f, v };
-        this.isoCover = null;                                  // a new field: the lines are drawn again
         const ll = (x: number, y: number): L.LatLngExpression => [f.lat0 - y * f.dlat, f.lon0 + x * f.dlon];
+        const th = performance.now();
         for (const e of findExtremes(v, f)) {
             const colour = e.type === 'H' ? '#b91c1c' : '#1d4ed8';
             L.marker(ll(e.x, e.y), {
@@ -623,8 +685,9 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
                 icon: L.divIcon({ className: 'wc-hl', html: `<span style="color:${colour}">${e.type}</span><small>${Math.round(e.val)}</small>`, iconSize: [30, 30], iconAnchor: [15, 15] })
             }).addTo(this.isoLayer);
         }
+        this.stat.hl = performance.now() - th;
         const south = f.lat0 - (f.ny - 1) * f.dlat, east = f.lon0 + (f.nx - 1) * f.dlon;
-        L.rectangle([[south, f.lon0], [f.lat0, east]], { renderer: this.svgRenderer, color: '#64748b', weight: 1, fill: false, dashArray: '4 4', interactive: false }).addTo(this.isoLayer);
+        if (f.nodata === undefined) L.rectangle([[south, f.lon0], [f.lat0, east]], { renderer: this.svgRenderer, color: '#64748b', weight: 1, fill: false, dashArray: '4 4', interactive: false }).addTo(this.isoLayer);
         if (!this.fitted) {
             this.map.fitBounds([[south, f.lon0], [f.lat0, east]]);
             this.fitted = true;
@@ -632,11 +695,12 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         this.validLabel = this.fmtLocal(frame.valid);
         this.runLabel = `run ${this.fmtRunHour(frame.run)} +${frame.step} uur`;
         this.infoBase = `${MODEL_NAMES[cur.model] ?? cur.model} · ${cur.grid}° · ${f.nx}×${f.ny} punten · ${f.min.toFixed(0)}-${f.max.toFixed(0)} hPa`;
+        this.isoState = { f, v };
         this.drawIsobars();
     }
 
-    // the visible part of the map as grid indices, with `pad` extra around it (a fraction of the view)
-    private visibleWindow(f: WeatherMapField, pad: number): GridWindow {
+    // the part of the grid that is on screen (plus a margin as a share of the screen), in grid indices
+    private gridWindow(f: WeatherMapField, pad: number): GridWindow {
         const b = this.map.getBounds().pad(pad);
         return {
             x0: Math.max(0, Math.floor((b.getWest() - f.lon0) / f.dlon)), x1: Math.min(f.nx - 1, Math.ceil((b.getEast() - f.lon0) / f.dlon)),
@@ -644,37 +708,30 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
         };
     }
 
-    // after the map moved: draw the lines again only when the zoom level wants another interval or the view left what is drawn
-    private scheduleIsobars(): void {
-        if (!this.isoState) return;
-        if (this.isoTimer) clearTimeout(this.isoTimer);
-        this.isoTimer = setTimeout(() => {
-            const st = this.isoState, c = this.isoCover;
-            if (!st) return;
-            const vis = this.visibleWindow(st.f, 0);
-            const inside = c && vis.x0 >= c.x0 && vis.x1 <= c.x1 && vis.y0 >= c.y0 && vis.y1 <= c.y1;
-            if (intervalForZoom(this.map.getZoom()) !== this.isoDrawnInterval || !inside) this.drawIsobars();
-        }, 120);
-    }
-
-    // the isobars and labels of the visible part, at the interval of the zoom level
+    // The isobars of the field on screen. The interval follows the zoom, and only the visible part of the grid (plus a margin) is
+    // walked, so zoomed in the work stays about as much as for the whole of Europe.
     private drawIsobars(): void {
         const st = this.isoState;
-        if (!st) return;
+        if (!st || !this.mapReady) return;
         const { f, v } = st;
         const interval = intervalForZoom(this.map.getZoom());
-        const win = this.visibleWindow(f, 0.25);
-        this.lineLayer.clearLayers();
+        const win = this.gridWindow(f, 0.25);
+        this.isoInterval = interval;
+        this.isoCover = win;
         const ll = (x: number, y: number): L.LatLngExpression => [f.lat0 - y * f.dlat, f.lon0 + x * f.dlon];
-        let nSeg = 0;
+        this.lineLayer.clearLayers();
+        const t0 = performance.now();
+        let nSeg = 0, tIso = 0;
         for (let lev = Math.ceil(f.min / interval) * interval; lev <= f.max; lev += interval) {
+            const ta = performance.now();
             const flat = isoSegments(v, f.nx, f.ny, lev, win);
+            tIso += performance.now() - ta;
             const n = flat.length / 4;
             if (!n) continue;
             nSeg += n;
             const lines: L.LatLngExpression[][] = [];
             for (let i = 0; i < flat.length; i += 4) lines.push([ll(flat[i], flat[i + 1]), ll(flat[i + 2], flat[i + 3])]);
-            const weight = lev % 20 === 0 ? 2.4 : interval < 4 && lev % 4 === 0 ? 1.8 : 1.2;
+            const weight = lev % 20 === 0 ? 2.4 : (interval < 4 && lev % 4 === 0 ? 1.8 : 1.2);
             L.polyline(lines, { renderer: this.svgRenderer, color: lev < 1013 ? '#1d4ed8' : '#b91c1c', weight, opacity: 0.9, interactive: false }).addTo(this.lineLayer);
             if (this.showLabels && lev % (interval * 2) === 0) {
                 const every = Math.max(1, Math.floor(n / 5));
@@ -686,9 +743,27 @@ export class WeatherChartsComponent implements OnInit, AfterViewInit, OnDestroy 
                 }
             }
         }
-        this.isoCover = win;
-        this.isoDrawnInterval = interval;
-        this.isoInterval = interval;
+        this.stat.iso = tIso;
+        this.stat.lines = performance.now() - t0 - tIso;
+        this.stat.segments = nSeg;
         this.infoLine = `${this.infoBase} · ${nSeg} lijnstukjes (tijden in lokale tijd, runs in UTC)`;
+    }
+
+    // after the map has stopped moving: new isobars when the zoom gives another interval or the view has left the part of the grid
+    // they were computed for (a short pause, so a zoom or drag in several steps does one redraw)
+    private scheduleIsobars(): void {
+        if (this.isoTimer) clearTimeout(this.isoTimer);
+        this.isoTimer = setTimeout(() => this.refreshIsobars(), 120);
+    }
+
+    private refreshIsobars(): void {
+        const st = this.isoState, c = this.isoCover;
+        if (!st || !c || !this.mapReady) return;
+        const need = this.gridWindow(st.f, 0);
+        const inside = need.x0 >= c.x0 && need.x1 <= c.x1 && need.y0 >= c.y0 && need.y1 <= c.y1;
+        if (inside && intervalForZoom(this.map.getZoom()) === this.isoInterval) return;
+        this.drawIsobars();
+        const s = this.stat, r = (x: number) => Math.round(x);
+        this.timingLine = `isobaren opnieuw (elke ${this.isoInterval} hPa): berekenen ${r(s.iso)} ms · tekenen ${r(s.lines)} ms · ${s.segments} lijnstukjes`;
     }
 }

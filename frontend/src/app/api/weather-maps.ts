@@ -15,7 +15,7 @@ export interface WeatherMapFrame {
 
 export interface WeatherMapModel {
     id:        string;          // "<model>/<grid>"
-    model:     string;          // ecmwf | gfs | icon-eu | harmonie
+    model:     string;          // ecmwf | gfs | icon-eu | harmonie | dmi
     grid:      string;          // resolution in degrees, e.g. "0.25"
     run:       string;          // ISO, the newest complete run
     params:    string[];        // msl, t2m, u10, v10, precip, gust, prate (GFS and ECMWF only)
@@ -28,5 +28,6 @@ export interface WeatherMapField {
     model: string; grid: string; run: string; step: number; param: string; units: string;
     nx: number; ny: number; lat0: number; lon0: number; dlat: number; dlon: number;
     min: number; max: number;
+    nodata?: number;            // DMI: the q value that means no value (the box is larger than the grid); then the scale is 65534
     packed: string;             // base64, see utils/isobars.util.ts
 }
