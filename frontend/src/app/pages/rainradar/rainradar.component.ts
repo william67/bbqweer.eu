@@ -68,8 +68,10 @@ export class RainRadarMapComponent implements AfterViewInit, OnDestroy {
     private satelliteLayer!: L.TileLayer;
     private stopResizeWatch: (() => void) | null = null;
     private radarOverlay: L.ImageOverlay | undefined;
+    private areaRect: L.Rectangle | undefined;
     private bounds: [[number, number], [number, number]] | undefined;
 
+    showArea = true;
     satelliteMode = false;
     errorMessage: string | null = null;
     loadingDay = false;
@@ -236,6 +238,17 @@ export class RainRadarMapComponent implements AfterViewInit, OnDestroy {
         this.saveView();
     }
 
+    // The dashed outline of the radar picture (a choice in the settings dialog)
+    setArea(on: boolean) {
+        if (on === this.showArea) return;
+        this.showArea = on;
+        if (this.map && this.areaRect) {
+            if (on) this.areaRect.addTo(this.map);
+            else this.areaRect.remove();
+        }
+        this.saveView();
+    }
+
     // The opacity comes from the settings component (also once at the start, with the saved value)
     onOpacityChange(value: number) {
         this.opacity = value;
@@ -249,14 +262,16 @@ export class RainRadarMapComponent implements AfterViewInit, OnDestroy {
         this.startView = { lat: v.lat, lng: v.lng, zoom: v.zoom };
         const e = pickExtra(v, {
             layer: x => LAYER_IDS.includes(x),
-            satellite: x => typeof x === 'boolean'
+            satellite: x => typeof x === 'boolean',
+            area: x => typeof x === 'boolean'
         });
         if (e.layer) this.layer = e.layer;
         if (e.satellite !== undefined) this.satelliteMode = e.satellite;
+        if (e.area !== undefined) this.showArea = e.area;
     }
 
     private saveView() {
-        if (this.map) saveSavedView(this.storage, VIEW_KEY, this.map, { layer: this.layer, satellite: this.satelliteMode });
+        if (this.map) saveSavedView(this.storage, VIEW_KEY, this.map, { layer: this.layer, satellite: this.satelliteMode, area: this.showArea });
     }
 
     // ---------------------------------------------------------------- mode: live / history
@@ -561,6 +576,18 @@ export class RainRadarMapComponent implements AfterViewInit, OnDestroy {
         const changed = !this.bounds || JSON.stringify(bounds) !== JSON.stringify(this.bounds);
         this.bounds = bounds;
         if (this.radarOverlay && changed) this.radarOverlay.setBounds(L.latLngBounds(bounds));
+        if (!this.areaRect) {
+            this.areaRect = L.rectangle(bounds, {
+                color: '#3b82f6',
+                weight: 1.5,
+                dashArray: '8, 5',
+                fill: false,
+                interactive: false
+            });
+            if (this.showArea) this.areaRect.addTo(this.map);
+        } else if (changed) {
+            this.areaRect.setBounds(L.latLngBounds(bounds));
+        }
     }
 
     private applyFrame() {

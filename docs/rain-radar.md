@@ -3,7 +3,7 @@
 Public page `/#/rainradar` (menu item "Regenradar", right after Weerkaarten). It shows the **real values** of the KNMI radar, not
 colour pictures: **Precipitation** (mm/h, default), **Echo top** (km) and **Hail** (probability in %). The data are 765 x 700 grids of
 1 km, kept in bbqweer.eu's own MongoDB by the radar thread of the `weather-maps` container; the browser paints them in our own colour
-scales. The page is a port of `/rainradar` of wo-ict.nl **without** the KNMI WMS layer, the area outline and the wo-ict.nl area database.
+scales. The page is a port of `/rainradar` of wo-ict.nl **without** the KNMI WMS layer.
 The data format, the fetching and the quota story are described in detail in wo-ict.nl's `docs/radar-grids.md`; this file only says what is
 different here.
 
@@ -87,7 +87,8 @@ Angular), `utils/map-view.util.ts` (remembered position, resize watch), `compone
 - **Click on the map** shows the real value at that spot (mm/h, km or %) and the time of the frame. Space = play/pause, arrows = step.
 - **Satellite / Street map button** (Esri World Imagery or OSM) and Settings (opacity, zoom step). The layer, the satellite choice and the
   map position are remembered in `localStorage` key `rainradar_view` (settings in `rainradar_settings`), both through `LocalStorageService`.
-- **Left out on purpose** compared to wo-ict.nl: the KNMI WMS image layer, the dashed area outline, wo-ict.nl's area database.
+- **Area outline:** the dashed rectangle of the radar picture (nothing is drawn outside it), on/off in Settings ("Area outline"), remembered in `rainradar_view`.
+- **Left out on purpose** compared to wo-ict.nl: the KNMI WMS image layer.
 - **Attribution (required):** "Radar: KNMI (CC-BY 4.0)" in the Leaflet attribution control. Keep it.
 - Memory in the browser: painted frames are cached (at most 40, about 1 MB each) and revoked when evicted; `ngOnDestroy` clears all of it.
 - The `.map-dialog` focus-ring rule is in `assets/styles/global-custom-styles.scss`.

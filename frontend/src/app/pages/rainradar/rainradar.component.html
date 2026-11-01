@@ -11,6 +11,14 @@
       }
       <app-my-map-settings [map]="map" storageKey="rainradar_settings" [showOpacity]="true" [defaultOpacity]="0.7"
         (opacityChange)="onOpacityChange($event)">
+        <div class="ms-setting">
+          <label>Area outline <span class="ms-value">{{ showArea ? 'on' : 'off' }}</span></label>
+          <div class="ms-choices">
+            <p-button label="On" size="small" (click)="setArea(true)" [severity]="showArea ? 'primary' : 'secondary'"></p-button>
+            <p-button label="Off" size="small" (click)="setArea(false)" [severity]="showArea ? 'secondary' : 'primary'"></p-button>
+          </div>
+          <small class="ms-hint">The dashed rectangle is the area of the radar picture: nothing is drawn outside it.</small>
+        </div>
       </app-my-map-settings>
 
       <!-- Layer: precipitation, echo top or hail -->
