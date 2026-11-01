@@ -247,7 +247,7 @@ docker compose exec nodejs node createUser.js
 ## Angular Setup Notes
 - Angular 21.2, NgModule-based (NOT standalone for pages)
 - PrimeNG v21 with Aura/blue preset — configured in `app.module.ts`
-- AnyChart loaded via CDN script tag + `AnyChartService` (loads from `https://cdn.anychart.com`)
+- AnyChart loaded lazily by `AnyChartService` from `https://cdn.anychart.com` (about 900 KB gzip), only when the KNMI page opens the AnyChart output. **No `<script>` tag in `index.html`** (it was there until 2026-11-01 and loaded the bundle on every page)
 - Font: Nunito (Google Fonts)
 - Hash routing (`useHash: true`) — `/#/knmidata`, `/#/planetarium`
 - `zone.js` installed and configured — required for automatic change detection after async ops
