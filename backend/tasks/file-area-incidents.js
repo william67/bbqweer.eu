@@ -163,7 +163,7 @@ async function run() {
         await taskFinish(TASK_CODE, 'success', `${areas.length} areas processed`);
     } catch (e) {
         console.error('file-area-incidents error:', e.message);
-        await taskError(TASK_CODE);
+        await taskError(TASK_CODE, e.message);
         await taskFinish(TASK_CODE, 'error', e.message);
     }
 }

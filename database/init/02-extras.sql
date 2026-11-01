@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS `server-tasks` (
   `currentProgress` int DEFAULT NULL,
   `progressTotal` int DEFAULT NULL,
   `errorCount` int NOT NULL DEFAULT '0',
+  `lastErrorAt` datetime DEFAULT NULL,
+  `lastErrorMessage` varchar(500) DEFAULT NULL,
   `lastStatus` varchar(20) DEFAULT NULL,
   `lastMessage` varchar(500) DEFAULT NULL,
   `updatedAt` datetime DEFAULT NULL,

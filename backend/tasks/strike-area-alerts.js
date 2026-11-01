@@ -172,7 +172,7 @@ async function run() {
         await taskFinish(TASK_CODE, 'success', `${areas.length} areas processed`);
     } catch (e) {
         console.error('strike-area-alerts error:', e.message);
-        await taskError(TASK_CODE);
+        await taskError(TASK_CODE, e.message);
         await taskFinish(TASK_CODE, 'error', e.message);
     }
 }

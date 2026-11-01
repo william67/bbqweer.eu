@@ -182,13 +182,13 @@ These are **only set on INSERT** — UPDATE only touches the measured data field
 
 ## Error Handling & Monitoring
 
-- Download error, ZIP parse error, unknown filetype → `taskError('knmidata-sync')` increments `errorCount`
+- Download error, ZIP parse error, unknown filetype → `taskError('knmidata-sync', detail)` increments `errorCount` and stores `lastErrorAt` / `lastErrorMessage` (detail includes the file name)
 - `processFile` returns `true` on error, `false` on success/skip
 - After all files: status = `'partial'` if any errors, `'success'` if none
 - Fatal exception (DB down etc.) → status = `'error'`
 - All events logged to `logfile` table and console
 
-The `server-tasks` row (`knmidata-sync`) tracks: `isRunning`, `currentProgress/progressTotal`, `errorCount`, `lastStatus`, `lastDurationSec`, `lastMessage`.
+The `server-tasks` row (`knmidata-sync`) tracks: `isRunning`, `currentProgress/progressTotal`, `errorCount`, `lastErrorAt`, `lastErrorMessage`, `lastStatus`, `lastDurationSec`, `lastMessage`.
 
 ---
 

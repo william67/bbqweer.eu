@@ -78,7 +78,7 @@ module.exports = async () => {
         await taskFinish(TASK_CODE, 'success', `${count} TLEs synced`);
     } catch (e) {
         console.error('satellites-sync error:', e.message);
-        await taskError(TASK_CODE);
+        await taskError(TASK_CODE, e.message);
         await taskFinish(TASK_CODE, 'error', e.message);
     }
 };

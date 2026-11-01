@@ -79,7 +79,7 @@ async function refreshIncidents() {
         console.error('[TOMTOM] incidents refresh error:', err.response?.data || err.message);
         lastError = detail;
         markReady(); // resolve cold-start requests even when the first attempt fails
-        await taskError(TASK_CODE);
+        await taskError(TASK_CODE, detail);
         await taskFinish(TASK_CODE, 'error', detail);
     }
 }

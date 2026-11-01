@@ -99,7 +99,7 @@ Engine: MySQL 8.0 InnoDB throughout
 | `satellite_groups` | Maps satellites to groups (visual, weather, noaa) |
 | `stars` | HYG star catalogue |
 | `users` | Admin accounts (bcrypt passwords, JWT auth) |
-| `server-tasks` | Background task progress tracking |
+| `server-tasks` | Background task progress tracking: status, progress, `errorCount`, and the last error (`lastErrorAt` UTC + `lastErrorMessage`, kept across restarts) |
 | `logfile` | Task log entries |
 
 ### Views

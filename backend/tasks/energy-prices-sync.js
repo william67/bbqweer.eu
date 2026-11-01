@@ -77,7 +77,7 @@ module.exports = async () => {
         await taskFinish(TASK_CODE, 'success', `${count} prijzen gesynchroniseerd`);
     } catch (e) {
         console.error('energie-sync error:', e.message);
-        await taskError(TASK_CODE);
+        await taskError(TASK_CODE, e.message);
         await taskFinish(TASK_CODE, 'error', e.message);
     }
 };

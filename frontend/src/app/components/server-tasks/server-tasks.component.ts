@@ -44,8 +44,9 @@ export class ServerTasksComponent implements OnDestroy {
     }
 
     statusSeverity(t: any): 'success' | 'info' | 'warn' | 'danger' | 'secondary' {
-        if (t.isRunning) return 'info';
+        if (t.isRunning && t.lastStatus !== 'active') return 'info';
         switch (t.lastStatus) {
+            case 'active':  return 'success';
             case 'success': return 'success';
             case 'partial': return 'warn';
             case 'error':   return 'danger';
@@ -54,7 +55,7 @@ export class ServerTasksComponent implements OnDestroy {
     }
 
     statusLabel(t: any): string {
-        return t.isRunning ? 'running' : (t.lastStatus ?? '—');
+        return (t.isRunning && t.lastStatus !== 'active') ? 'running' : (t.lastStatus ?? '—');
     }
 
     sendTestMessage() {

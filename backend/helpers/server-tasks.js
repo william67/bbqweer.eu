@@ -7,19 +7,22 @@ const ntfy = require('./ntfy.helper');
 // would otherwise flood the shared servererrors topic if stuck failing.
 const TASK_ERROR_DEDUPE_MS = 15 * 60 * 1000;
 
-async function taskStart(taskCode, progressTotal = null) {
+// status: persistent services (no taskFinish, always running) pass 'active'; cron tasks leave it null.
+// lastErrorAt/lastErrorMessage are deliberately not touched here, so the last error survives a restart.
+async function taskStart(taskCode, progressTotal = null, status = null) {
     await db.execute(
         `UPDATE \`server-tasks\` SET isRunning=1, startedAt=UTC_TIMESTAMP(), finishedAt=NULL,
-         currentProgress=0, progressTotal=?, errorCount=0, lastStatus=NULL, lastMessage=NULL, updatedAt=UTC_TIMESTAMP()
+         currentProgress=0, progressTotal=?, errorCount=0, lastStatus=?, lastMessage=NULL, updatedAt=UTC_TIMESTAMP()
          WHERE taskCode=?`,
-        [progressTotal, taskCode]
+        [progressTotal, status, taskCode]
     );
 }
 
-async function taskError(taskCode) {
+async function taskError(taskCode, detail) {
     await db.execute(
-        `UPDATE \`server-tasks\` SET errorCount=errorCount+1, updatedAt=UTC_TIMESTAMP() WHERE taskCode=?`,
-        [taskCode]
+        `UPDATE \`server-tasks\` SET errorCount=errorCount+1, lastErrorAt=UTC_TIMESTAMP(), lastErrorMessage=?,
+         updatedAt=UTC_TIMESTAMP() WHERE taskCode=?`,
+        [String(detail || 'fout opgetreden').slice(0, 500), taskCode]
     );
 }
 

@@ -381,7 +381,7 @@ async function processFile(fileRow, fullSync = false) {
         httpLastMod = response.headers['last-modified'] || null;
     } catch (e) {
         await logMsg(`ERROR downloading ${filename}: ${e.message}`);
-        await taskError('knmidata-sync');
+        await taskError('knmidata-sync', `download ${filename}: ${e.message}`);
         return { error: true, bytes: 0 };
     }
 
@@ -389,12 +389,12 @@ async function processFile(fileRow, fullSync = false) {
     try {
         const zip   = new AdmZip(zipBuffer);
         const entry = zip.getEntry(filename);
-        if (!entry) { await logMsg(`ERROR: ${filename} not found in ZIP`); await taskError('knmidata-sync'); return { error: true, bytes: downloadedBytes }; }
+        if (!entry) { await logMsg(`ERROR: ${filename} not found in ZIP`); await taskError('knmidata-sync', `${filename} not found in ZIP`); return { error: true, bytes: downloadedBytes }; }
         entryDate = entry.header.time;
         csvText   = zip.readAsText(entry);
     } catch (e) {
         await logMsg(`ERROR reading ZIP for ${filename}: ${e.message}`);
-        await taskError('knmidata-sync');
+        await taskError('knmidata-sync', `ZIP ${filename}: ${e.message}`);
         return { error: true, bytes: downloadedBytes };
     }
 
@@ -414,7 +414,7 @@ async function processFile(fileRow, fullSync = false) {
     }
 
     const station = extractStation(csvText);
-    if (!station) { await logMsg(`ERROR: could not determine station for ${filename}`); await taskError('knmidata-sync'); return { error: true, bytes: downloadedBytes }; }
+    if (!station) { await logMsg(`ERROR: could not determine station for ${filename}`); await taskError('knmidata-sync', `no station in ${filename}`); return { error: true, bytes: downloadedBytes }; }
 
     const lineCount = csvText.split('\n').length;
     let counts = { inserted: 0, updated: 0, unchanged: 0 };
@@ -423,10 +423,10 @@ async function processFile(fileRow, fullSync = false) {
         if      (filetype === 'E') counts = await syncEtmgeg(station, csvText);
         else if (filetype === 'U') counts = await syncUurgeg(station, csvText);
         else if (filetype === 'N') counts = await syncNeerslaggeg(station, csvText);
-        else { await logMsg(`Unknown FILETYPE '${filetype}' for ${filename}`); await taskError('knmidata-sync'); return { error: true, bytes: downloadedBytes }; }
+        else { await logMsg(`Unknown FILETYPE '${filetype}' for ${filename}`); await taskError('knmidata-sync', `unknown FILETYPE '${filetype}' for ${filename}`); return { error: true, bytes: downloadedBytes }; }
     } catch (e) {
         await logMsg(`ERROR processing ${filename}: ${e.message}`);
-        await taskError('knmidata-sync');
+        await taskError('knmidata-sync', `processing ${filename}: ${e.message}`);
         return { error: true, bytes: downloadedBytes };
     }
 

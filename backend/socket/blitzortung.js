@@ -97,7 +97,7 @@ function sendStreamProblemAlert(detail) {
 
 redis.on('error', (err) => {
     console.error('[blitzortung] Redis error:', err.message);
-    taskError(TASK_CODE).catch(() => {});
+    taskError(TASK_CODE, `Redis error: ${err.message}`).catch(() => {});
     sendStreamProblemAlert(`Redis fout: ${err.message}`);
 });
 
@@ -252,14 +252,14 @@ function startWss() {
         clearInterval(watchdog);
         console.log('[blitzortung] WSS disconnected, reconnecting in 5s...');
         wssNextPort = 443;
-        taskError(TASK_CODE).catch(() => {});
+        taskError(TASK_CODE, 'WSS verbinding verbroken').catch(() => {});
         sendStreamProblemAlert('WSS verbinding verbroken, herverbinden over 5s');
         setTimeout(startWss, 5000);
     });
 
     ws.on('error', (err) => {
         console.error('[blitzortung] WSS error:', err.message);
-        taskError(TASK_CODE).catch(() => {});
+        taskError(TASK_CODE, `WSS error: ${err.message}`).catch(() => {});
         sendStreamProblemAlert(`WSS fout: ${err.message}`);
     });
 }
@@ -268,7 +268,7 @@ function startWss() {
 
 function initBlitzortung(socketIo) {
     io = socketIo;
-    taskStart(TASK_CODE).catch(err => console.error('[blitzortung] taskStart:', err.message));
+    taskStart(TASK_CODE, null, 'active').catch(err => console.error('[blitzortung] taskStart:', err.message));
     redis.connect().then(() => {
         console.log(`[blitzortung] Redis connected (${redisHost}:6379)`);
 
@@ -316,7 +316,7 @@ function initBlitzortung(socketIo) {
         }, 1_000);
     }).catch(err => {
         console.error('[blitzortung] Redis connect failed:', err.message);
-        taskError(TASK_CODE).catch(() => {});
+        taskError(TASK_CODE, `Redis connect failed: ${err.message}`).catch(() => {});
         sendStreamProblemAlert(`Redis verbinding mislukt: ${err.message}`);
     });
 }
