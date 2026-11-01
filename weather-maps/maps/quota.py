@@ -29,12 +29,20 @@ def remaining():
 
 
 def text():
-    """'KNMI quota 812 left at 13:07 UTC' (the value at the moment of the last call), or '' when nothing was seen yet."""
+    """'KNMI quota 812 left at 13:07 UTC, resets 13:48 UTC' (the value at the moment of the last call; the reset only while it is
+    still in the future), or '' when nothing was seen yet."""
     with _lock:
         if _state['remaining'] is None:
             return ''
         at = datetime.fromtimestamp(_state['seen'], timezone.utc).strftime('%H:%M')
-        return f"KNMI quota {_state['remaining']} left at {at} UTC"
+        out = f"KNMI quota {_state['remaining']} left at {at} UTC"
+        try:
+            rst = _state['reset']
+            if rst and rst > time.time():
+                out += f", resets {datetime.fromtimestamp(rst, timezone.utc).strftime('%H:%M')} UTC"
+        except (ValueError, OverflowError, OSError):
+            pass
+        return out
 
 
 def warn(ntfy, threshold=100):

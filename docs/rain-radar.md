@@ -32,7 +32,7 @@ KNMI Open Data API  -->  weather-maps (radar thread, h5py)  -->  MongoDB `weathe
   `weather-charts.md` "Operations").
 - **The KNMI Open Data key is shared with wo-ict.nl** (1000 calls an hour for both). Steady state is about 135 calls an hour per process;
   the back-fill only runs while the API reports more than `reserve_requests` (700) calls left, so wo-ict.nl keeps its share. `maps/quota.py`
-  adds the last value to the status message (`KNMI quota 812 left at 13:07 UTC`) and sends an ntfy push (once an hour) below 100.
+  adds the last value to the status message (`KNMI quota 812 left at 13:07 UTC, resets 13:48 UTC`; the reset only while it is still in the future) and sends an ntfy push (once an hour) below 100.
   **Never run a second radar process on the production key** (for instance on the dev PC).
 - **Filling gaps:** `python app.py --once --sources radar --radar-from 2026-10-01 [--radar-sets echotop,hail]` (in the container) widens
   the window from that day; the history of the first weeks was copied from wo-ict.nl's Mongo instead of fetched.
