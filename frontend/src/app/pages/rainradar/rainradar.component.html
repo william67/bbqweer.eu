@@ -1,0 +1,148 @@
+<div class="grid">
+  <div class="col-12">
+    <div #mapElement class="map-container"></div>
+
+    <div class="show-markers-container">
+      @if (!satelliteMode) {
+        <p-button (click)="toggleSatellite()" icon="pi pi-image" label="Satellite"></p-button>
+      }
+      @if (satelliteMode) {
+        <p-button (click)="toggleSatellite()" icon="pi pi-map" label="Street map"></p-button>
+      }
+      <app-my-map-settings [map]="map" storageKey="rainradar_settings" [showOpacity]="true" [defaultOpacity]="0.7"
+        (opacityChange)="onOpacityChange($event)">
+      </app-my-map-settings>
+
+      <!-- Layer: precipitation, echo top or hail -->
+      <p-select [options]="layerButtons" [ngModel]="layer" (onChange)="setLayer($event.value)"
+        optionLabel="label" optionValue="id" appendTo="body" [style]="{'min-width':'11rem'}">
+        <ng-template #selectedItem let-l>
+          <span class="radar-layer-item"><i [class]="l.icon ?? 'pi pi-image'"></i>{{ l.label }}</span>
+        </ng-template>
+        <ng-template #item let-l>
+          <div class="radar-layer-opt">
+            <span class="radar-layer-item"><i [class]="l.icon ?? 'pi pi-image'"></i>{{ l.label }}</span>
+            <small class="radar-layer-tip">{{ l.tip }}</small>
+          </div>
+        </ng-template>
+      </p-select>
+
+      <!-- Live / History -->
+      <div class="radar-mode">
+        <p-button label="Live" (click)="setMode('live')"
+          [severity]="mode === 'live' ? 'primary' : 'secondary'"></p-button>
+        <p-button label="History" icon="pi pi-history" (click)="setMode('history')"
+          [severity]="mode === 'history' ? 'primary' : 'secondary'"
+          [pTooltip]="'Radar of the last ' + historyDays + ' days'" tooltipPosition="bottom"></p-button>
+      </div>
+    </div>
+
+    <!-- The time of the frame on screen, straight at the top; a click on it opens the player (day, rain strip, play, slider) -->
+    @if (slotCount || mode === 'history') {
+      <div #topEl class="rr-top">
+        <div class="rr-date">
+          <button type="button" class="rr-nav" (click)="stepBy(-1)" [disabled]="!slotCount" aria-label="One frame back">
+            <i class="pi pi-chevron-left"></i>
+          </button>
+          <div class="rr-date-click" (click)="openPlayer()" title="Click for the day, play and the slider">
+            <div class="rr-date-main">{{ currentLabel || 'Pick a day' }}</div>
+            @if (offsetLabel) {
+              <div class="rr-date-sub" [class.radar-forecast]="isForecast">{{ offsetLabel }}</div>
+            }
+          </div>
+          <button type="button" class="rr-nav" (click)="stepBy(1)" [disabled]="!slotCount" aria-label="One frame forward">
+            <i class="pi pi-chevron-right"></i>
+          </button>
+          @if (playing) {
+            <button type="button" class="rr-nav rr-nav-stop" (click)="togglePlay()" aria-label="Stop playing" title="Stop playing">
+              <i class="pi pi-pause"></i>
+            </button>
+          } @else {
+            <button type="button" class="rr-nav" (click)="togglePlay()" [disabled]="!slotCount" aria-label="Play" title="Play">
+              <i class="pi pi-play"></i>
+            </button>
+          }
+        </div>
+        @if (noDataForDay) {
+          <div class="radar-error">No radar frames for this day</div>
+        }
+        @if (errorMessage) {
+          <div class="radar-error">{{ errorMessage }}</div>
+        }
+      </div>
+    }
+
+    <!-- Not modal, so the map stays visible; starting to play closes it, and closing it does not stop a running play -->
+    <p-dialog styleClass="map-dialog" [(visible)]="playerVisible" [modal]="false" [focusOnShow]="false" [draggable]="true" [resizable]="false"
+      [style]="{width: '36rem', 'max-width': '95vw', 'margin-top': playerTop + 'px'}" position="top" appendTo="body">
+      <!-- The header: the title, and in History the day picker between the title and the close cross (no row of its own) -->
+      <ng-template #header>
+        <div class="radar-head">
+          <span class="radar-head-title">Player</span>
+          @if (mode === 'history' && days.length) {
+            <!-- mousedown stays here: otherwise the dialog starts a drag, which resets its margin and makes it jump to the top -->
+            <div class="radar-day" (mousedown)="$event.stopPropagation()" (touchstart)="$event.stopPropagation()">
+              <p-button icon="pi pi-chevron-left" severity="secondary" [text]="true" size="small"
+                (click)="goDay(-1)" [disabled]="!hasPrevDay" pTooltip="Previous day" tooltipPosition="top"></p-button>
+              <p-datepicker [(ngModel)]="selectedDate" (ngModelChange)="onDateChange($event)"
+                dateFormat="dd-mm-yy" appendTo="body" [showIcon]="true" [readonlyInput]="true"
+                [minDate]="minDate" [maxDate]="maxDate" [disabledDates]="disabledDates"
+                [style]="{'width':'10.5rem','flex':'none'}" inputStyleClass="radar-date-input"></p-datepicker>
+              <p-button icon="pi pi-chevron-right" severity="secondary" [text]="true" size="small"
+                (click)="goDay(1)" [disabled]="!hasNextDay" pTooltip="Next day" tooltipPosition="top"></p-button>
+              @if (loadingDay) {
+                <i class="pi pi-spin pi-spinner radar-spinner"></i>
+              }
+            </div>
+          }
+        </div>
+      </ng-template>
+      <div class="radar-controls">
+        <!-- A grid: the play buttons share a row with the slider, so they line up with it; the rain
+             strip (History) sits above the slider and the day labels below it, in the same column -->
+        <div class="radar-main">
+          @if (mode === 'history') {
+            <div class="rain-strip" [class.rain-strip-dense]="slotCount > 100" (click)="onStripClick($event)"
+                 pTooltip="Bar height ~ amount of rain in the picture, click to jump" tooltipPosition="top" [showDelay]="800">
+              @for (bar of bars; track $index) {
+                <div class="rain-bar" [class.current]="$index === slot"
+                     [class.bar-observed]="bar.kind === 'observed'" [class.bar-forecast]="bar.kind === 'forecast'"
+                     [class.bar-missing]="bar.kind === 'missing'" [style.height.%]="bar.kind === 'missing' ? null : bar.h"></div>
+              }
+            </div>
+          }
+
+          <div class="radar-buttons">
+            <p-button (click)="step(-1)" icon="pi pi-step-backward" severity="secondary" [text]="true" size="small"
+              pTooltip="Previous frame (←)" tooltipPosition="top"></p-button>
+            <p-button (click)="togglePlay()" [icon]="playing ? 'pi pi-pause' : 'pi pi-play'" size="small"
+              [pTooltip]="playing ? 'Pause (space)' : 'Play (space)'" tooltipPosition="top"></p-button>
+            <p-button (click)="step(1)" icon="pi pi-step-forward" severity="secondary" [text]="true" size="small"
+              pTooltip="Next frame (→)" tooltipPosition="top"></p-button>
+          </div>
+
+          <input type="range" class="radar-slider" min="0" [max]="slotCount > 0 ? slotCount - 1 : 0" step="1"
+            [value]="slot" (input)="onSlide($event)" [disabled]="!slotCount">
+
+          @if (mode === 'live') {
+            <p-button class="radar-now" (click)="goNow()" label="Now" severity="secondary" [text]="true" size="small"></p-button>
+          }
+
+          @if (mode === 'history') {
+            <div class="radar-speed">
+              <span class="radar-small">Playback speed</span>
+              <p-button [label]="speed + '×'" severity="secondary" [text]="true" size="small"
+                (click)="cycleSpeed()" pTooltip="Click for the next speed" tooltipPosition="top"></p-button>
+            </div>
+            <div class="radar-ticks">
+              @for (t of dayTicks; track $index) {
+                <span class="radar-tick" [style.left.%]="t.left">{{ t.label }}</span>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </p-dialog>
+
+  </div>
+</div>

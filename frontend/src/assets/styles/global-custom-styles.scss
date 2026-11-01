@@ -137,3 +137,12 @@
 .p-datatable.p-datatable-striped .p-datatable-tbody > tr:nth-child(even) {
     background: #f8f9fa;
 }
+
+
+/* The floating map dialogs (player, map settings): no focus ring around the close cross and the buttons after a click or an open */
+.map-dialog .p-dialog-close-button:focus,
+.map-dialog .p-dialog-close-button:focus-visible,
+.map-dialog .p-button:focus:not(:focus-visible) {
+    outline: none;
+    box-shadow: none;
+}

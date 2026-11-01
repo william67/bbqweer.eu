@@ -17,6 +17,10 @@ const routes: Routes = [
                 loadChildren: () => import('./pages/weathercharts/weathercharts.module').then(m => m.WeatherChartsModule)
             },
             {
+                path: 'rainradar',
+                loadChildren: () => import('./pages/rainradar/rainradar.module').then(m => m.RainRadarMapModule)
+            },
+            {
                 path: 'planetarium',
                 loadChildren: () => import('./pages/planetarium/planetarium.module').then(m => m.PlanetariumModule)
             },

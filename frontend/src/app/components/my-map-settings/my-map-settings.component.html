@@ -1,0 +1,38 @@
+<p-button label="Settings" icon="pi pi-cog" severity="secondary" [pTooltip]="tooltip" tooltipPosition="bottom" (click)="visible = true"></p-button>
+
+<!-- Not modal, so the map can be watched while a setting is changed -->
+<p-dialog header="Map settings" styleClass="map-dialog" [(visible)]="visible" [modal]="false" [focusOnShow]="false" [draggable]="true" [resizable]="false"
+  [style]="{width: '22rem'}" position="topleft" appendTo="body">
+  <div class="ms-settings">
+    @if (showOpacity) {
+      <div class="ms-setting">
+        <label>Opacity <span class="ms-value">{{ (opacity * 100).toFixed(0) }}%</span></label>
+        <input type="range" class="ms-range" min="0.2" max="1" step="0.05" [value]="opacity" (input)="onOpacity($event)">
+      </div>
+    }
+
+    <div class="ms-setting">
+      <label>Zoom step <span class="ms-value">{{ zoomStep }}</span></label>
+      <div class="ms-choices">
+        @for (s of zoomSteps; track s) {
+          <p-button [label]="'' + s" size="small" (click)="setZoomStep(s)"
+            [severity]="zoomStep === s ? 'primary' : 'secondary'"></p-button>
+        }
+      </div>
+      <small class="ms-hint">Size of one step of the + / - buttons and where the map may stop. Smaller = finer.</small>
+    </div>
+
+    <div class="ms-setting">
+      <label>Mouse wheel <span class="ms-value">{{ wheelLabel }}</span></label>
+      <input type="range" class="ms-range" [min]="wheelMin" [max]="wheelMax" [step]="wheelStep" [value]="wheelPx" (input)="onWheel($event)">
+      <small class="ms-hint">Fast on the left, slow and fine on the right.</small>
+    </div>
+
+    <!-- the settings that belong to the page itself: put them between the tags of <app-my-map-settings> (class ms-setting for the same look) -->
+    <ng-content></ng-content>
+
+    <div class="ms-actions">
+      <p-button label="Reset" icon="pi pi-refresh" severity="secondary" [text]="true" size="small" (click)="reset()"></p-button>
+    </div>
+  </div>
+</p-dialog>

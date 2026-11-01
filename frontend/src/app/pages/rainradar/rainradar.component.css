@@ -1,0 +1,304 @@
+.map-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.show-markers-container {
+    position: absolute;
+    top: 10px;
+    left: 54px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 15px;
+    z-index: 1000;
+}
+
+/* the layer dropdown and the buttons of the toolbar are equally high */
+:host ::ng-deep .show-markers-container .p-select,
+:host ::ng-deep .show-markers-container .p-button {
+    height: 2.25rem;
+    box-sizing: border-box;
+}
+
+/* Live / History buttons */
+.radar-mode {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* The header of the player: the title and, in History, the day picker, before the close cross of the dialog */
+.radar-head {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;             /* the title left, the day picker exactly in the middle */
+    align-items: center;
+    gap: 12px;
+}
+.radar-head-title { grid-column: 1; }
+.radar-head .radar-day { grid-column: 2; }
+.radar-head-title {
+    font-weight: 600;
+    font-size: 1.25rem;
+}
+.radar-day {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    white-space: nowrap;
+}
+
+/* The time of the frame, top centre (the look of the weather charts page) */
+.rr-top {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+.rr-date {
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 6px 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+}
+.rr-nav {
+    flex: none;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 50%;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #0f172a;
+    font-size: 1rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    padding: 0;                                      /* the browser's own button padding made the icon not fit */
+    line-height: 1;
+    outline: none;                                   /* no dark focus border after a click; the keyboard ring is below */
+}
+.rr-nav i { font-size: 1rem; line-height: 1; }
+.rr-nav:focus-visible { box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.35); }
+.rr-nav:hover:not(:disabled) { background: #e0e7ff; border-color: #6366f1; }
+.rr-nav:disabled { opacity: 0.35; cursor: default; }
+.rr-nav-stop { background: #6366f1; border-color: #6366f1; color: #fff; }
+.rr-nav-stop:hover { background: #4f46e5 !important; border-color: #4f46e5 !important; }
+.rr-date-click { cursor: pointer; border-radius: 6px; padding: 0 4px; }
+.rr-date-click:hover { background: #eef2ff; }
+.rr-date-main { font-size: 1.7rem; font-weight: 800; line-height: 1.2; color: #0f172a; }
+.rr-date-sub { font-size: 0.85rem; font-weight: 600; color: #6b7280; }
+.rr-date-sub.radar-forecast { color: #1d4ed8; }
+
+/* The content of the player dialog (the dialog itself is in the body) */
+.radar-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+
+@media (max-width: 1500px) {
+    .show-markers-container { top: 70px; }
+}
+
+.radar-time {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 10px;
+}
+
+.radar-clock {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #374151;
+}
+
+/* History: the time sits on the date row */
+.radar-clock-day {
+    margin-left: 10px;
+    min-width: 3.4rem;
+}
+
+.radar-offset {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #6b7280;
+}
+
+.radar-offset.radar-forecast {
+    color: #1d4ed8;
+}
+
+.radar-spinner {
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.radar-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Grid: [buttons | slider | Now] on one row; the rain strip (History) above and the day labels
+   below the slider, both in the slider's column, so everything lines up */
+.radar-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 6px;
+    align-items: center;
+}
+
+.radar-buttons {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.radar-slider {
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+    margin: 0;
+}
+
+.radar-now {
+    grid-column: 3;
+    grid-row: 2;
+}
+
+/* Rain strip: a bar per 5 minutes; the side padding matches the slider thumb travel */
+.rain-strip {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-end;
+    height: 56px;
+    padding: 0 8px;
+    gap: 1px;
+    border-bottom: 1px solid #e5e7eb;
+    cursor: pointer;
+}
+
+.rain-strip.rain-strip-dense {
+    gap: 0;
+}
+
+.rain-bar {
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: 1px 1px 0 0;
+}
+
+.rain-bar.bar-observed { background: #3b82f6; }
+.rain-bar.bar-forecast { background: #bfdbfe; }
+
+/* A gap in the data: a thin dotted line instead of a bar */
+.rain-bar.bar-missing {
+    height: 0;
+    border-bottom: 2px dotted #cbd5e1;
+    border-radius: 0;
+}
+
+.rain-bar.current {
+    background: #1e3a8a;
+    box-shadow: 0 0 0 1px #1e3a8a;
+}
+
+.rain-bar.bar-missing.current {
+    background: transparent;
+    box-shadow: none;
+    border-bottom-color: #1e3a8a;
+}
+
+/* Day labels 00:00 ... 24:00 under the slider */
+.radar-ticks {
+    grid-column: 2;
+    grid-row: 3;
+    position: relative;
+    height: 1rem;
+    margin: 0 8px;
+}
+
+.radar-tick {
+    position: absolute;
+    transform: translateX(-50%);
+    font-size: 0.68rem;
+    color: #6b7280;
+    white-space: nowrap;
+}
+
+/* Playback speed: under the play buttons, in the row of the day labels, so the panel stays flat */
+.radar-speed {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    white-space: nowrap;
+}
+:host ::ng-deep .radar-speed .p-button {
+    padding: 0 0.5rem;
+    height: 1.1rem;
+    font-size: 0.72rem;
+}
+
+.radar-slider-small {
+    width: 110px;
+}
+
+.radar-small {
+    font-size: 0.72rem;
+    color: #6b7280;
+}
+
+.radar-error {
+    font-size: 0.72rem;
+    color: #b45309;
+    text-align: center;
+}
+
+:host ::ng-deep .radar-date-input {
+    font-weight: 600;
+    text-align: center;
+}
+
+/* Colour scale of the precipitation layer: a Leaflet control bottom right, like the legend of the weather charts page
+   (created outside the component's view) */
+::ng-deep .rr-legend {
+    background: rgba(255, 255, 255, 0.92);
+    padding: 6px 9px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.5;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+::ng-deep .rr-legend i { display: inline-block; width: 16px; height: 10px; margin-right: 6px; vertical-align: middle; opacity: 0.8; }
+
+/* the layer dropdown: icon and name, and in the list a line of explanation under each layer */
+::ng-deep .radar-layer-item { display: inline-flex; align-items: center; gap: 8px; }
+::ng-deep .radar-layer-opt { display: flex; flex-direction: column; max-width: 20rem; white-space: normal; }
+::ng-deep .radar-layer-tip { color: #6b7280; font-size: 0.75rem; }

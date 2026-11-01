@@ -26,12 +26,13 @@ C:\Apps\bbqweer.eu\
 │   │   ├── pages/solar/    — SolarComponent (lazy module)
 │   │   ├── pages/lightning/ — LightningComponent (lazy module) — real-time strike map
 │   │   ├── pages/weathercharts/ — WeatherChartsComponent (lazy module) — public model weather maps (isobars, wind/temp/rain layers)
+│   │   ├── pages/rainradar/ — RainRadarMapComponent (lazy module) — public KNMI radar grids (precipitation, echo top, hail), Live + History, see docs/rain-radar.md
 │   │   ├── pages/file-alerts/ — FileAlertsComponent (lazy module) — traffic jam alert areas; TomTom incidents public, areas login-only
-│   │   ├── components/     — my-knmi-anychart, my-knmi-chartjs, my-knmi-table,
+│   │   ├── components/     — my-map-settings (Settings button + dialog of the map pages), my-knmi-anychart, my-knmi-chartjs, my-knmi-table,
 │   │   │                     my-planetarium, login, area-manager (AreaManagerComponent — shared
 │   │   │                     draw/edit/list UI for both file_areas and strike_areas, see "Area
 │   │   │                     management" below)
-│   │   ├── services/       — knmi-reports, forecast, anychart, local-storage,
+│   │   ├── services/       — radar-grid (no token), knmi-reports, forecast, anychart, local-storage,
 │   │   │                     stars, planetarium-calc, satellites, satellite-js,
 │   │   │                     energy-prices, solar, lightning, file-areas, strike-areas,
 │   │   │                     area.types (shared Area/AreaPoint/AreaCrudService interfaces),
@@ -43,13 +44,13 @@ C:\Apps\bbqweer.eu\
 │   ├── socket/             — blitzortung.js (WSS → Redis → Socket.IO)
 │   ├── config.ini          — Docker settings (host=mysql, port=3306) — NOT in git
 │   ├── config.local.ini    — Local dev settings (host=127.0.0.1, port=3306) — NOT in git
-│   ├── routes/             — knmi-reports, stars, satellites, auth, users, energy-prices, solar, file-areas, strike-areas, tomtom, ntfy
+│   ├── routes/             — knmi-reports, stars, satellites, auth, users, energy-prices, solar, file-areas, strike-areas, tomtom, ntfy, weathermaps, radargrid (both public)
 │   ├── helpers/            — mysqlpool-knmi.helper.js, server-tasks.js, tomtom.helper.js, ntfy.helper.js — centralized push-notification dispatch queue, see docs/ntfy-server.md "Backend integration". The `bbqweer-ntfy` server itself is shared with wo-ict.nl, which keeps its own independent copy of this file — a fix here does not propagate there, see docs/ntfy-server.md "Shared across projects"
 │   ├── tasks/              — knmidata-v4.js, satellites-sync.js, energy-prices-sync.js, file-area-incidents.js, strike-area-alerts.js
 │   ├── callSyncKnmiData.js        — manual sync trigger (uses knmidata-v4)
 │   ├── callSyncEnergiePrices.js   — manual/historical energy price sync from energyzero.nl
 │   └── createUser.js       — one-off admin user creation script
-├── weather-maps/           — Python sync service (eccodes): ECMWF/ICON-EU/GFS/HARMONIE grids → own MongoDB; config.ini NOT in git, see docs/weather-charts.md
+├── weather-maps/           — Python sync service (eccodes + h5py): ECMWF/ICON-EU/GFS/HARMONIE grids and the KNMI radar frames (own thread) → own MongoDB; config.ini NOT in git, see docs/weather-charts.md and docs/rain-radar.md
 ├── database/
 │   ├── init/               — MySQL init scripts (run once on first container start)
 │   │   ├── 01-schema.sql   — full bbqweer schema (tables, views, stored procedures)
@@ -87,6 +88,7 @@ C:\Apps\bbqweer.eu\
 │   ├── lightning-map.md
 │   ├── ntfy-server.md      — self-hosted ntfy push notification server (shared with wo-ict.nl, see "Shared across projects")
 │   ├── weather-charts.md   — Weerkaarten: weather-maps sync service, MongoDB grids, public route + page, memory notes
+│   ├── rain-radar.md       — Regenradar: radar thread of weather-maps, radar_grids in MongoDB, /api/radar-grid + nginx frame cache, page
 │   └── tomtom.md           — TomTom Traffic Incident Details integration + file-alerts data pipeline
 ├── plans/                  — pre-implementation design docs (see dev-standards workflow)
 ├── nginx/nginx.conf        — serves bbqweer.eu; HTTP→HTTPS redirect + SSL + /api/* proxy to nodejs:3000
@@ -218,6 +220,7 @@ Scheduled in `backend/app.js` via `node-cron`:
 | `file-area-incidents` | `2,12,22,32,42,52 7-18 * * *` + `2 19 * * *`, `timezone: 'Europe/Amsterdam'` (07:02-19:02, every 10 min) | Counts TomTom incidents intersecting each `file_areas` polygon (`@turf/boolean-intersects`); no DB writes — **runs in all environments including local dev** (not gated by `config.local.ini` like the tasks above), also runs once immediately on boot. Offset 2 min after `tomtom-incidents-sync`'s own refresh schedule — no point recalculating before the incident cache has actually changed. Sends a start/repeat/end ntfy push (`filealerts` topic) per area via the same per-area in-memory state machine pattern as `strike-area-alerts` — start on 0→active, repeat on every subsequent tick while active (no repeat-cadence throttle, unlike strikes — the task's own ~10min recalculation cadence is already sparse enough), end on active→0 (fires immediately on the very next tick, since the count itself isn't time-windowed like strikes). **Experimental** (added 2026-08-29): unlike strikes, TomTom counts aren't time-windowed — an incident only clears when TomTom itself reports it resolved, so "active" can persist for a long time (hours) on a real jam before an end push fires; monitor how this behaves in practice. Count exposed via `getIncidentCounts()`, merged into `GET /api/file-areas` as `incidentCount`. See `docs/tomtom.md`. |
 | `tomtom-incidents-sync` | `*/10 7-18 * * *`, `timezone: 'Europe/Amsterdam'` | Refreshes `backend/helpers/tomtom.helper.js`'s in-memory incident cache from the TomTom API — 10 min, 07:00-19:00 Dutch local time only (DST-safe via the explicit timezone option, regardless of the VPS running UTC). Deliberately throttled to stay under TomTom's confirmed 2,500 requests/month free quota after a real `InsufficientFunds` production error — see `docs/tomtom.md` "Cost incident". Also runs once immediately on boot; **not** gated by `config.local.ini`, same reasoning as `file-area-incidents`. |
 | `strike-area-alerts` | `*/15 * * * * *` (every 15s) | Counts recent lightning strikes (last `ACTIVE_WINDOW_MS`=2min) intersecting each `strike_areas` polygon, via `blitzortung.js`'s `getInWindow()` (Redis GEOSEARCH bbox prefilter) + `@turf/boolean-point-in-polygon` (exact filter). Sends a start/repeat/end ntfy push (`strikealerts` topic) per area via a per-area in-memory state machine — start on 0→active, repeat every 5min while active, end on active→0 (driven by the 2-min window emptying, not the repeat cadence). Count exposed via `getStrikeCounts()`, merged into `GET /api/strike-areas` as `incidentCount`. **Runs in all environments including local dev** (not gated by `config.local.ini`) — same as `file-area-incidents`, so it will send real ntfy pushes locally too if `[ntfy]` is configured. See `docs/ntfy-server.md`. |
+| `radar-maps-sync` | every `[radar] check_seconds` (120 s) in the **same Python container**, own thread (`radar` in `[maps] sources`), one `server-tasks` entry per cycle | Fetches the KNMI radar frames (precipitation, echo top, hail; HDF5 via the Open Data API) into `radar_grids` of the same MongoDB, 14 days kept; live pass + back-fill in between. The Open Data key is **shared with wo-ict.nl** (1000 calls/hour for both): the back-fill leaves `reserve_requests`, and the status message ends with `KNMI quota N left`. See `docs/rain-radar.md`. |
 | `weather-maps-sync` | every `check_seconds` (600 s) in its **own Python container** (`weather-maps/`, not in `app.js`), one `server-tasks` entry per round (start, progress per source, finish: `success` or `error`) | Fetches the newest ECMWF / ICON-EU / GFS / HARMONIE run into its own MongoDB when a new one is out, 2 runs kept per model. Memory: the download window is bounded (`workers * 3`), see `docs/weather-charts.md`. Per-container memory log: `/var/log/container-mem.log` on the VPS (`scripts/container-mem-log.sh`). |
 
 **Always-running tasks** (not cron-scheduled — a persistent connection, started once at boot and never "finished"): `taskStart(code, null, 'active')` is called once and `taskFinish()` is never called, so `isRunning` stays `1` indefinitely and `lastStatus` is `'active'` (the Taakstatus dialog shows a green `active` tag instead of `running`); `taskError(code, detail)` increments the error counter and stores the last error on each connection problem without resetting anything. There is no heartbeat: a service that really stops stays on `active`. Same pattern as wo-ict.nl's `cerbo-bridge` task. Since `taskFinish()` never fires, these tasks are outside the generic `servererrors` ntfy hook (see `docs/ntfy-server.md`) — `blitzortung-service` gets its own targeted, heavily-deduped (1/hour) alert instead, wired directly into `blitzortung.js`'s error handlers.
@@ -250,7 +253,7 @@ docker compose exec nodejs node createUser.js
 - `zone.js` installed and configured — required for automatic change detection after async ops
   - `"polyfills": ["zone.js"]` in `angular.json` build options
   - `provideZoneChangeDetection()` in `src/main.ts` bootstrap options
-- Eight lazy-loaded modules: `KnmiDataModule`, `ForecastModule`, `WeatherChartsModule`, `PlanetariumModule`, `EnergyPricesModule`, `SolarModule`, `LightningModule`, `FileAlertsModule`
+- Nine lazy-loaded modules: `KnmiDataModule`, `ForecastModule`, `WeatherChartsModule`, `RainRadarMapModule`, `PlanetariumModule`, `EnergyPricesModule`, `SolarModule`, `LightningModule`, `FileAlertsModule`
 - `socket.io-client` installed; added to `allowedCommonJsDependencies`; `environment.wsUrl` points to backend Socket.IO server (`http://localhost:3000` dev, `''` prod)
 - Budget limit raised to `2MB` warn / `3MB` error in `angular.json` (PrimeNG Table/Tag/ProgressBar)
 - `"hmr": false` in `angular.json` serve options — required; HMR is unreliable with NgModule apps
@@ -332,6 +335,7 @@ shows the count with no drilldown).
 - KNMI Data (`/knmidata`) — weather data charts + admin (Beheer menu); chart-type buttons show text labels (Tabel/AnyChart/Chart.js) with active state highlighted
 - Weersverwachting (`/forecast`) — own lazy module (`ForecastModule`); 10-day hourly forecast via Open-Meteo (KNMI Seamless model); columns: temp, humidity, pressure, wind, rain, snow, cloud cover, radiation (GTI); location picked via Leaflet map dialog (saved in `localStorage` key `forecast_location`); Nominatim reverse geocoding resolves city name on save
 - Weerkaarten (`/weathercharts`) — public, no login; model grids (ECMWF, ICON-EU, GFS, HARMONIE) served from MongoDB by `/api/weather-maps` (rate-limited in nginx), drawn client-side (isobars, wind/temperature/rain layers, time slider, tooltip). Data attribution in the Leaflet attribution control is required — keep it. Full details and memory notes: `docs/weather-charts.md`
+- Regenradar (`/rainradar`) — public, no login; menu item right after Weerkaarten. Real KNMI radar values from MongoDB (`/api/radar-grid`, rate-limited in nginx, `/frame` cached 1 h by nginx): layers Precipitation (default, with 2-hour forecast), Echo top, Hail; Live and History (14 days, date picker, rain strip), time at the top with ‹ › + play, Player dialog, click on the map for the value, Satellite/Street map button, Settings (opacity). Port of wo-ict.nl's rainradar **without** the KNMI WMS layer and the area outline. Attribution "Radar: KNMI (CC-BY 4.0)" is required — keep it. See `docs/rain-radar.md`
 - Planetarium (`/planetarium`) — interactive star map with satellites + pass predictions; location picked via Leaflet map dialog (saved in `localStorage` key `planetarium_location`); Nominatim reverse geocoding resolves city name on save; uses default coords if no stored location (no geolocation)
 - Energieprijzen (`/energy-prices`) — hourly electricity prices from energyzero.nl, green→red bar chart; always shows today + tomorrow (fixed, no date nav); summary cards (Nu/Gemiddeld/Laagste/Hoogste) for today, summary cards (Gemiddeld/Laagste/Hoogste) for tomorrow; historical section with date picker below; UTC→local time conversion (Dutch UTC+1/+2 offsets); backend fetches CURDATE-1 through CURDATE+1 so local 00:00–01:00 hours are included; manual backfill: `node callSyncEnergiePrices.js [YYYY-MM-DD]`
 - Zonne-energie (`/solar`) — solar panel output forecast (3-day) via Open-Meteo GTI + historical backtest via KNMI uurgeg radiation data; backtest at bottom of page (collapsible); selected station saved in `localStorage` key `solar_backtest_stn`

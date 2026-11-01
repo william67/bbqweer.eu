@@ -2,6 +2,8 @@
 
 Public page `/#/weathercharts`: isobars (MSLP every 4 hPa, H/L marks), colour layers for wind, temperature and precipitation, a time slider and a tooltip with all values at the pointer. The data are **rasters** (a value per grid point over Europe) from four numerical models, kept in bbqweer.eu's **own MongoDB** by a Python sync service. The point forecasts of the Forecast page (Open-Meteo) are a different thing.
 
+> The KNMI radar frames (Regenradar page) live in the same MongoDB and are fetched by a thread of the same container; see `docs/rain-radar.md`.
+
 ## Status
 
 | Part | State |
@@ -39,7 +41,7 @@ Kept small to fit the VPS (about 0.6 GB of grids; all grids and 4 runs would be 
 
 ## The sync service `weather-maps/`
 
-- **Layout:** `app.py` (loop), `maps/config.py`, `maps/db.py` (status row), `maps/ntfy.py`, `maps/store.py` (MongoDB), `maps/grid.py` (decode, crop, pack), `maps/sources/{ecmwf,icon_eu,gfs,harmonie}.py`, `Dockerfile` (python 3.12-slim, pinned requirements incl. `eccodes`/`eccodeslib`), `config.ini.example`. Not for Windows: `eccodeslib` has no Windows wheel, run it in Docker.
+- **Layout:** `app.py` (loop), `maps/config.py`, `maps/db.py` (status row), `maps/ntfy.py`, `maps/store.py` (MongoDB), `maps/grid.py` (decode, crop, pack), `maps/sources/{ecmwf,icon_eu,gfs,harmonie}.py`, `maps/radar.py` + `radar_store.py` + `quota.py` (radar thread and the shared KNMI quota, see `docs/rain-radar.md`), `Dockerfile` (python 3.12-slim, pinned requirements incl. `eccodes`/`eccodeslib`), `config.ini.example`. Not for Windows: `eccodeslib` has no Windows wheel, run it in Docker.
 - **Per round and source** (every `check_seconds`, 600): ask the source for its newest complete run; if it is newer than `weather_grid_runs` says, download only the fields we need, decode with eccodes, convert units, cut to the Europe box (35-70°N, -25-45°E; HARMONIE is kept whole), keep every n-th point, pack and upsert one document per model, grid, run, step and parameter. Only after the whole run is written it is added to `runs` of `weather_grid_runs`; the newest `keep_runs` are kept and the documents of older runs deleted. A failed run changes nothing (the next round retries; documents are upserts), so the page never shows half a run.
 - **Status row, one entry per round:** every round calls `start()`, then `progress()` after each source and `finish()` at the end (`maps/db.py`, same columns as `taskFinish()` in the backend helper), so the Taakstatus dialog shows `success` (or `error` when a source failed) with start, end and duration of the last round, like the other tasks; it only shows `running` while a round is busy (most rounds are 1-2 s: "run is stored"). If the container is stopped in the middle of a round the row is set to not running with the message "stopped (container restart)". A MySQL problem never stops the sync. The failure alert is separate (below), no extra ntfy push from `finish()`.
 - **Alerts:** `alert_after_failures` (3) consecutive failed rounds for one source send an ntfy push to the shared `servererrors` topic (deduped 1/hour per source).
@@ -89,9 +91,13 @@ lon_max = 45
 harmonie_run_every_hours = 6
 skip_grids = 0.125,0.029
 alert_after_failures = 3
+
+[radar]                       ; only with 'radar' in sources, see docs/rain-radar.md
+keep_days = 14
+reserve_requests = 700
 ```
 
-- The KNMI key is the **Open Data API key** (developer.dataplatform.knmi.nl, API Catalog, Open Data API), not a WMS key. It is only needed for HARMONIE; without it use `sources = ecmwf,icon-eu,gfs`. It is one key shared with another project of the same owner (about 144 requests a day per sync); if they must be separated later, request a second key and replace that one line.
+- The KNMI key is the **Open Data API key** (developer.dataplatform.knmi.nl, API Catalog, Open Data API), not a WMS key. It is only needed for HARMONIE; without it use `sources = ecmwf,icon-eu,gfs`. It is one key shared with another project of the same owner (about 144 requests a day per sync for HARMONIE, plus about 135 an hour for the radar thread, see `docs/rain-radar.md`; 1000 an hour in total); if they must be separated later, request a second key and replace that one line.
 - Locally the file points at `mongodb`/`mysql` on the compose network and has no `[ntfy]`/`[knmi]` section. **Never put the key in git or in a document.**
 - **Editing it on the VPS from PowerShell:** do not use `Set-Content -Encoding utf8` (Windows PowerShell 5.1 writes a BOM, which earlier broke a backend's config; `maps/config.py` reads with `utf-8-sig` as a safety net, but the backend's `config.ini` is parsed by the Node `ini` package, which has no such net). Use `[System.IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding $false))`, or write it from a shell on the VPS.
 

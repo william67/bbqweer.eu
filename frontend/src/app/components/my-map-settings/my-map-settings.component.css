@@ -1,0 +1,13 @@
+:host {
+    display: inline-flex;
+}
+
+/* The dialog itself lives in the body, so ::ng-deep */
+::ng-deep .ms-settings { display: flex; flex-direction: column; gap: 14px; }
+::ng-deep .ms-setting { display: flex; flex-direction: column; gap: 4px; }
+::ng-deep .ms-setting label { font-weight: 600; font-size: 0.9rem; display: flex; justify-content: space-between; }
+::ng-deep .ms-value { font-weight: 400; color: #6b7280; }
+::ng-deep .ms-range { width: 100%; }
+::ng-deep .ms-choices { display: flex; gap: 6px; }
+::ng-deep .ms-hint { color: #6b7280; font-size: 0.75rem; }
+::ng-deep .ms-actions { display: flex; justify-content: flex-end; }
